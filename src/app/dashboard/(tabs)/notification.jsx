@@ -1,4 +1,3 @@
-// donor_record.jsx
 import React from 'react';
 
 const NotificationComponent = () => {

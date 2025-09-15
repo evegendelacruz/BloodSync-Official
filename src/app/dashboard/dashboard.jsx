@@ -5,7 +5,7 @@ import SidePanel from "../../components/SidePanel";
 import MailComponent from "./(tabs)/mail";
 import CalendarComponent from "./(tabs)/calendar";
 import NotificationComponent from "./(tabs)/notification";
-import ProfileComponent from "././(tabs)/profile";
+import ProfileComponent from "././(tabs)/profile/profile";
 import Login from "../login";
 import Plasma from "./blood_stock/plasma";
 import Platelet from "./blood_stock/platelet";

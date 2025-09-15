@@ -165,7 +165,18 @@ const Signup = () => {
           transition: border-color 0.2s;
         }
 
-        .form-group input:focus {
+        .form-group select {
+          width: 100%;
+          padding: 10px 16px;
+          border: 2px solid #e5e7eb;
+          font-size: 13px;
+          transition: border-color 0.2s;
+          background: white;
+          cursor: pointer;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
           outline: none;
           border-color: #15803d;
         }
@@ -317,6 +328,15 @@ const Signup = () => {
               <div className="form-group">
                 <label htmlFor="name">Full Name:</label>
                 <input type="text" id="name" name="name" required />
+              </div>
+              <div className="form-group">
+                <label htmlFor="role">Role:</label>
+                <select id="role" name="role" required>
+                  <option value="">Select a role...</option>
+                  <option value="admin">Admin</option>
+                  <option value="doctor">Doctor</option>
+                  <option value="medical-technologist">Medical Technologist</option>
+                </select>
               </div>
               <div className="form-group">
                 <label htmlFor="email">Email:</label>

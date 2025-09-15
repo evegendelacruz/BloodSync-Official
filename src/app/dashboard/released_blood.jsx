@@ -297,7 +297,7 @@ const ReleasedBlood = () => {
     subtitle: {
       color: "#6b7280",
       fontSize: "14px",
-      marginTop: "-10px",
+      marginTop: "-7px",
     },
     controlsBar: {
       display: "flex",
@@ -536,7 +536,6 @@ const ReleasedBlood = () => {
       border: "none",
       cursor: "pointer",
       fontSize: "14px",
-      fontFamily: "Barlow",
     },
   };
 
