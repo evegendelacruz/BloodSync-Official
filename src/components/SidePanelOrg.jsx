@@ -1,7 +1,5 @@
 import React, { useState } from "react";
 import {
-  Home,
-  Droplets,
   Users,
   FileText,
   TrendingUp,
@@ -10,6 +8,8 @@ import {
   ChevronRight,
   ChevronLeft,
   Package2,
+  Calendar,
+  CalendarCheck,
 } from "lucide-react";
 
 import { BeakerIcon } from "@primer/octicons-react";
@@ -28,13 +28,13 @@ const SidePanelOrg = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
     {
       id: "appointment-org",
       label: "Appointment",
-      icon: Clock,
+      icon: CalendarCheck,
       screen: "appointment-org",
     },
     {
       id: "recent-activity-org",
       label: "Recent Activity",
-      icon: FileText,
+      icon: Clock,
       screen: "recent-activity-org",
     },
   ];
