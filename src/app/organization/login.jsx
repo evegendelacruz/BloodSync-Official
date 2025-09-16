@@ -19,8 +19,8 @@ const LoginOrg = () => {
       // Simulate login API call
       await new Promise((resolve) => setTimeout(resolve, 1500));
 
-      // In a real app, replace this with API call or Electron IPC
-      navigate("/dashboard");
+      // Navigate to donor-record-org instead of dashboard
+      navigate("/donor-record-org");
     } catch (err) {
       setError("Login failed. Please check your credentials and try again.");
     }
@@ -322,7 +322,7 @@ const LoginOrg = () => {
                 Don&apos;t Have an Account?&nbsp;
                 <button
                   type="button"
-                  onClick={() => navigate("/signup")}
+                  onClick={() => navigate("/signup-org")}
                   className="link"
                 >
                   Click Here
@@ -377,7 +377,7 @@ const LoginOrg = () => {
                 <p style={{ fontSize: "13px", marginTop: "10px" }}>
                   <button
                     type="button"
-                    onClick={() => navigate("/forgot-password")}
+                    onClick={() => navigate("/forgot-password-org")}
                     className="link"
                   >
                     Forgot Password?

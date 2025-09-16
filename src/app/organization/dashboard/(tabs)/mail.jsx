@@ -3,7 +3,7 @@ import React from 'react';
 const MailOrg = () => {
   return (
     <div>
-      <h2>Calendar</h2>
+      <h2>Mail</h2>
       {/* Your donor record content */}
     </div>
   );

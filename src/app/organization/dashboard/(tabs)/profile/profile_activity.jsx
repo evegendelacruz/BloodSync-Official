@@ -3,7 +3,7 @@ import React from 'react';
 const ProfileActivityOrg = () => {
   return (
     <div>
-      <h2>Calendar</h2>
+      <h2>Activity</h2>
       {/* Your donor record content */}
     </div>
   );
