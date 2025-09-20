@@ -6,9 +6,6 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
-// ❌  Removed the old top-level require of services/db.js
-//     We'll load db.js later from ../backend
-
 app.commandLine.appendSwitch(
   'disable-features',
   'AutofillEnable,AutofillAddressEnabled,AutofillCreditCardEnabled'
@@ -47,9 +44,9 @@ const createWindow = () => {
 };
 
 const setupIpcHandlers = () => {
-  // ✅ go two levels up to reach <project-root>/backend/db.js
   const dbService = require(path.join(__dirname, '..', '..', 'backend', 'db.js'));
 
+  // ========== RED BLOOD CELL IPC HANDLERS ==========
   ipcMain.handle('db:getAllBloodStock', async () => {
     return await dbService.getAllBloodStock();
   });
@@ -68,6 +65,48 @@ const setupIpcHandlers = () => {
 
   ipcMain.handle('db:searchBloodStock', async (_event, searchTerm) => {
     return await dbService.searchBloodStock(searchTerm);
+  });
+
+  // ========== PLATELET IPC HANDLERS ==========
+  ipcMain.handle('db:getPlateletStock', async () => {
+    return await dbService.getPlateletStock();
+  });
+
+  ipcMain.handle('db:addPlateletStock', async (_event, plateletData) => {
+    return await dbService.addPlateletStock(plateletData);
+  });
+
+  ipcMain.handle('db:updatePlateletStock', async (_event, id, plateletData) => {
+    return await dbService.updatePlateletStock(id, plateletData);
+  });
+
+  ipcMain.handle('db:deletePlateletStock', async (_event, ids) => {
+    return await dbService.deletePlateletStock(ids);
+  });
+
+  ipcMain.handle('db:searchPlateletStock', async (_event, searchTerm) => {
+    return await dbService.searchPlateletStock(searchTerm);
+  });
+
+  // ========== PLASMA IPC HANDLERS ==========
+  ipcMain.handle('db:getPlasmaStock', async () => {
+    return await dbService.getPlasmaStock();
+  });
+
+  ipcMain.handle('db:addPlasmaStock', async (_event, plasmaData) => {
+    return await dbService.addPlasmaStock(plasmaData);
+  });
+
+  ipcMain.handle('db:updatePlasmaStock', async (_event, id, plasmaData) => {
+    return await dbService.updatePlasmaStock(id, plasmaData);
+  });
+
+  ipcMain.handle('db:deletePlasmaStock', async (_event, ids) => {
+    return await dbService.deletePlasmaStock(ids);
+  });
+
+  ipcMain.handle('db:searchPlasmaStock', async (_event, searchTerm) => {
+    return await dbService.searchPlasmaStock(searchTerm);
   });
 };
 
