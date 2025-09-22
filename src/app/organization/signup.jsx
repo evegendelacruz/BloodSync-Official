@@ -1,7 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 
-const Signup = () => {
+const SignUpOrg = () => {
   const navigate = useNavigate();
 
   const handleSignup = (e) => {
@@ -365,4 +365,4 @@ const Signup = () => {
   );
 };
 
-export default Signup;
+export default SignUpOrg;

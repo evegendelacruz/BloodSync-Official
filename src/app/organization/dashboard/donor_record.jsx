@@ -1,547 +1,809 @@
 import React, { useState } from "react";
-import { Calendar, Mail, Bell, User } from "lucide-react";
-import SidePanel from "../../components/SidePanel";
+import { Plus, Filter, Search, Calendar, Mail, Bell, User } from "lucide-react";
+import SidePanelOrg from "../../../components/SidePanelOrg";
 
-import MailComponent from "./(tabs)/mail";
-import CalendarComponent from "./(tabs)/calendar";
-import NotificationComponent from "./(tabs)/notification";
-import ProfileComponent from "././(tabs)/profile/profile";
-import Login from "../login";
-import Plasma from "./blood_stock/plasma";
-import Platelet from "./blood_stock/platelet";
-import RedBloodCell from "./blood_stock/rbc";
-import DonorRecord from "./donor_record";
-import Invoice from "./invoice";
-import RecentActivity from "./recent_activity";
-import ReleasedBlood from "./released_blood";
-import Reports from "./reports";
-import PlasmaNC from "./non-conforming/plasma";
-import PlateletNC from "./non-conforming/platelet";
-import RedBloodCellNC from "./non-conforming/rbc";
+// Import components for navigation (you'll need to create these or import from actual files)
+import MailOrg from "./(tabs)/mail";
+import CalendarOrg from "./(tabs)/calendar";
+import NotificationOrg from "./(tabs)/notification";
+import AppointmentOrg from "./appointment";
+import RecentActivityOrg from "./recent_activity";
+import ProfileOrg from "./(tabs)/profile/profile";
+import LoginOrg from "../login";
 
-const DashboardContent = () => {
+const DonorRecordContent = () => {
+  const [donorData, setDonorData] = useState([
+    {
+      id: "DNR-0001-ON",
+      firstName: "Juan",
+      middleName: "Reyes",
+      lastName: "Abas",
+      gender: "Male",
+      birthdate: "04/18/1990",
+      age: 34,
+      bloodType: "A",
+      rhFactor: "+",
+      contactNumber: "9198654210",
+      address: "Carmen",
+      selected: false,
+    },
+    {
+      id: "DNR-0002-ON",
+      firstName: "Maria",
+      middleName: "Dela Cruz",
+      lastName: "Babagtas",
+      gender: "Female",
+      birthdate: "06/03/1985",
+      age: 39,
+      bloodType: "O",
+      rhFactor: "+",
+      contactNumber: "9203234667",
+      address: "Kapalong",
+      selected: false,
+    },
+    {
+      id: "DNR-0003-ON",
+      firstName: "Jose",
+      middleName: "Bautista",
+      lastName: "Cordero",
+      gender: "Male",
+      birthdate: "09/27/1996",
+      age: 28,
+      bloodType: "B",
+      rhFactor: "-",
+      contactNumber: "9157892454",
+      address: "Laipaan",
+      selected: false,
+    },
+    {
+      id: "DNR-0004-ON",
+      firstName: "Andrea",
+      middleName: "Santos",
+      lastName: "Daghoy",
+      gender: "Female",
+      birthdate: "12/10/2002",
+      age: 22,
+      bloodType: "AB",
+      rhFactor: "+",
+      contactNumber: "9274567890",
+      address: "Macanasag",
+      selected: false,
+    },
+    {
+      id: "DNR-0005-ON",
+      firstName: "Luningning",
+      middleName: "Garcia",
+      lastName: "Encarnacion",
+      gender: "Female",
+      birthdate: "08/22/1995",
+      age: 29,
+      bloodType: "A",
+      rhFactor: "-",
+      contactNumber: "9102345678",
+      address: "Paang",
+      selected: false,
+    },
+    {
+      id: "DNR-0006-ON",
+      firstName: "Emilio",
+      middleName: "Mendoza",
+      lastName: "Fajardo",
+      gender: "Male",
+      birthdate: "03/05/1986",
+      age: 37,
+      bloodType: "B",
+      rhFactor: "-",
+      contactNumber: "9127896001",
+      address: "Bago",
+      selected: false,
+    },
+    {
+      id: "DNR-0007-ON",
+      firstName: "Rosalinda",
+      middleName: "Ramos",
+      lastName: "Galvez",
+      gender: "Female",
+      birthdate: "07/16/2000",
+      age: 24,
+      bloodType: "O",
+      rhFactor: "+",
+      contactNumber: "9208978543",
+      address: "Balusong",
+      selected: false,
+    },
+    {
+      id: "DNR-0008-ON",
+      firstName: "Delfin",
+      middleName: "Flores",
+      lastName: "Hidalgo",
+      gender: "Male",
+      birthdate: "10/30/1992",
+      age: 32,
+      bloodType: "A",
+      rhFactor: "-",
+      contactNumber: "9185456789",
+      address: "Nazareth",
+      selected: false,
+    },
+    {
+      id: "DNR-0009-ON",
+      firstName: "Ligaya",
+      middleName: "Castillo",
+      lastName: "Ilagan",
+      gender: "Female",
+      birthdate: "05/08/1963",
+      age: 61,
+      bloodType: "AB",
+      rhFactor: "+",
+      contactNumber: "9185678901",
+      address: "Puntod",
+      selected: false,
+    },
+    {
+      id: "DNR-0010-ON",
+      firstName: "Benigno",
+      middleName: "Villanueva",
+      lastName: "Jacinto",
+      gender: "Male",
+      birthdate: "01/25/1997",
+      age: 28,
+      bloodType: "B",
+      rhFactor: "+",
+      contactNumber: "9227890123",
+      address: "Bukaa",
+      selected: false,
+    },
+    {
+      id: "DNR-0011-ON",
+      firstName: "Amihan",
+      middleName: "Ocampo",
+      lastName: "Katigbak",
+      gender: "Female",
+      birthdate: "11/16/1988",
+      age: 36,
+      bloodType: "O",
+      rhFactor: "-",
+      contactNumber: "9258901234",
+      address: "Iponan",
+      selected: false,
+    },
+    {
+      id: "DNR-0012-ON",
+      firstName: "Fernando",
+      middleName: "Navarro",
+      lastName: "Labrador",
+      gender: "Male",
+      birthdate: "02/07/1999",
+      age: 24,
+      bloodType: "A",
+      rhFactor: "-",
+      contactNumber: "9240123456",
+      address: "Damasenan",
+      selected: false,
+    },
+    {
+      id: "DNR-0013-ON",
+      firstName: "Isagani",
+      middleName: "Aquino",
+      lastName: "Macasaet",
+      gender: "Male",
+      birthdate: "06/29/1994",
+      age: 30,
+      bloodType: "AB",
+      rhFactor: "+",
+      contactNumber: "9259123456",
+      address: "Guila",
+      selected: false,
+    },
+    {
+      id: "DNR-0014-ON",
+      firstName: "Corazon",
+      middleName: "Hernandez",
+      lastName: "Noriega",
+      gender: "Female",
+      birthdate: "09/12/1989",
+      age: 35,
+      bloodType: "B",
+      rhFactor: "+",
+      contactNumber: "9281234567",
+      address: "Tiblan",
+      selected: false,
+    },
+    {
+      id: "DNR-0015-ON",
+      firstName: "Bayani",
+      middleName: "Gutierrez",
+      lastName: "Olivares",
+      gender: "Female",
+      birthdate: "12/03/1991",
+      age: 33,
+      bloodType: "O",
+      rhFactor: "+",
+      contactNumber: "9282345678",
+      address: "Macabalan",
+      selected: false,
+    },
+    {
+      id: "DNR-0016-ON",
+      firstName: "Estrella",
+      middleName: "Salazar",
+      lastName: "Panganiban",
+      gender: "Male",
+      birthdate: "05/20/1999",
+      age: 25,
+      bloodType: "A",
+      rhFactor: "-",
+      contactNumber: "9285456789",
+      address: "Carmen",
+      selected: false,
+    },
+    {
+      id: "DNR-0017-ON",
+      firstName: "Renato",
+      middleName: "Magbanquil",
+      lastName: "Patumambang",
+      gender: "Female",
+      birthdate: "08/07/1984",
+      age: 40,
+      bloodType: "B",
+      rhFactor: "+",
+      contactNumber: "9346567890",
+      address: "Kapalong",
+      selected: false,
+    },
+    {
+      id: "DNR-0018-ON",
+      firstName: "Salvador",
+      middleName: "Pascual",
+      lastName: "Razon",
+      gender: "Male",
+      birthdate: "03/28/1996",
+      age: 28,
+      bloodType: "O",
+      rhFactor: "-",
+      contactNumber: "9345678901",
+      address: "Laipaan",
+      selected: false,
+    },
+    {
+      id: "DNR-0019-ON",
+      firstName: "Diverta",
+      middleName: "Alonzo",
+      lastName: "Sarmad",
+      gender: "Female",
+      birthdate: "07/10/1980",
+      age: 44,
+      bloodType: "AB",
+      rhFactor: "-",
+      contactNumber: "9347890123",
+      address: "Macanasag",
+      selected: false,
+    },
+  ]);
+
+  const toggleRowSelection = (id) => {
+    setDonorData((prevData) =>
+      prevData.map((item) =>
+        item.id === id ? { ...item, selected: !item.selected } : item
+      )
+    );
+  };
+
+  const toggleAllSelection = () => {
+    const allSelected = donorData.every((item) => item.selected);
+    setDonorData((prevData) =>
+      prevData.map((item) => ({ ...item, selected: !allSelected }))
+    );
+  };
+
+  const clearAllSelection = () => {
+    setDonorData((prevData) =>
+      prevData.map((item) => ({ ...item, selected: false }))
+    );
+  };
+
+  const selectedCount = donorData.filter((item) => item.selected).length;
+
+  const allSelected =
+    donorData.length > 0 && donorData.every((item) => item.selected);
+  const someSelected = donorData.some((item) => item.selected) && !allSelected;
+
   return (
-    <div className="dashboard-content">
-      {/* Main Stats Section */}
-      <div className="main-stats-section">
-        {/* Total Stored Blood - Large Card */}
-        <div className="main-stats-card">
-          <div className="blood-drop-icon">🩸</div>
-          <div className="main-stats-number">628</div>
-          <div className="main-stats-title">Total Stored Blood</div>
-          <div className="main-stats-subtitle">Updated - 11 March 2025 at 1:00 PM</div>
-        </div>
-
-        {/* Blood Type Grid */}
-        <div className="blood-type-grid">
-          {[
-            { type: "AB +", count: 85, date: "2025-03-11 13:00:00" },
-            { type: "A +", count: 96, date: "2025-03-11 13:00:00" },
-            { type: "B +", count: 102, date: "2025-03-11 13:00:00" },
-            { type: "O +", count: 78, date: "2025-03-11 13:00:00" },
-            { type: "AB -", count: 74, date: "2025-03-11 13:00:00" },
-            { type: "A -", count: 58, date: "2025-03-11 13:00:00" },
-            { type: "B -", count: 47, date: "2025-03-11 13:00:00" },
-            { type: "O -", count: 88, date: "2025-03-11 13:00:00" },
-          ].map((bloodType, index) => (
-            <div key={index} className="blood-type-card">
-              <div className="blood-type-icon">🩸</div>
-              <div className="blood-type-count">{bloodType.count}</div>
-              <div className="blood-type-label">Total Stored {bloodType.type}</div>
-              <div className="blood-type-date">{bloodType.date}</div>
-            </div>
-          ))}
-        </div>
+    <div className="donor-record-content">
+      {/* Header */}
+      <div className="donor-header">
+        <h1 className="donor-title">Regional Blood Center</h1>
+        <p className="donor-subtitle">Centralized Donor Record</p>
       </div>
 
-      {/* Dashboard Grid Section */}
-      <div className="dashboard-grid">
-        {/* Blood Expiration Report */}
-        <div className="dashboard-card">
-          <h3 className="card-title">Blood Expiration Report</h3>
-          <p className="card-subtitle">Month of March 2025</p>
-          <div className="expiration-section">
-            <h4 className="expiration-title">Expiring Soon</h4>
-            <div className="expiration-table">
-              <div className="table-header">
-                <span>Blood Type</span>
-                <span>Component</span>
-                <span>Units</span>
-                <span>Expiration Date</span>
-                <span>Status</span>
-              </div>
-              {[
-                { type: "O +", component: "RBC", units: 17, date: "2025-03-16", status: "Alert" },
-                { type: "A +", component: "Plasma", units: 8, date: "2025-03-17", status: "Alert" },
-                { type: "B +", component: "Platelets", units: 15, date: "2025-03-19", status: "Urgent" },
-                { type: "AB -", component: "RBC", units: 22, date: "2025-03-18", status: "Alert" },
-              ].map((item, index) => (
-                <div key={index} className="table-row">
-                  <span>{item.type}</span>
-                  <span>{item.component}</span>
-                  <span>{item.units}</span>
-                  <span>{item.date}</span>
-                  <span className={`status-badge ${item.status === "Urgent" ? "status-urgent" : "status-alert"}`}>
-                    {item.status}
-                  </span>
-                </div>
-              ))}
-            </div>
+      {/* Controls Bar */}
+      <div className="controls-bar">
+        <div className="left-controls">
+          {/* Search */}
+          <div className="search-container">
+            <Search size={16} className="search-icon" />
+            <input
+              type="text"
+              placeholder="Search"
+              className="search-input"
+            />
           </div>
         </div>
 
-        {/* Components Available */}
-        <div className="dashboard-card">
-          <h3 className="card-title">Components Available</h3>
-          <p className="card-subtitle">Month of March 2025</p>
-          <div className="components-list">
-            <div className="component-item">
-              <span className="component-label">RED BLOOD CELL</span>
-              <span className="component-count">236</span>
-            </div>
-            <div className="component-item">
-              <span className="component-label">PLASMA</span>
-              <span className="component-count">205</span>
-            </div>
-            <div className="component-item">
-              <span className="component-label">PLATELET</span>
-              <span className="component-count">187</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Blood Donation Analytics */}
-        <div className="dashboard-card analytics-card">
-          <h3 className="card-title">Blood Donation Analytics</h3>
-          <p className="card-subtitle">Monthly participation as of 2025</p>
-          <div className="chart-container">
-            <svg className="analytics-chart" viewBox="0 0 300 150">
-              <defs>
-                <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stopColor="#10b981" stopOpacity="0.3"/>
-                  <stop offset="100%" stopColor="#10b981" stopOpacity="0.1"/>
-                </linearGradient>
-              </defs>
+        <div className="right-controls">
+          {/* Sort By */}
+          <button className="sort-button">
+            <span>Sort by</span>
+            <svg
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path
-                d="M 20 120 L 80 100 L 140 80 L 200 60 L 260 70 L 260 140 L 20 140 Z"
-                fill="url(#areaGradient)"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="m19 9-7 7-7-7"
               />
-              <path
-                d="M 20 120 L 80 100 L 140 80 L 200 60 L 260 70"
-                stroke="#10b981"
-                strokeWidth="3"
-                fill="none"
-              />
-              {[
-                { x: 20, y: 120 },
-                { x: 80, y: 100 },
-                { x: 140, y: 80 },
-                { x: 200, y: 60 },
-                { x: 260, y: 70 },
-              ].map((point, index) => (
-                <circle
-                  key={index}
-                  cx={point.x}
-                  cy={point.y}
-                  r="4"
-                  fill="#10b981"
-                  stroke="white"
-                  strokeWidth="2"
-                />
-              ))}
-              <text x="50" y="145" fontSize="12" fill="#6b7280" textAnchor="middle">January</text>
-              <text x="110" y="145" fontSize="12" fill="#6b7280" textAnchor="middle">February</text>
-              <text x="170" y="145" fontSize="12" fill="#6b7280" textAnchor="middle">March</text>
-              <text x="230" y="145" fontSize="12" fill="#6b7280" textAnchor="middle">April</text>
-              <text x="10" y="125" fontSize="12" fill="#6b7280">10</text>
-              <text x="10" y="105" fontSize="12" fill="#6b7280">20</text>
-              <text x="10" y="85" fontSize="12" fill="#6b7280">30</text>
-              <text x="10" y="65" fontSize="12" fill="#6b7280">40</text>
-              <text x="10" y="45" fontSize="12" fill="#6b7280">50</text>
             </svg>
-          </div>
-        </div>
+          </button>
 
-        {/* Blood Released */}
-        <div className="dashboard-card">
-          <h3 className="card-title">Blood Released</h3>
-          <p className="card-subtitle">Month of March 2025</p>
-          <div className="released-stats">
-            <div className="released-item">
-              <span className="released-label">RBC</span>
-              <span className="released-count">80</span>
-            </div>
-            <div className="released-item">
-              <span className="released-label">Plasma</span>
-              <span className="released-count">80</span>
-            </div>
-            <div className="released-item">
-              <span className="released-label">Platelet</span>
-              <span className="released-count">80</span>
-            </div>
-          </div>
-        </div>
+          {/* Filter */}
+          <button className="filter-button">
+            <Filter size={16} />
+            <span>Filter</span>
+          </button>
 
-        {/* Upcoming Drive */}
-        <div className="dashboard-card">
-          <h3 className="card-title">Upcoming Drive</h3>
-          <p className="card-subtitle">Month of March 2025</p>
-          <div className="upcoming-drives">
-            <div className="drive-item">
-              <span className="drive-text">CDO Scholarship Office: 2025-03-10</span>
-            </div>
-            <div className="drive-item">
-              <span className="drive-text">Barangay Patag: 2025-03-11</span>
-            </div>
-            <div className="see-more">
-              <button className="see-more-btn">See more ⌄</button>
-            </div>
-          </div>
+          {/* Approve Sync */}
+          <button className="sync-button">
+            <svg
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            <span>Approve Sync</span>
+          </button>
+
+          {/* Add Donor */}
+          <button className="add-button">
+            <Plus size={16} />
+            <span>Add Donor</span>
+          </button>
         </div>
       </div>
+
+      {/* Table */}
+      <div className="table-container">
+        <table className="donor-table">
+          <thead className="table-head">
+            <tr>
+              <th className="table-header">
+                <input
+                  type="checkbox"
+                  className="checkbox"
+                  checked={allSelected}
+                  ref={(input) => {
+                    if (input) {
+                      input.indeterminate = someSelected;
+                    }
+                  }}
+                  onChange={toggleAllSelection}
+                />
+              </th>
+              <th className="table-header donor-id-col">DONOR ID</th>
+              <th className="table-header">FIRST NAME</th>
+              <th className="table-header">MIDDLE NAME</th>
+              <th className="table-header">LAST NAME</th>
+              <th className="table-header">GENDER</th>
+              <th className="table-header">BIRTHDATE</th>
+              <th className="table-header">AGE</th>
+              <th className="table-header">BLOOD TYPE</th>
+              <th className="table-header">RH FACTOR</th>
+              <th className="table-header">CONTACT NUMBER</th>
+              <th className="table-header">ADDRESS</th>
+            </tr>
+          </thead>
+          <tbody className="table-body">
+            {donorData.map((item, index) => (
+              <tr
+                key={item.id}
+                className={`table-row ${index % 2 === 1 ? 'row-even' : ''} ${item.selected ? 'row-selected' : ''}`}
+              >
+                <td className="table-cell">
+                  <input
+                    type="checkbox"
+                    className="checkbox"
+                    checked={item.selected}
+                    onChange={() => toggleRowSelection(item.id)}
+                  />
+                </td>
+                <td className="table-cell">{item.id}</td>
+                <td className="table-cell">{item.firstName}</td>
+                <td className="table-cell">{item.middleName}</td>
+                <td className="table-cell">{item.lastName}</td>
+                <td className="table-cell">{item.gender}</td>
+                <td className="table-cell">{item.birthdate}</td>
+                <td className="table-cell">{item.age}</td>
+                <td className="table-cell">{item.bloodType}</td>
+                <td className="table-cell">{item.rhFactor}</td>
+                <td className="table-cell">{item.contactNumber}</td>
+                <td className="table-cell">{item.address}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="pagination">
+          <button className="pagination-button">Previous</button>
+          <span className="pagination-text">Page 1 of 20</span>
+          <button className="pagination-button-next">Next</button>
+        </div>
+      </div>
+
+      {/* Floating Action Bar */}
+      {selectedCount > 0 && (
+        <div className="action-bar">
+          <button className="close-button" onClick={clearAllSelection}>
+            <svg
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+
+          <div className="counter-section">
+            <span className="counter-text">
+              {selectedCount} {selectedCount === 1 ? "item" : "items"} selected
+            </span>
+          </div>
+
+          <button className="edit-button">
+            <svg
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+              />
+            </svg>
+            <span>Edit</span>
+          </button>
+
+          <button className="delete-button">
+            <svg
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+              />
+            </svg>
+            <span>Delete</span>
+          </button>
+        </div>
+      )}
 
       <style jsx>{`
-        .dashboard-content {
+        .donor-record-content {
+          padding: 24px;
+          background-color: #f9fafb;
+          min-height: 100vh;
+          font-family: Barlow;
+          border-radius: 8px;
           animation: fadeIn 0.5s ease-out;
-          display: flex;
-          flex-direction: column;
-          gap: 1.5rem;
-          padding: 1rem;
         }
 
-        .main-stats-section {
-          display: grid;
-          grid-template-columns: 1fr 2fr;
-          gap: 1.5rem;
-          margin-bottom: 2rem;
+        .donor-header {
+          margin: 0;
         }
 
-        .main-stats-card {
-          background: white;
-          border-radius: 1rem;
-          padding: 2rem;
-          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-          text-align: center;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 0.5rem;
-        }
-
-        .blood-drop-icon {
-          font-size: 2rem;
-          margin-bottom: 0.5rem;
-        }
-
-        .main-stats-number {
-          font-size: 4rem;
+        .donor-title {
+          font-size: 24px;
           font-weight: bold;
-          color: #dc2626;
-          line-height: 1;
+          color: #165C3C;
+          margin-top: 1px;
+          font-family: Barlow;
         }
 
-        .main-stats-title {
-          font-size: 1.25rem;
-          font-weight: 600;
-          color: #111827;
-          margin-bottom: 0.5rem;
-        }
-
-        .main-stats-subtitle {
-          font-size: 0.875rem;
+        .donor-subtitle {
           color: #6b7280;
+          font-size: 14px;
+          margin-top: -7px;
+          font-family: Barlow;
         }
 
-        .blood-type-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 1rem;
-        }
-
-        .blood-type-card {
-          background: white;
-          border-radius: 0.75rem;
-          padding: 1rem;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-          text-align: center;
+        .controls-bar {
           display: flex;
-          flex-direction: column;
           align-items: center;
-          gap: 0.25rem;
+          justify-content: space-between;
+          margin-bottom: 20px;
+          background-color: white;
+          padding: 16px;
+          border-radius: 8px;
+          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
         }
 
-        .blood-type-icon {
-          font-size: 1.25rem;
-          color: #dc2626;
-        }
-
-        .blood-type-count {
-          font-size: 1.5rem;
-          font-weight: bold;
-          color: #dc2626;
-        }
-
-        .blood-type-label {
-          font-size: 0.75rem;
-          font-weight: 500;
-          color: #111827;
-          line-height: 1.2;
-        }
-
-        .blood-type-date {
-          font-size: 0.625rem;
-          color: #6b7280;
-        }
-
-        .dashboard-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr 2fr;
-          grid-template-rows: auto auto;
-          gap: 1.5rem;
-        }
-
-        .dashboard-card {
-          background: white;
-          border-radius: 0.75rem;
-          padding: 1.5rem;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        .analytics-card {
-          grid-row: span 2;
-        }
-
-        .card-title {
-          font-size: 1.125rem;
-          font-weight: 600;
-          color: #111827;
-          margin: 0 0 0.25rem 0;
-        }
-
-        .card-subtitle {
-          font-size: 0.875rem;
-          color: #6b7280;
-          margin: 0 0 1.5rem 0;
-        }
-
-        .expiration-section {
-          margin-top: 1rem;
-        }
-
-        .expiration-title {
-          font-size: 0.875rem;
-          font-weight: 600;
-          color: #dc2626;
-          margin: 0 0 1rem 0;
-        }
-
-        .expiration-table {
+        .left-controls {
           display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
+          align-items: center;
+          gap: 16px;
         }
 
-        .table-header {
-          display: grid;
-          grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
-          gap: 0.5rem;
-          font-size: 0.75rem;
-          font-weight: 600;
-          color: #6b7280;
-          padding-bottom: 0.5rem;
+        .search-container {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+
+        .search-input {
+          padding-left: 40px;
+          padding-right: 16px;
+          padding-top: 8px;
+          padding-bottom: 8px;
+          border: 1px solid #d1d5db;
+          border-radius: 6px;
+          width: 300px;
+          font-size: 14px;
+          outline: none;
+        }
+
+        .search-icon {
+          position: absolute;
+          left: 12px;
+          z-index: 1;
+          color: #9ca3af;
+        }
+
+        .right-controls {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .sort-button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          border: 1px solid #d1d5db;
+          border-radius: 6px;
+          background-color: white;
+          cursor: pointer;
+          font-size: 14px;
+          color: #374151;
+        }
+
+        .filter-button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          background-color: white;
+          color: #374151;
+          border: 1px solid #d1d5db;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 14px;
+        }
+
+        .sync-button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          background-color: #2C58DC;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 14px;
+        }
+
+        .add-button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          background-color: #FFC200;
+          color: black;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 14px;
+        }
+
+        .table-container {
+          background-color: white;
+          border-radius: 8px;
+          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+          overflow: hidden;
+        }
+
+        .donor-table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+
+        .table-head {
+          background-color: #f9fafb;
           border-bottom: 1px solid #e5e7eb;
         }
 
-        .table-row {
-          display: grid;
-          grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
-          gap: 0.5rem;
-          font-size: 0.75rem;
-          color: #111827;
-          padding: 0.5rem 0;
-          align-items: center;
-        }
-
-        .status-badge {
-          padding: 0.25rem 0.5rem;
-          border-radius: 0.25rem;
-          font-size: 0.625rem;
-          font-weight: 600;
-          text-align: center;
-        }
-
-        .status-alert {
-          background-color: #fef3c7;
-          color: #92400e;
-        }
-
-        .status-urgent {
-          background-color: #fee2e2;
-          color: #991b1b;
-        }
-
-        .components-list {
-          display: flex;
-          flex-direction: column;
-          gap: 1rem;
-        }
-
-        .component-item {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 0.75rem 0;
-          border-bottom: 1px solid #f3f4f6;
-        }
-
-        .component-item:last-child {
-          border-bottom: none;
-        }
-
-        .component-label {
-          font-size: 0.875rem;
+        .table-header {
+          padding: 12px 16px;
+          text-align: left;
+          font-size: 11px;
           font-weight: 500;
+          color: #6b7280;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          border-bottom: 1px solid #e5e7eb;
+        }
+
+        .donor-id-col {
+          width: 12%;
+        }
+
+        .table-body {
+          background-color: white;
+        }
+
+        .table-row {
+          border-bottom: 1px solid #A3A3A3;
+        }
+
+        .row-even {
+          background-color: #f9fafb;
+        }
+
+        .row-selected {
+          background-color: #e6f7ff;
+        }
+
+        .table-cell {
+          padding: 12px 16px;
+          font-size: 11px;
+          font-family: Arial;
           color: #111827;
+          border-bottom: 1px solid rgba(163, 163, 163, 0.2);
         }
 
-        .component-count {
-          font-size: 1.5rem;
-          font-weight: bold;
-          color: #dc2626;
+        .checkbox {
+          width: 16px;
+          height: 16px;
+          cursor: pointer;
         }
 
-        .chart-container {
-          width: 100%;
-          height: 200px;
+        .pagination {
+          background-color: white;
+          padding: 16px 24px;
+          border-top: 1px solid #e5e7eb;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .pagination-button {
+          font-size: 14px;
+          color: #6b7280;
+          background-color: transparent;
+          border: none;
+          cursor: pointer;
+          padding: 4px 8px;
+        }
+
+        .pagination-button-next {
+          font-size: 14px;
+          color: #3b82f6;
+          background-color: transparent;
+          border: none;
+          cursor: pointer;
+          padding: 4px 8px;
+        }
+
+        .pagination-text {
+          font-size: 14px;
+          color: #374151;
+          font-weight: 500;
+        }
+
+        .action-bar {
+          position: fixed;
+          bottom: 20px;
+          left: 50%;
+          transform: translateX(-50%);
+          display: flex;
+          align-items: center;
+          gap: 0;
+          background: #4a5568;
+          box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+          border-radius: 8px;
+          z-index: 1000;
+          color: white;
+          overflow: hidden;
+        }
+
+        .close-button {
           display: flex;
           align-items: center;
           justify-content: center;
-        }
-
-        .analytics-chart {
-          width: 100%;
-          height: 100%;
-        }
-
-        .released-stats {
-          display: flex;
-          justify-content: space-around;
-          align-items: center;
-          gap: 1rem;
-        }
-
-        .released-item {
-          text-align: center;
-          flex: 1;
-        }
-
-        .released-label {
-          display: block;
-          font-size: 0.875rem;
-          font-weight: 500;
-          color: #6b7280;
-          margin-bottom: 0.5rem;
-        }
-
-        .released-count {
-          font-size: 2rem;
-          font-weight: bold;
-          color: #dc2626;
-        }
-
-        .upcoming-drives {
-          display: flex;
-          flex-direction: column;
-          gap: 0.75rem;
-        }
-
-        .drive-item {
-          padding: 0.75rem;
-          background-color: #f9fafb;
-          border-radius: 0.5rem;
-          border-left: 4px solid #10b981;
-        }
-
-        .drive-text {
-          font-size: 0.875rem;
-          color: #111827;
-        }
-
-        .see-more {
-          text-align: center;
-          margin-top: 0.5rem;
-        }
-
-        .see-more-btn {
-          background: none;
+          padding: 12px 16px;
+          background-color: #4a5568;
+          color: white;
           border: none;
-          color: #059669;
-          font-size: 0.875rem;
           cursor: pointer;
-          padding: 0.5rem;
-          border-radius: 0.25rem;
-          transition: background-color 0.2s;
+          font-size: 16px;
+          border-right: 1px solid #2d3748;
         }
 
-        .see-more-btn:hover {
-          background-color: #f3f4f6;
+        .counter-section {
+          padding: 12px 24px;
+          background-color: #4a5568;
+          border-right: 1px solid #2d3748;
         }
 
-        @media (max-width: 1024px) {
-          .main-stats-section {
-            grid-template-columns: 1fr;
-          }
-          
-          .blood-type-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
-          
-          .dashboard-grid {
-            grid-template-columns: 1fr;
-          }
-          
-          .analytics-card {
-            grid-row: span 1;
-          }
+        .counter-text {
+          font-size: 14px;
+          font-weight: 500;
+          color: white;
+          margin: 0;
         }
 
-        @media (max-width: 768px) {
-          .blood-type-grid {
-            grid-template-columns: 1fr;
-          }
+        .edit-button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 16px;
+          background-color: #4a5568;
+          color: white;
+          border: none;
+          cursor: pointer;
+          font-size: 14px;
+          border-right: 1px solid #2d3748;
         }
 
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
-    </div>
-  );
-};
-
-const ScreenWrapper = ({ title, children }) => {
-  return (
-    <div className="screen-wrapper">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">{title}</h2>
-      <div className="screen-content">{children}</div>
-
-      <style jsx>{`
-        .screen-wrapper {
-          animation: fadeIn 0.5s ease-out;
-        }
-
-        .screen-content {
-          background-color: white;
-          padding: 1.5rem;
-          border-radius: 0.5rem;
-          box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        .delete-button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 16px;
+          background-color: #4a5568;
+          color: white;
+          border: none;
+          cursor: pointer;
+          font-size: 14px;
         }
 
         @keyframes fadeIn {
@@ -675,10 +937,10 @@ const LogoutDialog = ({ isOpen, onConfirm, onCancel }) => {
   );
 };
 
-// Main Dashboard Component
-const Dashboard = () => {
+// Main DonorRecordOrg Component
+const DonorRecordOrg = () => {
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(true);
-  const [activeScreen, setActiveScreen] = useState("dashboard");
+  const [activeScreen, setActiveScreen] = useState("donor-record-org");
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [isCalendarDropdownOpen, setIsCalendarDropdownOpen] = useState(false);
   const [isMailDropdownOpen, setIsMailDropdownOpen] = useState(false);
@@ -750,51 +1012,32 @@ const Dashboard = () => {
     setShowLogoutDialog(false);
   };
 
-  // Show login screen if logged out
   if (isLoggedOut) {
-    return <Login />;
+    return <LoginOrg />;
   }
 
   const renderActiveScreen = () => {
     switch (activeScreen) {
-      case "mail":
-        return <MailComponent />;
-      case "calendar":
-        return <CalendarComponent />;
-      case "notification":
-        return <NotificationComponent />;
-      case "profile":
-        return <ProfileComponent />;
-      case "red-blood-cell":
-        return <RedBloodCell />;
-      case "plasma":
-        return <Plasma />;
-      case "platelet":
-        return <Platelet />;
-      case "released-blood":
-        return <ReleasedBlood />;
-      case "red-blood-cell-nc":
-        return <RedBloodCellNC />;
-      case "plasma-nc":
-        return <PlasmaNC />;
-      case "platelet-nc":
-        return <PlateletNC />;
-      case "donor-record":
-        return <DonorRecord />;
-      case "invoice":
-        return <Invoice />;
-      case "reports":
-        return <Reports />;
-      case "recent-activity":
-        return <RecentActivity />;
+      case "mail-org":
+        return <MailOrg />;
+      case "calendar-org":
+        return <CalendarOrg />;
+      case "notification-org":
+        return <NotificationOrg />;
+      case "profile-org":
+        return <ProfileOrg />;
+      case "appointment-org":
+        return <AppointmentOrg />;
+      case "recent-activity-org":
+        return <RecentActivityOrg />;
       default:
-        return <DashboardContent />;
+        return <DonorRecordContent />;
     }
   };
 
   return (
     <div className="dashboard-container">
-      <SidePanel
+      <SidePanelOrg
         isOpen={isSidePanelOpen}
         onToggle={toggleSidePanel}
         activeScreen={activeScreen}
@@ -876,7 +1119,7 @@ const Dashboard = () => {
                       </div>
                     </div>
                     <div className="dropdown-footer">
-                      <button className="footer-button" onClick={() => handleNavigate("calendar")}>
+                      <button className="footer-button" onClick={() => handleNavigate("calendar-org")}>
                         See All Requests
                       </button>
                     </div>
@@ -921,7 +1164,7 @@ const Dashboard = () => {
                       </div>
                     </div>
                     <div className="dropdown-footer">
-                      <button className="footer-button" onClick={() => handleNavigate("mail")}>
+                      <button className="footer-button" onClick={() => handleNavigate("mail-org")}>
                         View All Messages
                       </button>
                     </div>
@@ -979,7 +1222,7 @@ const Dashboard = () => {
                       </div>
                     </div>
                     <div className="dropdown-footer">
-                      <button className="footer-button" onClick={() => handleNavigate("notification")}>
+                      <button className="footer-button" onClick={() => handleNavigate("notification-org")}>
                         See All Notifications
                       </button>
                     </div>
@@ -995,24 +1238,24 @@ const Dashboard = () => {
                   onClick={toggleProfileDropdown}
                 >
                   <User className="w-4 h-4 text-gray-600" />
-
-                  {isProfileDropdownOpen && (
-                    <div className="dropdown-menu profile-dropdown">
-                      <button
-                        className="profile-menu-item"
-                        onClick={() => handleProfileAction("edit-profile")}
-                      >
-                        My Profile
-                      </button>
-                      <button
-                        className="profile-menu-item"
-                        onClick={() => handleProfileAction("logout")}
-                      >
-                        Log Out
-                      </button>
-                    </div>
-                  )}
                 </div>
+                
+                {isProfileDropdownOpen && (
+                  <div className="dropdown-menu profile-dropdown">
+                    <button
+                      className="profile-menu-item"
+                      onClick={() => handleNavigate("profile-org")}
+                    >
+                      My Profile
+                    </button>
+                    <button
+                      className="profile-menu-item"
+                      onClick={() => handleProfileAction("logout")}
+                    >
+                      Log Out
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1347,6 +1590,7 @@ const Dashboard = () => {
           gap: 0.75rem;
           padding-left: 0.75rem;
           border-left: 1.4px solid #e5e7eb;
+          position: relative;
         }
 
         .user-name {
@@ -1422,4 +1666,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard;
+export default DonorRecordOrg;
