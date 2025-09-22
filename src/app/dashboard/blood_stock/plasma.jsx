@@ -6,6 +6,19 @@ const Plasma = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showReleaseModal, setShowReleaseModal] = useState(false);
+  const [showReleaseDetailsModal, setShowReleaseDetailsModal] = useState(false);
+  const [selectedItems, setSelectedItems] = useState([
+    {
+      serialId: "",
+      bloodType: "O",
+      rhFactor: "+",
+      volume: 100,
+      collection: "",
+      expiration: "",
+      status: "Stored",
+    },
+  ]);
   const [stockItems, setStockItems] = useState([
     {
       id: 1,
@@ -18,6 +31,18 @@ const Plasma = () => {
       status: "Stored",
     },
   ]);
+  const [releaseData, setReleaseData] = useState({
+    receivingFacility: "",
+    address: "",
+    contactNumber: "",
+    classification: "",
+    authorizedRecipient: "",
+    recipientDesignation: "",
+    dateOfRelease: "",
+    conditionUponRelease: "",
+    requestReference: "",
+    releasedBy: "",
+  });
 
   // Load data from database on component mount
   useEffect(() => {
@@ -238,6 +263,235 @@ const Plasma = () => {
       setError("Failed to delete items");
     }
   };
+
+  const handleReleaseStock = () => {
+    setShowReleaseModal(true);
+    setSelectedItems([
+      {
+        serialId: "",
+        bloodType: "O",
+        rhFactor: "+",
+        volume: 100,
+        collection: "",
+        expiration: "",
+        status: "Stored",
+      },
+    ]);
+  };
+
+  const handleReleaseItemChange = async (index, field, value) => {
+    if (field === "serialId" && value.trim() !== "") {
+      try {
+        if (!window.electronAPI) {
+          setError("Electron API not available");
+          return;
+        }
+
+        const stockData =
+          await window.electronAPI.getPlasmaStockBySerialId(value);
+
+        if (stockData && !Array.isArray(stockData)) {
+          // Single exact match found
+          setSelectedItems((prev) =>
+            prev.map((item, i) =>
+              i === index
+                ? {
+                    ...item,
+                    serialId: value,
+                    bloodType: stockData.type,
+                    rhFactor: stockData.rhFactor,
+                    volume: stockData.volume,
+                    collection: stockData.collection,
+                    expiration: stockData.expiration,
+                    status: stockData.status,
+                    found: true,
+                  }
+                : item
+            )
+          );
+          setError(null);
+        } else if (Array.isArray(stockData) && stockData.length > 0) {
+          // Multiple partial matches found, use first one
+          const firstMatch = stockData[0];
+          setSelectedItems((prev) =>
+            prev.map((item, i) =>
+              i === index
+                ? {
+                    ...item,
+                    serialId: value,
+                    bloodType: firstMatch.type,
+                    rhFactor: firstMatch.rhFactor,
+                    volume: firstMatch.volume,
+                    collection: firstMatch.collection,
+                    expiration: firstMatch.expiration,
+                    status: firstMatch.status,
+                    found: true,
+                  }
+                : item
+            )
+          );
+          setError(null);
+        } else {
+          // No match found
+          setSelectedItems((prev) =>
+            prev.map((item, i) =>
+              i === index
+                ? {
+                    ...item,
+                    serialId: value,
+                    bloodType: "O",
+                    rhFactor: "+",
+                    volume: 100,
+                    collection: "",
+                    expiration: "",
+                    status: "Stored",
+                    found: false,
+                  }
+                : item
+            )
+          );
+          setError(`No blood stock found with serial ID: ${value}`);
+        }
+      } catch (err) {
+        console.error("Error fetching blood stock by serial ID:", err);
+        setError("Failed to fetch blood stock data");
+        setSelectedItems((prev) =>
+          prev.map((item, i) =>
+            i === index ? { ...item, [field]: value, found: false } : item
+          )
+        );
+      }
+    } else {
+      setSelectedItems((prev) =>
+        prev.map((item, i) =>
+          i === index ? { ...item, [field]: value } : item
+        )
+      );
+    }
+  };
+
+  const addReleaseItem = () => {
+    setSelectedItems((prev) => [
+      ...prev,
+      {
+        serialId: "",
+        bloodType: "O",
+        rhFactor: "+",
+        volume: 100,
+        collection: "",
+        expiration: "",
+        status: "Stored",
+        found: false,
+      },
+    ]);
+  };
+
+  const removeReleaseItem = (index) => {
+    if (selectedItems.length > 1) {
+      setSelectedItems((prev) => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  const proceedToReleaseDetails = () => {
+    // Filter only items that have valid serial IDs and were found in database
+    const validItems = selectedItems.filter(
+      (item) => item.serialId && item.found
+    );
+
+    if (validItems.length === 0) {
+      setError("Please select at least one valid item with a found serial ID");
+      return;
+    }
+
+    // Update selectedItems to only include valid items
+    setSelectedItems(validItems);
+    setShowReleaseModal(false);
+    setShowReleaseDetailsModal(true);
+  };
+
+  const handleReleaseDataChange = (field, value) => {
+    setReleaseData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  // Replace the confirmRelease function in Plasma.jsx with this fixed version:
+
+const confirmRelease = async () => {
+  try {
+    if (!window.electronAPI) {
+      setError("Electron API not available");
+      return;
+    }
+
+    // Get only the valid items that were found in the database
+    const validItems = selectedItems.filter(
+      (item) => item.found && item.serialId
+    );
+
+    if (validItems.length === 0) {
+      setError("No valid items to release");
+      return;
+    }
+
+    const serialIds = validItems.map((item) => item.serialId);
+    const releasePayload = {
+      ...releaseData,
+      serialIds: serialIds,
+    };
+
+    console.log("Releasing multiple plasma items:", releasePayload);
+
+    // FIXED: Call the correct method for plasma release
+    const result = await window.electronAPI.releasePlasmaStock(releasePayload);
+
+    if (result.success) {
+      setShowReleaseDetailsModal(false);
+      setShowReleaseModal(false);
+
+      // Reset selected items to initial state
+      setSelectedItems([
+        {
+          serialId: "",
+          bloodType: "O",
+          rhFactor: "+",
+          volume: 100,
+          collection: "",
+          expiration: "",
+          status: "Stored",
+          found: false,
+        },
+      ]);
+
+      // Reset release data
+      setReleaseData({
+        receivingFacility: "",
+        address: "",
+        contactNumber: "",
+        classification: "",
+        authorizedRecipient: "",
+        recipientDesignation: "",
+        dateOfRelease: "",
+        conditionUponRelease: "",
+        requestReference: "",
+        releasedBy: "",
+      });
+
+      // Reload the plasma data to reflect the released items are removed from stock
+      await loadPlasmaData();
+      setError(null);
+
+      // Show success message with count
+      alert(
+        `Successfully released ${result.releasedCount} plasma stock item(s).`
+      );
+    }
+  } catch (err) {
+    console.error("Error releasing plasma stock:", err);
+    setError(`Failed to release plasma stock: ${err.message}`);
+  }
+};
 
   const selectedCount = plasmaData.filter((item) => item.selected).length;
 
@@ -547,6 +801,30 @@ const Plasma = () => {
       flexDirection: "column",
       fontFamily: "Barlow",
     },
+    releaseModal: {
+      backgroundColor: "white",
+      borderRadius: "8px",
+      width: "95%",
+      maxWidth: "900px",
+      maxHeight: "90vh",
+      overflow: "hidden",
+      boxShadow: "0 20px 25px rgba(0, 0, 0, 0.25)",
+      display: "flex",
+      flexDirection: "column",
+      fontFamily: "Barlow",
+    },
+    releaseDetailsModal: {
+      backgroundColor: "white",
+      borderRadius: "8px",
+      width: "95%",
+      maxWidth: "900px",
+      maxHeight: "90vh",
+      overflow: "hidden",
+      boxShadow: "0 20px 25px rgba(0, 0, 0, 0.25)",
+      display: "flex",
+      flexDirection: "column",
+      fontFamily: "Barlow",
+    },
     modalHeader: {
       display: "flex",
       alignItems: "center",
@@ -708,6 +986,66 @@ const Plasma = () => {
       fontFamily: "Barlow",
       minWidth: "120px",
     },
+    proceedButton: {
+      padding: "12px 48px",
+      backgroundColor: "#2563eb",
+      color: "white",
+      border: "none",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontSize: "16px",
+      fontWeight: "600",
+      fontFamily: "Barlow",
+      minWidth: "120px",
+    },
+    confirmButton: {
+      padding: "12px 48px",
+      backgroundColor: "#2563eb",
+      color: "white",
+      border: "none",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontSize: "16px",
+      fontWeight: "600",
+      fontFamily: "Barlow",
+      minWidth: "120px",
+    },
+    releaseFormGrid: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr 1fr",
+      gap: "20px",
+      marginBottom: "20px",
+    },
+    releaseFormGroup: {
+      display: "flex",
+      flexDirection: "column",
+      gap: "5px",
+    },
+    releaseFormLabel: {
+      fontSize: "14px",
+      fontWeight: "500",
+      color: "#374151",
+      fontFamily: "Barlow",
+    },
+    releaseFormInput: {
+      padding: "10px 12px",
+      border: "1px solid #d1d5db",
+      borderRadius: "6px",
+      fontSize: "14px",
+      fontFamily: "Barlow",
+      outline: "none",
+      backgroundColor: "white",
+    },
+    releaseFormSelect: {
+      padding: "10px 12px",
+      border: "1px solid #d1d5db",
+      borderRadius: "6px",
+      fontSize: "14px",
+      fontFamily: "Barlow",
+      outline: "none",
+      backgroundColor: "white",
+      cursor: "pointer",
+    },
   };
 
   // Check if all rows are selected
@@ -816,7 +1154,9 @@ const Plasma = () => {
           </button>
 
           {/* Release Stock */}
-          <button style={styles.releaseButton}>Release Stock</button>
+          <button style={styles.releaseButton} onClick={handleReleaseStock}>
+            Release Stock
+          </button>
 
           {/* Add Stock */}
           <button
@@ -1135,6 +1475,623 @@ const Plasma = () => {
                 onClick={handleSaveAllStock}
               >
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Release Stock Modal */}
+      {showReleaseModal && (
+        <div
+          style={styles.modalOverlay}
+          onClick={() => setShowReleaseModal(false)}
+        >
+          <div style={styles.releaseModal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <div style={styles.modalTitleSection}>
+                <h3 style={styles.modalTitle}>Plasma</h3>
+                <p style={styles.modalSubtitle}>Release Stock</p>
+              </div>
+              <button
+                style={styles.modalCloseButton}
+                onClick={() => setShowReleaseModal(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={styles.modalContent}>
+              <div style={styles.barcodeSection}>
+                <img
+                  src="/src/assets/scanner.gif"
+                  alt="Barcode Scanner"
+                  style={styles.barcodeIcon}
+                />
+              </div>
+
+              <p style={styles.barcodeText}>(if scanner is unavailable)</p>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr",
+                  gap: "15px",
+                  marginBottom: "15px",
+                  padding: "0 5px",
+                }}
+              >
+                <div style={styles.tableHeaderCell}>Barcode Serial ID</div>
+                <div style={styles.tableHeaderCell}>Blood Type</div>
+                <div style={styles.tableHeaderCell}>RH Factor</div>
+                <div style={styles.tableHeaderCell}>Volume</div>
+                <div style={styles.tableHeaderCell}>Date of Collection</div>
+                <div style={styles.tableHeaderCell}>Expiration Date</div>
+                <div style={styles.tableHeaderCell}>Status</div>
+                <div style={styles.tableHeaderCell}>Action</div>
+              </div>
+
+              <div style={styles.rowsContainer}>
+                {selectedItems.map((item, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr",
+                      gap: "6px",
+                      marginBottom: "15px",
+                      alignItems: "center",
+                      backgroundColor: item.found ? "#f0f9ff" : "#fef2f2",
+                      padding: "8px 5px",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    {/* Serial ID Input with Search */}
+                    <div style={{ position: "relative" }}>
+                    <>
+                    <style>{`
+                      .serial-input::placeholder {
+                        font-size: 12px;
+                      }
+                    `}</style>
+
+                    <input
+                      type="text"
+                      className="serial-input"
+                      style={{
+                        ...styles.fieldInput,
+                        paddingRight: "30px",
+                        border: item.found
+                          ? "1px solid #0ea5e9"
+                          : item.serialId && !item.found
+                            ? "1px solid #ef4444"
+                            : "1px solid #d1d5db",
+                      }}
+                      value={item.serialId}
+                      onChange={(e) =>
+                        handleReleaseItemChange(index, "serialId", e.target.value)
+                      }
+                      placeholder="Enter Serial ID"
+                    />
+                  </>
+                      {/* Status Indicator */}
+                      <div
+                        style={{
+                          position: "absolute",
+                          right: "8px",
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                        }}
+                      >
+                        {item.serialId &&
+                          (item.found ? (
+                            <svg
+                              width="16"
+                              height="16"
+                              fill="#059669"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          ) : (
+                            <svg
+                              width="16"
+                              height="16"
+                              fill="#ef4444"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          ))}
+                      </div>
+                    </div>
+
+                    {/* Blood Type */}
+                    <>
+                    <style>{`
+                      .no-arrow {
+                        /* remove the default dropdown/chevron icon */
+                        -webkit-appearance: none;
+                        -moz-appearance: none;
+                        appearance: none;
+                        background: none;      /* no background image */
+                        background-color: transparent; /* keep your own color if you want */
+                      }
+                    `}</style>
+
+                    <select
+                      className="no-arrow"
+                      style={{
+                        ...styles.fieldSelect,
+                        fontSize: "12px",
+                        backgroundColor: item.found ? "#f0f9ff" : "#f9fafb",
+                        color: item.found ? "#374151" : "#9ca3af",
+                      }}
+                      value={item.bloodType}
+                      disabled
+                    >
+                      <option value="O">O</option>
+                      <option value="A">A</option>
+                      <option value="B">B</option>
+                      <option value="AB">AB</option>
+                    </select>
+
+                    <select
+                      className="no-arrow"
+                      style={{
+                        ...styles.fieldSelect,
+                        fontSize: "12px",
+                        backgroundColor: item.found ? "#f0f9ff" : "#f9fafb",
+                        color: item.found ? "#374151" : "#9ca3af",
+                      }}
+                      value={item.rhFactor}
+                      disabled
+                    >
+                      <option value="+">+</option>
+                      <option value="-">-</option>
+                    </select>
+                  </>
+
+                    {/* Volume */}
+                    <input
+                      type="number"
+                      style={{
+                        ...styles.fieldInputDisabled,
+                        backgroundColor: item.found ? "#f0f9ff" : "#f9fafb",
+                        color: item.found ? "#374151" : "#9ca3af",
+                      }}
+                      value={item.volume}
+                      readOnly
+                      disabled
+                    />
+
+                    {/* Collection Date */}
+                    <input
+                      type="date"
+                      style={{
+                        ...styles.fieldInputDisabled,
+                        backgroundColor: item.found ? "#f0f9ff" : "#f9fafb",
+                        color: item.found ? "#374151" : "#9ca3af",
+                      }}
+                      value={item.collection}
+                      readOnly
+                      disabled
+                    />
+
+                    {/* Expiration Date */}
+                    <input
+                      type="date"
+                      style={{
+                        ...styles.fieldInputDisabled,
+                        backgroundColor: item.found ? "#f0f9ff" : "#f9fafb",
+                        color: item.found ? "#374151" : "#9ca3af",
+                      }}
+                      value={item.expiration}
+                      readOnly
+                      disabled
+                    />
+
+                    {/* Status Badge */}
+                    <span
+                      style={{
+                        padding: "4px 8px",
+                        backgroundColor: item.found ? "#dcfdf4" : "#fee2e2",
+                        color: item.found ? "#065f46" : "#991b1b",
+                        borderRadius: "12px",
+                        fontSize: "12px",
+                        fontWeight: "500",
+                        textAlign: "center",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {item.found ? item.status : "Not Found"}
+                    </span>
+
+                    {/* Remove Button */}
+                    <button
+                      type="button"
+                      style={{
+                        backgroundColor: "#ef4444",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        padding: "6px 8px",
+                        cursor: "pointer",
+                        fontSize: "12px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "4px",
+                        whiteSpace: "nowrap",
+                      }}
+                      onClick={() => removeReleaseItem(index)}
+                      disabled={selectedItems.length === 1}
+                    >
+                      <svg
+                        width="12"
+                        height="12"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                style={styles.addRowButton}
+                onClick={addReleaseItem}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                <span>Add Another Item</span>
+              </button>
+
+              {/* Summary */}
+              <div
+                style={{
+                  backgroundColor: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "6px",
+                  padding: "12px 16px",
+                  marginTop: "16px",
+                }}
+              >
+                <p
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: "500",
+                    color: "#374151",
+                    margin: "0 0 4px 0",
+                  }}
+                >
+                  Release Summary:
+                </p>
+                <p
+                  style={{
+                    fontSize: "12px",
+                    color: "#6b7280",
+                    margin: 0,
+                  }}
+                >
+                  {selectedItems.filter((item) => item.found).length} of{" "}
+                  {selectedItems.length} items ready for release
+                </p>
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <button
+                type="button"
+                style={styles.saveButton}
+                onClick={proceedToReleaseDetails}
+              >
+                Proceed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Release Details Modal */}
+      {showReleaseDetailsModal && (
+        <div
+          style={styles.modalOverlay}
+          onClick={() => setShowReleaseDetailsModal(false)}
+        >
+          <div
+            style={styles.releaseDetailsModal}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={styles.modalHeader}>
+              <div style={styles.modalTitleSection}>
+                <h3 style={styles.modalTitle}>Plasma</h3>
+                <p style={styles.modalSubtitle}>Release Stock</p>
+              </div>
+              <button
+                style={styles.modalCloseButton}
+                onClick={() => setShowReleaseDetailsModal(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={styles.modalContent}>
+              {/* Items Summary */}
+              <div
+                style={{
+                  backgroundColor: "#f0f9ff",
+                  border: "1px solid #0ea5e9",
+                  borderRadius: "8px",
+                  padding: "16px",
+                  marginBottom: "24px",
+                }}
+              >
+                <h4
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: "600",
+                    color: "#1e40af",
+                    margin: "0 0 12px 0",
+                  }}
+                >
+                  Items to Release (
+                  {selectedItems.filter((item) => item.found).length})
+                </h4>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "2fr 1fr 1fr 1fr",
+                    gap: "12px",
+                    fontSize: "12px",
+                    fontWeight: "500",
+                    color: "#374151",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <div>Serial ID</div>
+                  <div>Blood Type</div>
+                  <div>RH Factor</div>
+                  <div>Volume (mL)</div>
+                </div>
+                {selectedItems
+                  .filter((item) => item.found)
+                  .map((item, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "2fr 1fr 1fr 1fr",
+                        gap: "12px",
+                        fontSize: "12px",
+                        color: "#6b7280",
+                        padding: "8px 0",
+                        borderTop: index > 0 ? "1px solid #e5e7eb" : "none",
+                      }}
+                    >
+                      <div style={{ fontWeight: "500", color: "#374151" }}>
+                        {item.serialId}
+                      </div>
+                      <div>{item.bloodType}</div>
+                      <div>{item.rhFactor}</div>
+                      <div>{item.volume}</div>
+                    </div>
+                  ))}
+                <div
+                  style={{
+                    marginTop: "12px",
+                    paddingTop: "12px",
+                    borderTop: "1px solid #0ea5e9",
+                    fontSize: "14px",
+                    fontWeight: "600",
+                    color: "#1e40af",
+                  }}
+                >
+                  Total Volume:{" "}
+                  {selectedItems
+                    .filter((item) => item.found)
+                    .reduce((sum, item) => sum + item.volume, 0)}{" "}
+                  mL
+                </div>
+              </div>
+
+              {/* Release Form */}
+              <div style={styles.releaseFormGrid}>
+                <div style={styles.releaseFormGroup}>
+                  <label style={styles.releaseFormLabel}>
+                    Receiving Facility
+                  </label>
+                  <input
+                    type="text"
+                    style={styles.releaseFormInput}
+                    value={releaseData.receivingFacility}
+                    onChange={(e) =>
+                      handleReleaseDataChange(
+                        "receivingFacility",
+                        e.target.value
+                      )
+                    }
+                  />
+                </div>
+                <div style={styles.releaseFormGroup}>
+                  <label style={styles.releaseFormLabel}>Classification</label>
+                  <select
+                    style={styles.releaseFormSelect}
+                    value={releaseData.classification}
+                    onChange={(e) =>
+                      handleReleaseDataChange("classification", e.target.value)
+                    }
+                  >
+                    <option value="">Select classification</option>
+                    <option value="Emergency">Emergency</option>
+                    <option value="Routine">Routine</option>
+                    <option value="Urgent">Urgent</option>
+                  </select>
+                </div>
+                <div style={styles.releaseFormGroup}>
+                  <label style={styles.releaseFormLabel}>
+                    Authorized Recipient
+                  </label>
+                  <input
+                    type="text"
+                    style={styles.releaseFormInput}
+                    value={releaseData.authorizedRecipient}
+                    onChange={(e) =>
+                      handleReleaseDataChange(
+                        "authorizedRecipient",
+                        e.target.value
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
+              <div style={styles.releaseFormGrid}>
+                <div style={styles.releaseFormGroup}>
+                  <label style={styles.releaseFormLabel}>Address</label>
+                  <input
+                    type="text"
+                    style={styles.releaseFormInput}
+                    value={releaseData.address}
+                    onChange={(e) =>
+                      handleReleaseDataChange("address", e.target.value)
+                    }
+                  />
+                </div>
+                <div style={styles.releaseFormGroup}>
+                  <label style={styles.releaseFormLabel}>Contact Number</label>
+                  <input
+                    type="tel"
+                    style={styles.releaseFormInput}
+                    value={releaseData.contactNumber}
+                    onChange={(e) =>
+                      handleReleaseDataChange("contactNumber", e.target.value)
+                    }
+                    placeholder="+ 63"
+                  />
+                </div>
+                <div style={styles.releaseFormGroup}>
+                  <label style={styles.releaseFormLabel}>
+                    Authorized Recipient Designation
+                  </label>
+                  <input
+                    type="text"
+                    style={styles.releaseFormInput}
+                    value={releaseData.recipientDesignation}
+                    onChange={(e) =>
+                      handleReleaseDataChange(
+                        "recipientDesignation",
+                        e.target.value
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
+              <div style={styles.releaseFormGrid}>
+                <div style={styles.releaseFormGroup}>
+                  <label style={styles.releaseFormLabel}>Date of Release</label>
+                  <input
+                    type="date"
+                    style={styles.releaseFormInput}
+                    value={releaseData.dateOfRelease}
+                    onChange={(e) =>
+                      handleReleaseDataChange("dateOfRelease", e.target.value)
+                    }
+                  />
+                </div>
+                <div style={styles.releaseFormGroup}>
+                  <label style={styles.releaseFormLabel}>
+                    Condition Upon Release
+                  </label>
+                  <select
+                    style={styles.releaseFormSelect}
+                    value={releaseData.conditionUponRelease}
+                    onChange={(e) =>
+                      handleReleaseDataChange(
+                        "conditionUponRelease",
+                        e.target.value
+                      )
+                    }
+                  >
+                    <option value="">Select Condition</option>
+                    <option value="Good">Good</option>
+                    <option value="Satisfactory">Satisfactory</option>
+                    <option value="Damaged">Damaged</option>
+                  </select>
+                </div>
+                <div style={styles.releaseFormGroup}>
+                  <label style={styles.releaseFormLabel}>
+                    Request Reference Number
+                  </label>
+                  <input
+                    type="text"
+                    style={styles.releaseFormInput}
+                    value={releaseData.requestReference}
+                    onChange={(e) =>
+                      handleReleaseDataChange(
+                        "requestReference",
+                        e.target.value
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
+              <div style={styles.releaseFormGrid}>
+                <div style={styles.releaseFormGroup}>
+                  <label style={styles.releaseFormLabel}>Released by</label>
+                  <input
+                    type="text"
+                    style={styles.releaseFormInput}
+                    value={releaseData.releasedBy}
+                    onChange={(e) =>
+                      handleReleaseDataChange("releasedBy", e.target.value)
+                    }
+                  />
+                </div>
+                <div style={styles.releaseFormGroup}></div>
+                <div style={styles.releaseFormGroup}></div>
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <button
+                type="button"
+                style={styles.confirmButton}
+                onClick={confirmRelease}
+              >
+                Confirm Release (
+                {selectedItems.filter((item) => item.found).length} items)
               </button>
             </div>
           </div>

@@ -7,55 +7,235 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // ========== RED BLOOD CELL METHODS ==========
   getAllBloodStock: async () => {
-    return await ipcRenderer.invoke('db:getAllBloodStock');
-  },
-  addBloodStock: async (bloodData) => {
-    return await ipcRenderer.invoke('db:addBloodStock', bloodData);
-  },
-  updateBloodStock: async (id, bloodData) => {
-    return await ipcRenderer.invoke('db:updateBloodStock', id, bloodData);
-  },
-  deleteBloodStock: async (ids) => {
-    return await ipcRenderer.invoke('db:deleteBloodStock', ids);
-  },
-  searchBloodStock: async (searchTerm) => {
-    return await ipcRenderer.invoke('db:searchBloodStock', searchTerm);
+    try {
+      return await ipcRenderer.invoke('db:getAllBloodStock');
+    } catch (error) {
+      console.error('Preload Error - getAllBloodStock:', error);
+      throw error;
+    }
   },
   
+  addBloodStock: async (bloodData) => {
+    try {
+      return await ipcRenderer.invoke('db:addBloodStock', bloodData);
+    } catch (error) {
+      console.error('Preload Error - addBloodStock:', error);
+      throw error;
+    }
+  },
+  
+  updateBloodStock: async (id, bloodData) => {
+    try {
+      return await ipcRenderer.invoke('db:updateBloodStock', id, bloodData);
+    } catch (error) {
+      console.error('Preload Error - updateBloodStock:', error);
+      throw error;
+    }
+  },
+  
+  deleteBloodStock: async (ids) => {
+    try {
+      return await ipcRenderer.invoke('db:deleteBloodStock', ids);
+    } catch (error) {
+      console.error('Preload Error - deleteBloodStock:', error);
+      throw error;
+    }
+  },
+  
+  searchBloodStock: async (searchTerm) => {
+    try {
+      return await ipcRenderer.invoke('db:searchBloodStock', searchTerm);
+    } catch (error) {
+      console.error('Preload Error - searchBloodStock:', error);
+      throw error;
+    }
+  },
+  
+  getBloodStockBySerialId: async (serialId) => {
+    try {
+      return await ipcRenderer.invoke('db:getBloodStockBySerialId', serialId);
+    } catch (error) {
+      console.error('Preload Error - getBloodStockBySerialId:', error);
+      throw error;
+    }
+  },
+  
+  // ========== RELEASE STOCK METHODS ==========
+  releaseBloodStock: async (releaseData) => {
+    try {
+      console.log('Preload - releasing blood stock:', releaseData);
+      const result = await ipcRenderer.invoke('db:releaseBloodStock', releaseData);
+      return result;
+    } catch (error) {
+      console.error('Preload Error - releaseBloodStock:', error);
+      throw error;
+    }
+  },
+  
+  getReleasedBloodStock: async () => {
+    try {
+      return await ipcRenderer.invoke('db:getReleasedBloodStock');
+    } catch (error) {
+      console.error('Preload Error - getReleasedBloodStock:', error);
+      throw error;
+    }
+  },
 
   // ========== PLATELET METHODS ==========
   getPlateletStock: async () => {
-    return await ipcRenderer.invoke('db:getPlateletStock');
+    try {
+      return await ipcRenderer.invoke('db:getPlateletStock');
+    } catch (error) {
+      console.error('Preload Error - getPlateletStock:', error);
+      throw error;
+    }
   },
+  
   addPlateletStock: async (plateletData) => {
-    return await ipcRenderer.invoke('db:addPlateletStock', plateletData);
+    try {
+      return await ipcRenderer.invoke('db:addPlateletStock', plateletData);
+    } catch (error) {
+      console.error('Preload Error - addPlateletStock:', error);
+      throw error;
+    }
   },
+  
   updatePlateletStock: async (id, plateletData) => {
-    return await ipcRenderer.invoke('db:updatePlateletStock', id, plateletData);
+    try {
+      return await ipcRenderer.invoke('db:updatePlateletStock', id, plateletData);
+    } catch (error) {
+      console.error('Preload Error - updatePlateletStock:', error);
+      throw error;
+    }
   },
+  
   deletePlateletStock: async (ids) => {
-    return await ipcRenderer.invoke('db:deletePlateletStock', ids);
+    try {
+      return await ipcRenderer.invoke('db:deletePlateletStock', ids);
+    } catch (error) {
+      console.error('Preload Error - deletePlateletStock:', error);
+      throw error;
+    }
   },
+  
   searchPlateletStock: async (searchTerm) => {
-    return await ipcRenderer.invoke('db:searchPlateletStock', searchTerm);
+    try {
+      return await ipcRenderer.invoke('db:searchPlateletStock', searchTerm);
+    } catch (error) {
+      console.error('Preload Error - searchPlateletStock:', error);
+      throw error;
+    }
+  },
+
+  
+  getPlateletStockBySerialId: async (serialId) => {
+    try {
+      return await ipcRenderer.invoke('db:getPlateletStockBySerialId', serialId);
+    } catch (error) {
+      console.error('Preload Error - getPlateletStockBySerialId:', error);
+      throw error;
+    }
+  },
+
+  releasePlateletStock: async (releaseData) => {
+    try {
+      console.log('Preload - releasing platelet stock:', releaseData);
+      const result = await ipcRenderer.invoke('db:releasePlateletStock', releaseData);
+      console.log('Preload - platelet release result:', result);
+      return result;
+    } catch (error) {
+      console.error('Preload Error - releasePlateletStock:', error);
+      throw error;
+    }
+  },
+
+  getReleasedPlateletStock: async () => {
+    try {
+      return await ipcRenderer.invoke('db:getReleasedPlateletStock');
+    } catch (error) {
+      console.error('Preload Error - getReleasedPlateletStock:', error);
+      throw error;
+    }
   },
 
   // ========== PLASMA METHODS ==========
   getPlasmaStock: async () => {
-    return await ipcRenderer.invoke('db:getPlasmaStock');
+    try {
+      return await ipcRenderer.invoke('db:getPlasmaStock');
+    } catch (error) {
+      console.error('Preload Error - getPlasmaStock:', error);
+      throw error;
+    }
   },
+  
   addPlasmaStock: async (plasmaData) => {
-    return await ipcRenderer.invoke('db:addPlasmaStock', plasmaData);
+    try {
+      return await ipcRenderer.invoke('db:addPlasmaStock', plasmaData);
+    } catch (error) {
+      console.error('Preload Error - addPlasmaStock:', error);
+      throw error;
+    }
   },
+  
   updatePlasmaStock: async (id, plasmaData) => {
-    return await ipcRenderer.invoke('db:updatePlasmaStock', id, plasmaData);
+    try {
+      return await ipcRenderer.invoke('db:updatePlasmaStock', id, plasmaData);
+    } catch (error) {
+      console.error('Preload Error - updatePlasmaStock:', error);
+      throw error;
+    }
   },
+  
   deletePlasmaStock: async (ids) => {
-    return await ipcRenderer.invoke('db:deletePlasmaStock', ids);
+    try {
+      return await ipcRenderer.invoke('db:deletePlasmaStock', ids);
+    } catch (error) {
+      console.error('Preload Error - deletePlasmaStock:', error);
+      throw error;
+    }
   },
+  
   searchPlasmaStock: async (searchTerm) => {
-    return await ipcRenderer.invoke('db:searchPlasmaStock', searchTerm);
+    try {
+      return await ipcRenderer.invoke('db:searchPlasmaStock', searchTerm);
+    } catch (error) {
+      console.error('Preload Error - searchPlasmaStock:', error);
+      throw error;
+    }
   },
+
+  // Add these methods to your electronAPI object in preload.js
+
+// Add these to your existing PLASMA METHODS section in preload.js
+releasePlasmaStock: async (releaseData) => {
+  try {
+    const result = await ipcRenderer.invoke('db:releasePlasmaStock', releaseData);
+    return result;
+  } catch (error) {
+    console.error('Preload Error - releasePlasmaStock:', error);
+    throw error;
+  }
+},
+
+getReleasedPlasmaStock: async () => {
+  try {
+    return await ipcRenderer.invoke('db:getReleasedPlasmaStock');
+  } catch (error) {
+    console.error('Preload Error - getReleasedPlasmaStock:', error);
+    throw error;
+  }
+},
+
+getPlasmaStockBySerialId: async (serialId) => {
+  try {
+    return await ipcRenderer.invoke('db:getPlasmaStockBySerialId', serialId);
+  } catch (error) {
+    console.error('Preload Error - getPlasmaStockBySerialId:', error);
+    throw error;
+  }
+},
 });
+
+
 
 console.log('electronAPI exposed successfully');

@@ -1,256 +1,67 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ArchiveRestore } from "lucide-react";
 
 const ReleasedBlood = () => {
-  const [bloodData, setBloodData] = useState([
-    {
-      id: "BL00-0001-ON",
-      type: "O",
-      rhFactor: "-",
-      volume: 100,
-      collection: "03/02/2025",
-      expiration: "04/15/2025",
-      status: "Released",
-      created: "03/02/2025-03-11 13:00:00",
-      modified: "-",
-      releasedAt: "04/10/2025-10:30:00",
-      selected: false
-    },
-    {
-      id: "BL00-0002-ON",
-      type: "A",
-      rhFactor: "-",
-      volume: 100,
-      collection: "03/02/2025",
-      expiration: "04/15/2025",
-      status: "Released",
-      created: "03/02/2025-03-11 13:00:00",
-      modified: "-",
-      releasedAt: "04/12/2025-14:15:00",
-      selected: false
-    },
-    {
-      id: "BL00-0003-ON",
-      type: "A",
-      rhFactor: "+",
-      volume: 100,
-      collection: "03/02/2025",
-      expiration: "04/15/2025",
-      status: "Released",
-      created: "03/02/2025-03-11 13:00:00",
-      modified: "-",
-      releasedAt: "04/08/2025-09:45:00",
-      selected: false
-    },
-    {
-      id: "BL00-0004-ON",
-      type: "AB",
-      rhFactor: "-",
-      volume: 100,
-      collection: "03/02/2025",
-      expiration: "04/15/2025",
-      status: "Released",
-      created: "03/02/2025-03-11 13:00:00",
-      modified: "-",
-      releasedAt: "04/11/2025-16:20:00",
-      selected: false
-    },
-    {
-      id: "BL00-0005-ON",
-      type: "O",
-      rhFactor: "+",
-      volume: 100,
-      collection: "03/03/2025",
-      expiration: "04/16/2025",
-      status: "Released",
-      created: "03/03/2025-03-11 13:00:00",
-      modified: "04/15/2025-03-11 15:00:00",
-      releasedAt: "04/13/2025-11:10:00",
-      selected: false
-    },
-    {
-      id: "BL00-0006-ON",
-      type: "O",
-      rhFactor: "-",
-      volume: 100,
-      collection: "03/03/2025",
-      expiration: "04/16/2025",
-      status: "Released",
-      created: "03/03/2025-03-11 13:00:00",
-      modified: "04/15/2025-03-11 15:00:00",
-      releasedAt: "04/14/2025-08:30:00",
-      selected: false
-    },
-    {
-      id: "BL00-0007-ON",
-      type: "O",
-      rhFactor: "-",
-      volume: 100,
-      collection: "03/03/2025",
-      expiration: "04/16/2025",
-      status: "Released",
-      created: "04/15/2025-03-11 13:00:00",
-      modified: "-",
-      releasedAt: "04/09/2025-13:45:00",
-      selected: false
-    },
-    {
-      id: "BL00-0008-ON",
-      type: "O",
-      rhFactor: "+",
-      volume: 100,
-      collection: "03/04/2025",
-      expiration: "04/16/2025",
-      status: "Released",
-      created: "04/15-03-11 13:00:00",
-      modified: "04/15/2025-03-11 13:00:00",
-      releasedAt: "04/07/2025-15:20:00",
-      selected: false
-    },
-    {
-      id: "BL00-0009-ON",
-      type: "B",
-      rhFactor: "+",
-      volume: 100,
-      collection: "03/04/2025",
-      expiration: "04/16/2025",
-      status: "Released",
-      created: "04/15/2025-03-11 13:00:00",
-      modified: "04/15/2025-03-11 13:00:00",
-      releasedAt: "04/12/2025-12:00:00",
-      selected: false
-    },
-    {
-      id: "BL00-0010-ON",
-      type: "B",
-      rhFactor: "-",
-      volume: 100,
-      collection: "03/04/2025",
-      expiration: "04/16/2025",
-      status: "Released",
-      created: "04/15/2025-03-11 13:00:00",
-      modified: "04/15/2025-03-11 13:00:00",
-      releasedAt: "04/11/2025-17:30:00",
-      selected: false
-    },
-    {
-      id: "BL00-0011-ON",
-      type: "A",
-      rhFactor: "+",
-      volume: 100,
-      collection: "03/06/2025",
-      expiration: "04/18/2025",
-      status: "Released",
-      created: "04/15/2025-03-11 13:00:00",
-      modified: "-",
-      releasedAt: "04/13/2025-10:15:00",
-      selected: false
-    },
-    {
-      id: "BL00-0012-ON",
-      type: "O",
-      rhFactor: "+",
-      volume: 100,
-      collection: "03/06/2025",
-      expiration: "04/18/2025",
-      status: "Released",
-      created: "04/15/2025-03-11 13:00:00",
-      modified: "04/15/2025-03-11 19:00:00",
-      releasedAt: "04/14/2025-14:45:00",
-      selected: false
-    },
-    {
-      id: "BL00-0013-ON",
-      type: "AB",
-      rhFactor: "-",
-      volume: 100,
-      collection: "03/08/2025",
-      expiration: "04/18/2025",
-      status: "Released",
-      created: "04/15/2025-04-11 13:00:00",
-      modified: "-",
-      releasedAt: "04/10/2025-11:30:00",
-      selected: false
-    },
-    {
-      id: "BL00-0014-ON",
-      type: "AB",
-      rhFactor: "-",
-      volume: 100,
-      collection: "03/08/2025",
-      expiration: "04/17/2025",
-      status: "Released",
-      created: "04/15/2025-03-11 13:00:00",
-      modified: "04/15/2025-03-11 19:00:00",
-      releasedAt: "04/09/2025-16:00:00",
-      selected: false
-    },
-    {
-      id: "BL00-0015-ON",
-      type: "B",
-      rhFactor: "+",
-      volume: 100,
-      collection: "03/08/2025",
-      expiration: "04/17/2025",
-      status: "Released",
-      created: "04/15/2025-03-11 13:00:00",
-      modified: "04/15/2025-03-11 19:00:00",
-      releasedAt: "04/08/2025-09:20:00",
-      selected: false
-    },
-    {
-      id: "BL00-0016-ON",
-      type: "A",
-      rhFactor: "-",
-      volume: 100,
-      collection: "04/07/2025",
-      expiration: "04/18/2025",
-      status: "Released",
-      created: "04/15/2025-03-11 13:00:00",
-      modified: "-",
-      releasedAt: "04/12/2025-13:10:00",
-      selected: false
-    },
-    {
-      id: "BL00-0017-ON",
-      type: "A",
-      rhFactor: "-",
-      volume: 100,
-      collection: "04/07/2025",
-      expiration: "04/18/2025",
-      status: "Released",
-      created: "04/15/2025-03-11 13:00:00",
-      modified: "-",
-      releasedAt: "04/13/2025-15:40:00",
-      selected: false
-    },
-    {
-      id: "BL00-0018-ON",
-      type: "A",
-      rhFactor: "-",
-      volume: 100,
-      collection: "04/08/2025",
-      expiration: "04/18/2025",
-      status: "Released",
-      created: "04/15/2025-03-11 13:00:00",
-      modified: "-",
-      releasedAt: "04/11/2025-12:25:00",
-      selected: false
-    },
-    {
-      id: "BL00-0019-ON",
-      type: "B",
-      rhFactor: "+",
-      volume: 100,
-      collection: "04/08/2025",
-      expiration: "04/18/2025",
-      status: "Released",
-      created: "04/15/2025-03-11 13:00:00",
-      modified: "04/15/2025-03-11 15:00:00",
-      releasedAt: "04/14/2025-10:50:00",
-      selected: false
-    },
-  ]);
+  const [bloodData, setBloodData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [error, setError] = useState(null);
+
+  // Load released blood data from database on component mount
+  useEffect(() => {
+    loadReleasedBloodData();
+  }, []);
+
+  const loadReleasedBloodData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      if (!window.electronAPI) {
+        throw new Error(
+          "Electron API not available. Make sure you are running this in an Electron environment and that preload.js is properly configured."
+        );
+      }
+
+      // FIXED: Fetch all three blood component types (Red Blood Cell, Plasma, AND Platelet)
+      const [rbcData, plasmaData, plateletData] = await Promise.all([
+        window.electronAPI.getReleasedBloodStock(),
+        window.electronAPI.getReleasedPlasmaStock(),
+        window.electronAPI.getReleasedPlateletStock() // ADDED: Platelet released records
+      ]);
+
+      // Combine all three datasets and sort by releasedAt (most recent first)
+      const combinedData = [...rbcData, ...plasmaData, ...plateletData].sort((a, b) => {
+        // Convert releasedAt strings to dates for comparison
+        const dateA = new Date(a.releasedAt);
+        const dateB = new Date(b.releasedAt);
+        return dateB - dateA; // Descending order (newest first)
+      });
+      
+      setBloodData(combinedData);
+    } catch (err) {
+      console.error("Error loading released blood data:", err);
+      setError(`Failed to load released blood data: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle search functionality
+  const handleSearch = (e) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    // Note: For now, we'll do client-side filtering. You can implement server-side search later if needed.
+  };
+
+  // Filter data based on search term
+  const filteredData = bloodData.filter(item => 
+    item.serial_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.rhFactor?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.status?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.category?.toLowerCase().includes(searchTerm.toLowerCase()) // Added category filter
+  );
 
   const toggleRowSelection = (id) => {
     setBloodData(prevData => 
@@ -262,7 +73,7 @@ const ReleasedBlood = () => {
 
   // Toggle selection for all rows
   const toggleAllSelection = () => {
-    const allSelected = bloodData.every(item => item.selected);
+    const allSelected = filteredData.every(item => item.selected);
     setBloodData(prevData => 
       prevData.map(item => ({ ...item, selected: !allSelected }))
     );
@@ -275,7 +86,59 @@ const ReleasedBlood = () => {
     );
   };
 
-  const selectedCount = bloodData.filter(item => item.selected).length;
+  const selectedCount = filteredData.filter(item => item.selected).length;
+
+  // IMPROVED: Better category badge styling for all three types
+  const getCategoryBadgeStyle = (category) => {
+    const baseStyle = {
+      display: "inline-flex",
+      alignItems: "center",
+      padding: "4px 8px",
+      fontSize: "12px",
+      fontWeight: "500",
+      borderRadius: "9999px",
+    };
+
+    switch (category) {
+      case 'Red Blood Cell':
+        return {
+          ...baseStyle,
+          backgroundColor: "#fef2f2",
+          color: "#991b1b",
+        };
+      case 'Plasma':
+        return {
+          ...baseStyle,
+          backgroundColor: "#eff6ff",
+          color: "#1e40af",
+        };
+      case 'Platelet':
+        return {
+          ...baseStyle,
+          backgroundColor: "#f0fdf4",
+          color: "#065f46",
+        };
+      default:
+        return {
+          ...baseStyle,
+          backgroundColor: "#f3f4f6",
+          color: "#374151",
+        };
+    }
+  };
+
+  const getCategoryDisplayName = (category) => {
+    switch (category) {
+      case 'Red Blood Cell':
+        return 'RBC';
+      case 'Plasma':
+        return 'Plasma';
+      case 'Platelet':
+        return 'Platelet';
+      default:
+        return category;
+    }
+  };
 
   const styles = {
     container: {
@@ -537,12 +400,47 @@ const ReleasedBlood = () => {
       cursor: "pointer",
       fontSize: "14px",
     },
+    loadingContainer: {
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: "40px",
+      fontSize: "16px",
+      color: "#6b7280",
+    },
+    errorContainer: {
+      backgroundColor: "#fee2e2",
+      color: "#991b1b",
+      padding: "12px 16px",
+      borderRadius: "8px",
+      marginBottom: "20px",
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+    },
+    refreshButton: {
+      backgroundColor: "#059669",
+      color: "white",
+      border: "none",
+      padding: "4px 8px",
+      borderRadius: "4px",
+      cursor: "pointer",
+      fontSize: "12px",
+    },
   };
 
   // Check if all rows are selected
-  const allSelected = bloodData.length > 0 && bloodData.every(item => item.selected);
+  const allSelected = filteredData.length > 0 && filteredData.every(item => item.selected);
   // Check if some rows are selected (for indeterminate state)
-  const someSelected = bloodData.some(item => item.selected) && !allSelected;
+  const someSelected = filteredData.some(item => item.selected) && !allSelected;
+
+  if (loading) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.loadingContainer}>Loading released blood data...</div>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.container}>
@@ -551,6 +449,21 @@ const ReleasedBlood = () => {
         <h2 style={styles.title}>Released Blood</h2>
         <p style={styles.subtitle}>Blood Stock</p>
       </div>
+
+      {error && (
+        <div style={styles.errorContainer}>
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
+            <path
+              fillRule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+            />
+          </svg>
+          <span>{error}</span>
+          <button style={styles.refreshButton} onClick={loadReleasedBloodData}>
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Controls Bar */}
       <div style={styles.controlsBar}>
@@ -572,8 +485,10 @@ const ReleasedBlood = () => {
             </svg>
             <input
               type="text"
-              placeholder="Search"
+              placeholder="Search by serial ID, blood type, category, or status"
               style={styles.searchInput}
+              value={searchTerm}
+              onChange={handleSearch}
             />
           </div>
         </div>
@@ -643,55 +558,72 @@ const ReleasedBlood = () => {
                   onChange={toggleAllSelection}
                 />
               </th>
-              <th style={{...styles.th, width: "13%"}}>SERIAL ID</th>
+              <th style={{...styles.th, width: "11%"}}>SERIAL ID</th>
+              <th style={{...styles.th, width: "8%"}}>CATEGORY</th>
               <th style={{...styles.th, width: "7%"}}>BLOOD TYPE</th>
               <th style={{...styles.th, width: "6%"}}>RH FACTOR</th>
               <th style={{...styles.th, width: "7%"}}>VOLUME (ML)</th>
-              <th style={{...styles.th, width: "11%"}}>DATE OF COLLECTION</th>
-              <th style={{...styles.th, width: "11%"}}>EXPIRATION DATE</th>
+              <th style={{...styles.th, width: "10%"}}>DATE OF COLLECTION</th>
+              <th style={{...styles.th, width: "10%"}}>EXPIRATION DATE</th>
               <th style={{...styles.th, width: "7%"}}>STATUS</th>
-              <th style={{...styles.th, width: "12%"}}>CREATED AT</th>
-              <th style={{...styles.th, width: "12%"}}>MODIFIED AT</th>
-              <th style={{...styles.th, width: "11%"}}>RELEASED AT</th>
+              <th style={{...styles.th, width: "10%"}}>RELEASED AT</th>
+              <th style={{...styles.th, width: "10%"}}>MODIFIED AT</th>
             </tr>
           </thead>
           <tbody style={styles.tbody}>
-            {bloodData.map((item, index) => (
-              <tr 
-                key={item.id} 
-                style={{
-                  ...(index % 2 === 1 ? styles.trEven : {}),
-                  ...(item.selected ? styles.trSelected : {})
-                }}
-              >
-                <td style={styles.td}>
-                  <input
-                    type="checkbox"
-                    style={styles.checkbox}
-                    checked={item.selected}
-                    onChange={() => toggleRowSelection(item.id)}
-                  />
+            {filteredData.length === 0 ? (
+              <tr>
+                <td
+                  colSpan="12"
+                  style={{ ...styles.td, textAlign: "center", padding: "40px" }}
+                >
+                  {searchTerm ? "No released blood records found matching your search" : "No released blood records found"}
                 </td>
-                <td style={styles.td}>{item.id}</td>
-                <td style={styles.td}>{item.type}</td>
-                <td style={styles.td}>{item.rhFactor}</td>
-                <td style={styles.td}>{item.volume}</td>
-                <td style={styles.td}>{item.collection}</td>
-                <td style={styles.td}>{item.expiration}</td>
-                <td style={styles.td}>
-                  <span style={styles.statusBadge}>{item.status}</span>
-                </td>
-                <td style={styles.td}>{item.created}</td>
-                <td style={styles.td}>{item.modified}</td>
-                <td style={styles.td}>{item.releasedAt}</td>
               </tr>
-            ))}
+            ) : (
+              filteredData.map((item, index) => (
+                <tr 
+                  key={item.id} 
+                  style={{
+                    ...(index % 2 === 1 ? styles.trEven : {}),
+                    ...(item.selected ? styles.trSelected : {})
+                  }}
+                >
+                  <td style={styles.td}>
+                    <input
+                      type="checkbox"
+                      style={styles.checkbox}
+                      checked={item.selected}
+                      onChange={() => toggleRowSelection(item.id)}
+                    />
+                  </td>
+                  <td style={styles.td}>{item.serial_id}</td>
+                  <td style={styles.td}>
+                    <span style={getCategoryBadgeStyle(item.category)}>
+                      {getCategoryDisplayName(item.category)}
+                    </span>
+                  </td>
+                  <td style={styles.td}>{item.type}</td>
+                  <td style={styles.td}>{item.rhFactor}</td>
+                  <td style={styles.td}>{item.volume}</td>
+                  <td style={styles.td}>{item.collection}</td>
+                  <td style={styles.td}>{item.expiration}</td>
+                  <td style={styles.td}>
+                    <span style={styles.statusBadge}>{item.status}</span>
+                  </td>
+                  <td style={styles.td}>{item.created}</td>
+                  <td style={styles.td}>{item.modified}</td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
 
         <div style={styles.pagination}>
           <button style={styles.paginationButton}>Previous</button>
-          <span style={styles.paginationText}>Page 1 of 20</span>
+          <span style={styles.paginationText}>
+            Page 1 of {Math.ceil(filteredData.length / 20)}
+          </span>
           <button style={styles.paginationButtonNext}>Next</button>
         </div>
       </div>
