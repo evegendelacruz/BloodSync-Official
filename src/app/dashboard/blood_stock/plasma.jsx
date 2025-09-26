@@ -65,6 +65,18 @@ const Plasma = () => {
     loadPlasmaData();
   }, []);
 
+  // Cleanup function to clear timeouts when component unmounts
+  useEffect(() => {
+    return () => {
+      if (window.searchTimeouts) {
+        Object.values(window.searchTimeouts).forEach(timeout => {
+          clearTimeout(timeout);
+        });
+        window.searchTimeouts = {};
+      }
+    };
+  }, []);
+
   const loadPlasmaData = async () => {
     try {
       setLoading(true);
@@ -279,96 +291,126 @@ const Plasma = () => {
     ]);
   };
 
-  const handleReleaseItemChange = async (index, field, value) => {
-    if (field === "serialId" && value.trim() !== "") {
-      try {
-        if (!window.electronAPI) {
-          setError("Electron API not available");
-          return;
-        }
-
-        const stockData =
-          await window.electronAPI.getPlasmaStockBySerialId(value);
-
-        if (stockData && !Array.isArray(stockData)) {
-          // Single exact match found
-          setSelectedItems((prev) =>
-            prev.map((item, i) =>
-              i === index
-                ? {
-                    ...item,
-                    serialId: value,
-                    bloodType: stockData.type,
-                    rhFactor: stockData.rhFactor,
-                    volume: stockData.volume,
-                    collection: stockData.collection,
-                    expiration: stockData.expiration,
-                    status: stockData.status,
-                    found: true,
-                  }
-                : item
-            )
-          );
-          setError(null);
-        } else if (Array.isArray(stockData) && stockData.length > 0) {
-          // Multiple partial matches found, use first one
-          const firstMatch = stockData[0];
-          setSelectedItems((prev) =>
-            prev.map((item, i) =>
-              i === index
-                ? {
-                    ...item,
-                    serialId: value,
-                    bloodType: firstMatch.type,
-                    rhFactor: firstMatch.rhFactor,
-                    volume: firstMatch.volume,
-                    collection: firstMatch.collection,
-                    expiration: firstMatch.expiration,
-                    status: firstMatch.status,
-                    found: true,
-                  }
-                : item
-            )
-          );
-          setError(null);
-        } else {
-          // No match found
-          setSelectedItems((prev) =>
-            prev.map((item, i) =>
-              i === index
-                ? {
-                    ...item,
-                    serialId: value,
-                    bloodType: "O",
-                    rhFactor: "+",
-                    volume: 100,
-                    collection: "",
-                    expiration: "",
-                    status: "Stored",
-                    found: false,
-                  }
-                : item
-            )
-          );
-          setError(`No blood stock found with serial ID: ${value}`);
-        }
-      } catch (err) {
-        console.error("Error fetching blood stock by serial ID:", err);
-        setError("Failed to fetch blood stock data");
+     // Updated handleReleaseItemChange function with debounced search
+     const handleReleaseItemChange = async (index, field, value) => {
+      if (field === "serialId") {
+        // Always update the UI immediately
         setSelectedItems((prev) =>
           prev.map((item, i) =>
-            i === index ? { ...item, [field]: value, found: false } : item
+            i === index 
+              ? { ...item, [field]: value, found: false }
+              : item
+          )
+        );
+    
+        // Clear any existing timeout for this index
+        if (window.searchTimeouts && window.searchTimeouts[index]) {
+          clearTimeout(window.searchTimeouts[index]);
+        }
+    
+        // Initialize timeouts object if it doesn't exist
+        if (!window.searchTimeouts) {
+          window.searchTimeouts = {};
+        }
+    
+        // If value is empty, don't search
+        if (!value || value.trim() === "") {
+          setError(null);
+          return;
+        }
+    
+        // Set a timeout to search after user stops typing (or after barcode scanner finishes)
+        window.searchTimeouts[index] = setTimeout(async () => {
+          try {
+            if (!window.electronAPI) {
+              setError("Electron API not available");
+              return;
+            }
+    
+            // FIXED: Use the correct plasma-specific method
+            const stockData = await window.electronAPI.getPlasmaStockBySerialId(value.trim());
+    
+            if (stockData && !Array.isArray(stockData)) {
+              // Single exact match found
+              setSelectedItems((prev) =>
+                prev.map((item, i) =>
+                  i === index
+                    ? {
+                        ...item,
+                        serialId: value.trim(),
+                        bloodType: stockData.type,
+                        rhFactor: stockData.rhFactor,
+                        volume: stockData.volume,
+                        collection: stockData.collection,
+                        expiration: stockData.expiration,
+                        status: stockData.status,
+                        found: true,
+                      }
+                    : item
+                )
+              );
+              setError(null);
+            } else if (Array.isArray(stockData) && stockData.length > 0) {
+              // Multiple partial matches found, use first one
+              const firstMatch = stockData[0];
+              setSelectedItems((prev) =>
+                prev.map((item, i) =>
+                  i === index
+                    ? {
+                        ...item,
+                        serialId: value.trim(),
+                        bloodType: firstMatch.type,
+                        rhFactor: firstMatch.rhFactor,
+                        volume: firstMatch.volume,
+                        collection: firstMatch.collection,
+                        expiration: firstMatch.expiration,
+                        status: firstMatch.status,
+                        found: true,
+                      }
+                    : item
+                )
+              );
+              setError(null);
+            } else {
+              // No match found
+              setSelectedItems((prev) =>
+                prev.map((item, i) =>
+                  i === index
+                    ? {
+                        ...item,
+                        serialId: value.trim(),
+                        bloodType: "O",
+                        rhFactor: "+",
+                        volume: 100,
+                        collection: "",
+                        expiration: "",
+                        status: "Stored",
+                        found: false,
+                      }
+                    : item
+                )
+              );
+              setError(`No plasma stock found with serial ID: ${value.trim()}`);
+            }
+          } catch (err) {
+            console.error("Error fetching plasma stock by serial ID:", err);
+            setError("Failed to fetch plasma stock data");
+            setSelectedItems((prev) =>
+              prev.map((item, i) =>
+                i === index ? { ...item, found: false } : item
+              )
+            );
+          }
+        }, 300); // 300ms delay - should work well for both manual typing and barcode scanners
+      } else {
+        // Handle other field changes normally
+        setSelectedItems((prev) =>
+          prev.map((item, i) =>
+            i === index ? { ...item, [field]: value } : item
           )
         );
       }
-    } else {
-      setSelectedItems((prev) =>
-        prev.map((item, i) =>
-          i === index ? { ...item, [field]: value } : item
-        )
-      );
-    }
-  };
+    };
 
   const addReleaseItem = () => {
     setSelectedItems((prev) => [
@@ -1555,25 +1597,48 @@ const confirmRelease = async () => {
                         font-size: 12px;
                       }
                     `}</style>
-
-                    <input
-                      type="text"
-                      className="serial-input"
-                      style={{
-                        ...styles.fieldInput,
-                        paddingRight: "30px",
-                        border: item.found
-                          ? "1px solid #0ea5e9"
-                          : item.serialId && !item.found
-                            ? "1px solid #ef4444"
-                            : "1px solid #d1d5db",
-                      }}
-                      value={item.serialId}
-                      onChange={(e) =>
-                        handleReleaseItemChange(index, "serialId", e.target.value)
-                      }
-                      placeholder="Enter Serial ID"
-                    />
+                      <input
+                        type="text"
+                        className="serial-input"
+                        style={{
+                          ...styles.fieldInput,
+                          paddingRight: "30px",
+                          border: item.found
+                            ? "1px solid #0ea5e9"
+                            : item.serialId && !item.found
+                              ? "1px solid #ef4444"
+                              : "1px solid #d1d5db",
+                        }}
+                        value={item.serialId}
+                        onChange={(e) =>
+                          handleReleaseItemChange(index, "serialId", e.target.value)
+                        }
+                        onPaste={(e) => {
+                          // Handle paste events (some barcode scanners simulate paste)
+                          e.preventDefault();
+                          const pastedText = e.clipboardData.getData('text').trim();
+                          handleReleaseItemChange(index, "serialId", pastedText);
+                        }}
+                        onKeyDown={(e) => {
+                          // Handle Enter key to force immediate search
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (window.searchTimeouts && window.searchTimeouts[index]) {
+                              clearTimeout(window.searchTimeouts[index]);
+                            }
+                            // Trigger immediate search
+                            setTimeout(() => {
+                              const currentValue = e.target.value.trim();
+                              if (currentValue) {
+                                handleReleaseItemChange(index, "serialId", currentValue);
+                              }
+                            }, 0);
+                          }
+                        }}
+                        placeholder="Enter Serial ID or scan barcode"
+                        autoComplete="off"
+                        spellCheck="false"
+                      />
                   </>
                       {/* Status Indicator */}
                       <div
