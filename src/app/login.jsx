@@ -4,10 +4,19 @@ import { useNavigate } from "react-router-dom";
 const Login = () => {
   const navigate = useNavigate();
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [modalInfo, setModalInfo] = useState({
+    show: false,
+    type: "", // 'success' or 'error'
+    title: "",
+    message: "",
+  });
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
+    setLoading(true);
 
     const formData = new FormData(e.target);
     const loginData = {
@@ -16,18 +25,128 @@ const Login = () => {
     };
 
     try {
-      // Simulate login API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const res = await fetch("http://localhost:5000/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(loginData),
+      });
 
-      // In a real app, replace this with API call or Electron IPC
-      navigate("/dashboard");
+      const data = await res.json();
+
+      if (data.success) {
+        // Store user data in localStorage
+        localStorage.setItem('currentUser', JSON.stringify(data.user));
+
+        setModalInfo({
+          show: true,
+          type: "success",
+          title: "Login Successful!",
+          message: "You'll be directed shortly...",
+        });
+        setTimeout(() => {
+          navigate("/dashboard");
+        }, 2000);
+      } else {
+        setModalInfo({
+          show: true,
+          type: "error",
+          title: "Login Error",
+          message: "Incorrect Email Address/Password. If issue persists, proceed to Forgot Password or contact System Developer.",
+        });
+      }
     } catch (err) {
-      setError("Login failed. Please check your credentials and try again.");
+      setModalInfo({
+        show: true,
+        type: "error",
+        title: "Login Error",
+        message: "Could not connect to the server. Please try again later.",
+      });
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const closeModal = () => {
+    setModalInfo({ ...modalInfo, show: false });
+  };
+
+  const styles = {
+    modalOverlay: {
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 1000,
+    },
+    modalContent: {
+      backgroundColor: 'white',
+      padding: '20px',
+      borderRadius: '8px',
+      textAlign: 'center',
+      boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+      width: '90%',
+      maxWidth: '400px',
+    },
+    modalHeader: {
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      marginBottom: '15px',
+    },
+    modalIcon: {
+      fontSize: '48px',
+    },
+    modalTitle: {
+      fontSize: '24px',
+      fontWeight: 'bold',
+      color: '#333',
+      margin: '10px 0 0 0',
+    },
+    modalMessage: {
+      fontSize: '16px',
+      color: '#666',
+      marginBottom: '20px',
+    },
+    modalButton: {
+      backgroundColor: '#165c3c',
+      color: 'white',
+      border: 'none',
+      padding: '10px 20px',
+      borderRadius: '5px',
+      cursor: 'pointer',
+      fontSize: '16px',
+    },
   };
 
   return (
     <>
+      {modalInfo.show && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent}>
+            <div style={styles.modalHeader}>
+              <span style={styles.modalIcon}>
+                <img 
+                  src={modalInfo.type === "success" ? "../src/assets/success.png" : "../src/assets/error-.png"} 
+                  alt={modalInfo.type} 
+                  style={{ width: '60px', height: '60px' }} 
+                />
+              </span>
+              <h2 style={styles.modalTitle}>{modalInfo.title}</h2>
+            </div>
+            <p style={styles.modalMessage}>{modalInfo.message}</p>
+            {modalInfo.type === "error" && (
+              <button onClick={closeModal} style={styles.modalButton}>
+                Close
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       <style>{`
         * {
           margin: 0;
@@ -185,6 +304,36 @@ const Login = () => {
           border-color: #15803d;
         }
 
+        .password-input-container {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+
+        .password-input-container input {
+          padding-right: 40px;
+        }
+
+        .password-toggle {
+          position: absolute;
+          right: 10px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: #666;
+          font-size: 16px;
+          padding: 0;
+          width: 20px;
+          height: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .password-toggle:hover {
+          color: #333;
+        }
+
         .btn {
           width: 100%;
           padding: 14px;
@@ -340,12 +489,21 @@ const Login = () => {
 
                 <div className="form-group">
                   <label htmlFor="password">Password</label>
-                  <input
-                    type="password"
-                    id="password"
-                    name="password"
-                    required
-                  />
+                  <div className="password-input-container">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      id="password"
+                      name="password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      <i className={showPassword ? "fa-solid fa-eye-slash" : "fa-solid fa-eye"}></i>
+                    </button>
+                  </div>
                 </div>
 
                 <button type="submit" className="btn">

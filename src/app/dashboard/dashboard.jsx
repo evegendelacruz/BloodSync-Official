@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Calendar, Mail, Bell, User } from "lucide-react";
 import SidePanel from "../../components/SidePanel";
 
@@ -6,7 +7,6 @@ import MailComponent from "./(tabs)/mail";
 import CalendarComponent from "./(tabs)/calendar";
 import NotificationComponent from "./(tabs)/notification";
 import ProfileComponent from "././(tabs)/profile/profile";
-import Login from "../login";
 import Plasma from "./blood_stock/plasma";
 import Platelet from "./blood_stock/platelet";
 import RedBloodCell from "./blood_stock/rbc";
@@ -677,14 +677,32 @@ const LogoutDialog = ({ isOpen, onConfirm, onCancel }) => {
 
 // Main Dashboard Component
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(true);
   const [activeScreen, setActiveScreen] = useState("dashboard");
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [isCalendarDropdownOpen, setIsCalendarDropdownOpen] = useState(false);
   const [isMailDropdownOpen, setIsMailDropdownOpen] = useState(false);
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false);
-  const [isLoggedOut, setIsLoggedOut] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  // Load user data from localStorage on component mount
+  useEffect(() => {
+    const userData = localStorage.getItem('currentUser');
+    if (userData) {
+      try {
+        setCurrentUser(JSON.parse(userData));
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+        // If user data is corrupted, redirect to login
+        navigate('/login');
+      }
+    } else {
+      // No user data found, redirect to login
+      navigate('/login');
+    }
+  }, [navigate]);
 
   const toggleSidePanel = () => {
     setIsSidePanelOpen(!isSidePanelOpen);
@@ -742,18 +760,15 @@ const Dashboard = () => {
 
   const handleLogoutConfirm = () => {
     setShowLogoutDialog(false);
-    setIsLoggedOut(true);
+    // Clear user session data from localStorage
+    localStorage.removeItem('currentUser');
     console.log("Logging out...");
+    navigate("/login");
   };
 
   const handleLogoutCancel = () => {
     setShowLogoutDialog(false);
   };
-
-  // Show login screen if logged out
-  if (isLoggedOut) {
-    return <Login />;
-  }
 
   const renderActiveScreen = () => {
     switch (activeScreen) {
@@ -989,7 +1004,7 @@ const Dashboard = () => {
 
               {/* User Profile Section with Dropdown */}
               <div className="user-section relative">
-                <span className="user-name">Alaiza Rose Olores</span>
+                <span className="user-name">{currentUser?.fullName || 'Loading...'}</span>
                 <div
                   className={`user-avatar cursor-pointer ${activeScreen === "profile" ? "user-avatar-active" : ""}`}
                   onClick={toggleProfileDropdown}

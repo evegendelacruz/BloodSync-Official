@@ -4,12 +4,14 @@ import Splashscreen from "./splashscreen";
 import Login from "./login";
 import Signup from "./signup";
 import ForgotPassword from "./forgot_password";
+import ResetPassword from "./reset-password";
 import Dashboard from "./dashboard/dashboard";
 import Portal from "./portal";
 import LoginOrg from "./organization/login";
 import SignUpOrg from "./organization/signup";
 import ForgotPasswordOrg from "./organization/forgot_password";
 import DonorRecordOrg from "./organization/dashboard/donor_record";
+import Activate from "./activate";
 
 const App = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -58,8 +60,10 @@ const App = () => {
         } 
       />
       <Route path="login" element={<Login />} />
+      <Route path="activate" element={<Activate />} />
       <Route path="signup" element={<Signup />} />
       <Route path="forgot-password" element={<ForgotPassword />} />
+      <Route path="reset-password" element={<ResetPassword />} />
       <Route path="dashboard" element={<Dashboard />} />
       <Route path="login-org" element={<LoginOrg />} />
       <Route path="signup-org" element={<SignUpOrg />} />
