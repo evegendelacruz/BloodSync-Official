@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account Activation</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #EDF4E6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: #fff;
+      padding: 40px 32px;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    h2 {
+      color: #165c3c;
+      margin-bottom: 16px;
+    }
+    .success {
+      color: #10b981;
+      font-size: 18px;
+      margin-top: 16px;
+    }
+    .error {
+      color: #ef4444;
+      font-size: 18px;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Account Activation</h2>
+    <div class="error" style="color:#ef4444;font-size:18px;margin-top:16px;">This page is no longer used.<br>Please use <b>/activate?token=...</b> in the app.</div>
+  </div>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    const messageDiv = document.getElementById('message');
+    const actionsDiv = document.getElementById('actions');
+    const acceptBtn = document.getElementById('acceptBtn');
+    const declineBtn = document.getElementById('declineBtn');
+
+    if (!token) {
+      messageDiv.textContent = 'Activation token is missing.';
+      messageDiv.className = 'error';
+      actionsDiv.style.display = 'none';
+    }
+
+    acceptBtn.onclick = function() {
+      acceptBtn.disabled = true;
+      declineBtn.disabled = true;
+      fetch('/api/activate-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          messageDiv.textContent = 'The New User is Now Activated.';
+          messageDiv.className = 'success';
+        } else {
+          messageDiv.textContent = data.message || 'Activation failed.';
+          messageDiv.className = 'error';
+        }
+        actionsDiv.style.display = 'none';
+      })
+      .catch(() => {
+        messageDiv.textContent = 'Activation failed. Please try again later.';
+        messageDiv.className = 'error';
+        actionsDiv.style.display = 'none';
+      });
+    };
+
+    declineBtn.onclick = function() {
+      acceptBtn.disabled = true;
+      declineBtn.disabled = true;
+      fetch('/api/decline-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          messageDiv.textContent = 'New User Approval has been cancelled.';
+          messageDiv.className = 'error';
+        } else {
+          messageDiv.textContent = data.message || 'Decline failed.';
+          messageDiv.className = 'error';
+        }
+        actionsDiv.style.display = 'none';
+      })
+      .catch(() => {
+        messageDiv.textContent = 'Decline failed. Please try again later.';
+        messageDiv.className = 'error';
+        actionsDiv.style.display = 'none';
+      });
+    };
+  </script>
+</body>
+</html>

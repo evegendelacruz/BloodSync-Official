@@ -6,4 +6,9 @@ export default defineConfig({
       external: ['pg'], // keep native pg driver external
     },
   },
+  server: {
+    proxy: {
+      '/api': 'http://localhost:5000'
+    }
+  }
 })
