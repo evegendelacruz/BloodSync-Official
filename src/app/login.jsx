@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 const Login = () => {
@@ -12,6 +12,23 @@ const Login = () => {
     title: "",
     message: "",
   });
+
+  useEffect(() => {
+    // Suppress DevTools autofill warnings
+    const originalError = console.error;
+    console.error = (...args) => {
+      if (typeof args[0] === 'string' &&
+          (args[0].includes('Autofill.enable') ||
+           args[0].includes('Autofill.setAddresses'))) {
+        return;
+      }
+      originalError.apply(console, args);
+    };
+
+    return () => {
+      console.error = originalError;
+    };
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -484,7 +501,13 @@ const Login = () => {
               <form onSubmit={handleLogin}>
                 <div className="form-group">
                   <label htmlFor="email">Email Address</label>
-                  <input type="email" id="email" name="email" required />
+                  <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    autoComplete="email"
+                    required
+                  />
                 </div>
 
                 <div className="form-group">
@@ -494,6 +517,7 @@ const Login = () => {
                       type={showPassword ? "text" : "password"}
                       id="password"
                       name="password"
+                      autoComplete="current-password"
                       required
                     />
                     <button
