@@ -333,9 +333,9 @@ const SignUpOrg = () => {
                 <label htmlFor="role">Role:</label>
                 <select id="role" name="role" required>
                   <option value="">Select a role...</option>
-                  <option value="admin">Admin</option>
-                  <option value="doctor">Doctor</option>
-                  <option value="medical-technologist">Medical Technologist</option>
+                  <option value="admin">Barangay</option>
+                  <option value="doctor">Local Government Unit</option>
+                  <option value="medical-technologist">Non-Profit Organization</option>
                 </select>
               </div>
               <div className="form-group">

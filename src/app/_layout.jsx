@@ -6,10 +6,10 @@ import Signup from "./signup";
 import ForgotPassword from "./forgot_password";
 import Dashboard from "./dashboard/dashboard";
 import Portal from "./portal";
-import LoginOrg from "./organization/login";
-import SignUpOrg from "./organization/signup";
+import LoginOrg from "./organization/login_org";
+import SignUpOrg from "./organization/signup_org";
 import ForgotPasswordOrg from "./organization/forgot_password";
-import DonorRecordOrg from "./organization/dashboard/donor_record";
+import DonorRecordOrg from "./organization/dashboard/donor_record_org";
 
 const App = () => {
   const [isLoading, setIsLoading] = useState(true);
