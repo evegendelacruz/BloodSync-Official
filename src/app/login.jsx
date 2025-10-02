@@ -36,47 +36,36 @@ const Login = () => {
     setLoading(true);
 
     const formData = new FormData(e.target);
-    const loginData = {
-      email: formData.get("email"),
-      password: formData.get("password"),
-    };
+    const email = formData.get("email");
+    const password = formData.get("password");
 
     try {
-      const res = await fetch("http://localhost:5000/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(loginData),
+      // Use IPC instead of fetch
+      const user = await window.electronAPI.loginUser(email, password);
+
+      // Store user data in localStorage
+      localStorage.setItem('currentUser', JSON.stringify({
+        userId: user.userId,
+        email: user.email,
+        role: user.role
+      }));
+
+      setModalInfo({
+        show: true,
+        type: "success",
+        title: "Login Successful!",
+        message: "You'll be directed shortly...",
       });
-
-      const data = await res.json();
-
-      if (data.success) {
-        // Store user data in localStorage
-        localStorage.setItem('currentUser', JSON.stringify(data.user));
-
-        setModalInfo({
-          show: true,
-          type: "success",
-          title: "Login Successful!",
-          message: "You'll be directed shortly...",
-        });
-        setTimeout(() => {
-          navigate("/dashboard");
-        }, 2000);
-      } else {
-        setModalInfo({
-          show: true,
-          type: "error",
-          title: "Login Error",
-          message: "Incorrect Email Address/Password. If issue persists, proceed to Forgot Password or contact System Developer.",
-        });
-      }
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 2000);
     } catch (err) {
+      console.error('Login error:', err);
       setModalInfo({
         show: true,
         type: "error",
         title: "Login Error",
-        message: "Could not connect to the server. Please try again later.",
+        message: err.message || "Incorrect Email Address/Password. If issue persists, proceed to Forgot Password or contact System Developer.",
       });
     } finally {
       setLoading(false);

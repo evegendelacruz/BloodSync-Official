@@ -234,6 +234,52 @@ getPlasmaStockBySerialId: async (serialId) => {
     throw error;
   }
 },
+
+  // ========== USER AUTHENTICATION METHODS ==========
+  registerUser: async (userData) => {
+    try {
+      return await ipcRenderer.invoke('db:registerUser', userData);
+    } catch (error) {
+      console.error('Preload Error - registerUser:', error);
+      throw error;
+    }
+  },
+
+  loginUser: async (email, password) => {
+    try {
+      return await ipcRenderer.invoke('db:loginUser', email, password);
+    } catch (error) {
+      console.error('Preload Error - loginUser:', error);
+      throw error;
+    }
+  },
+
+  generatePasswordResetToken: async (email) => {
+    try {
+      return await ipcRenderer.invoke('db:generatePasswordResetToken', email);
+    } catch (error) {
+      console.error('Preload Error - generatePasswordResetToken:', error);
+      throw error;
+    }
+  },
+
+  resetPassword: async (email, resetToken, newPassword) => {
+    try {
+      return await ipcRenderer.invoke('db:resetPassword', email, resetToken, newPassword);
+    } catch (error) {
+      console.error('Preload Error - resetPassword:', error);
+      throw error;
+    }
+  },
+
+  activateUserByToken: async (token) => {
+    try {
+      return await ipcRenderer.invoke('db:activateUserByToken', token);
+    } catch (error) {
+      console.error('Preload Error - activateUserByToken:', error);
+      throw error;
+    }
+  },
 });
 
 

@@ -155,25 +155,19 @@ const Signup = () => {
 
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:5000/api/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          full_name: form.full_name,
-          role: form.role,
-          email: form.email,
-          password: form.password
-        })
+      // Use IPC instead of fetch
+      await window.electronAPI.registerUser({
+        full_name: form.full_name,
+        role: form.role,
+        email: form.email,
+        password: form.password
       });
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || "Registration failed");
-      } else {
-        setShowSuccessModal(true);
-        setForm({ full_name: "", role: "", email: "", password: "", confirmPassword: "" });
-      }
+
+      setShowSuccessModal(true);
+      setForm({ full_name: "", role: "", email: "", password: "", confirmPassword: "" });
     } catch (err) {
-      setError("Network error. Please try again later.");
+      console.error('Registration error:', err);
+      setError(err.message || "Registration failed. Please try again.");
     }
     setLoading(false);
   };

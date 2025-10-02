@@ -16,30 +16,44 @@ const Activate = () => {
       setStatus("error");
       return;
     }
-    fetch("http://localhost:5000/api/activate-user", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token })
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
+
+    // Check if running in Electron or browser
+    const activateUser = async () => {
+      try {
+        let success = false;
+
+        // Try Electron IPC first (if available)
+        if (window.electronAPI && window.electronAPI.activateUserByToken) {
+          success = await window.electronAPI.activateUserByToken(token);
+        } else {
+          // Fallback to HTTP API for web browser
+          const response = await fetch(`http://localhost:3001/api/activate?token=${token}`, {
+            method: "GET"
+          });
+          const data = await response.json();
+          success = data.success;
+        }
+
+        if (success) {
           setMessage("New User Registered Successfully!");
           setStatus("success");
           // Store activation status and token for registration page/modal
           localStorage.setItem('activationStatus', 'success');
           localStorage.setItem('activationToken', token);
         } else {
-          setMessage(data.message || "Activation failed.");
+          setMessage("Invalid or expired activation token.");
           setStatus("error");
           localStorage.setItem('activationStatus', 'error');
         }
-      })
-      .catch(() => {
+      } catch (error) {
+        console.error('Activation error:', error);
         setMessage("Activation failed. Please try again later.");
         setStatus("error");
         localStorage.setItem('activationStatus', 'error');
-      });
+      }
+    };
+
+    activateUser();
   }, [location]);
 
   return (

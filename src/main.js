@@ -274,6 +274,52 @@ ipcMain.handle("db:getPlasmaStockBySerialId", async (_event, serialId) => {
     throw error;
   }
 });
+
+  // ========== USER AUTHENTICATION IPC HANDLERS ==========
+  ipcMain.handle("db:registerUser", async (_event, userData) => {
+    try {
+      return await dbService.registerUser(userData);
+    } catch (error) {
+      console.error("IPC Error - registerUser:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:loginUser", async (_event, email, password) => {
+    try {
+      return await dbService.loginUser(email, password);
+    } catch (error) {
+      console.error("IPC Error - loginUser:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:generatePasswordResetToken", async (_event, email) => {
+    try {
+      return await dbService.generatePasswordResetToken(email);
+    } catch (error) {
+      console.error("IPC Error - generatePasswordResetToken:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:resetPassword", async (_event, email, resetToken, newPassword) => {
+    try {
+      return await dbService.resetPassword(email, resetToken, newPassword);
+    } catch (error) {
+      console.error("IPC Error - resetPassword:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:activateUserByToken", async (_event, token) => {
+    try {
+      return await dbService.activateUserByToken(token);
+    } catch (error) {
+      console.error("IPC Error - activateUserByToken:", error);
+      throw error;
+    }
+  });
 };
 
 // Electron app lifecycle

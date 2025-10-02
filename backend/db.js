@@ -2,6 +2,7 @@ const { Pool } = require('pg');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 // Database connection configuration
 const pool = new Pool({
@@ -214,7 +215,8 @@ const dbService = {
         [full_name, role, email, password_hash, activation_token]
       );
 
-      const activationLink = `http://localhost:5173/activate?token=${activation_token}`;
+      // For Electron app, just send the token - user will need to paste it or we can use a custom protocol
+      const activationLink = `Activation Token: ${activation_token}\n\nTo activate this user, paste this token in the BloodSync application activation page, or click: http://localhost:5173/activate?token=${activation_token}`;
       await sendSuperAdminApprovalEmail(full_name, email, activationLink);
 
       return { userId: insert.rows[0].user_id, activationToken: activation_token };

@@ -139,21 +139,14 @@ const ResetPassword = () => {
     setLoading(true);
 
     try {
-      const response = await fetch('http://localhost:5000/api/reset-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: formData.email,
-          resetToken: formData.recoveryCode,
-          newPassword: formData.newPassword,
-        }),
-      });
+      // Use IPC instead of fetch
+      const data = await window.electronAPI.resetPassword(
+        formData.email,
+        formData.recoveryCode,
+        formData.newPassword
+      );
 
-      const data = await response.json();
-
-      if (response.ok && data.success) {
+      if (data.success) {
         setModalInfo({
           show: true,
           type: "success",
