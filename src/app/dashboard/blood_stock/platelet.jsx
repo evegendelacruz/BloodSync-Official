@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 const Platelet = () => {
   const [bloodData, setBloodData] = useState([]);
@@ -61,43 +61,47 @@ const Platelet = () => {
       }
     }
 
-    loadBloodData();
+   loadBloodData();
   }, []);
 
-    // Cleanup function to clear timeouts when component unmounts
+    // At the top of your component, add a ref to track this component's timeouts
+    const searchTimeoutsRef = useRef({});
+
+    // Replace the cleanup useEffect with this:
     useEffect(() => {
       return () => {
-        if (window.searchTimeouts) {
-          Object.values(window.searchTimeouts).forEach(timeout => {
-            clearTimeout(timeout);
-          });
-          window.searchTimeouts = {};
-        }
+        // Only clear THIS component's timeouts
+        Object.values(searchTimeoutsRef.current).forEach((timeout) => {
+          clearTimeout(timeout);
+        });
+        searchTimeoutsRef.current = {};
       };
     }, []);
 
-  const loadBloodData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
 
-      // Check if electronAPI is available
-      if (!window.electronAPI) {
-        throw new Error(
-          "Electron API not available. Make sure you are running this in an Electron environment and that preload.js is properly configured."
-        );
+    // Add this function after your state declarations and before the first useEffect
+    const loadBloodData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Check if electronAPI is available
+        if (!window.electronAPI) {
+          throw new Error(
+            "Electron API not available. Make sure you are running this in an Electron environment and that preload.js is properly configured."
+          );
+        }
+
+        // Get platelet data specifically
+        const data = await window.electronAPI.getPlateletStock();
+        setBloodData(data);
+      } catch (err) {
+        console.error("Error loading platelet data:", err);
+        setError(`Failed to load platelet data: ${err.message}`);
+      } finally {
+        setLoading(false);
       }
-
-      // Get platelet data specifically
-      const data = await window.electronAPI.getPlateletStock();
-      setBloodData(data);
-    } catch (err) {
-      console.error("Error loading platelet data:", err);
-      setError(`Failed to load platelet data: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
   // Handle search
   const handleSearch = async (e) => {
@@ -305,13 +309,8 @@ const Platelet = () => {
         );
 
         // Clear any existing timeout for this index
-        if (window.searchTimeouts && window.searchTimeouts[index]) {
-          clearTimeout(window.searchTimeouts[index]);
-        }
-
-        // Initialize timeouts object if it doesn't exist
-        if (!window.searchTimeouts) {
-          window.searchTimeouts = {};
+        if (searchTimeoutsRef.current[index]) {
+          clearTimeout(searchTimeoutsRef.current[index]);
         }
 
         // If value is empty, don't search
@@ -321,13 +320,14 @@ const Platelet = () => {
         }
 
         // Set a timeout to search after user stops typing (or after barcode scanner finishes)
-        window.searchTimeouts[index] = setTimeout(async () => {
+        searchTimeoutsRef.current[index] = setTimeout(async () => {
           try {
             if (!window.electronAPI) {
               setError("Electron API not available");
               return;
             }
 
+            // Use the correct plasma-specific method
             const stockData = await window.electronAPI.getPlateletStockBySerialId(value.trim());
 
             if (stockData && !Array.isArray(stockData)) {
@@ -390,11 +390,11 @@ const Platelet = () => {
                     : item
                 )
               );
-              setError(`No blood stock found with serial ID: ${value.trim()}`);
+              setError(`No platelet stock found with serial ID: ${value.trim()}`);
             }
           } catch (err) {
-            console.error("Error fetching blood stock by serial ID:", err);
-            setError("Failed to fetch blood stock data");
+            console.error("Error fetching platelet stock by serial ID:", err);
+            setError("Failed to fetch platelet stock data");
             setSelectedItems((prev) =>
               prev.map((item, i) =>
                 i === index ? { ...item, found: false } : item

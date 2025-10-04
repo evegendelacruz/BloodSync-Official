@@ -234,6 +234,53 @@ getPlasmaStockBySerialId: async (serialId) => {
     throw error;
   }
 },
+
+ // ========== DONOR RECORD METHODS ==========
+ getAllDonorRecords: async () => {
+  return await ipcRenderer.invoke('db:getAllDonorRecords');
+},
+addDonorRecord: async (donorData) => {
+  return await ipcRenderer.invoke('db:addDonorRecord', donorData);
+},
+updateDonorRecord: async (id, donorData) => {
+  return await ipcRenderer.invoke('db:updateDonorRecord', id, donorData);
+},
+deleteDonorRecords: async (ids) => {
+  return await ipcRenderer.invoke('db:deleteDonorRecords', ids);
+},
+searchDonorRecords: async (searchTerm) => {
+  return await ipcRenderer.invoke('db:searchDonorRecords', searchTerm);
+},
+generateNextDonorId: async () => {
+  return await ipcRenderer.invoke('db:generateNextDonorId');
+},
+// ========== RESTORE BLOOD STOCK METHODS ==========
+restoreBloodStock: async (serialIds) => {
+  try {
+    return await ipcRenderer.invoke('db:restoreBloodStock', serialIds);
+  } catch (error) {
+    console.error('Preload Error - restoreBloodStock:', error);
+    throw error;
+  }
+},
+
+restorePlasmaStock: async (serialIds) => {
+  try {
+    return await ipcRenderer.invoke('db:restorePlasmaStock', serialIds);
+  } catch (error) {
+    console.error('Preload Error - restorePlasmaStock:', error);
+    throw error;
+  }
+},
+
+restorePlateletStock: async (serialIds) => {
+  try {
+    return await ipcRenderer.invoke('db:restorePlateletStock', serialIds);
+  } catch (error) {
+    console.error('Preload Error - restorePlateletStock:', error);
+    throw error;
+  }
+},
 });
 
 

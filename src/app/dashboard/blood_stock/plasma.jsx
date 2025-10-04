@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 const Plasma = () => {
   const [plasmaData, setPlasmaData] = useState([]);
@@ -65,17 +65,19 @@ const Plasma = () => {
     loadPlasmaData();
   }, []);
 
-  // Cleanup function to clear timeouts when component unmounts
-  useEffect(() => {
-    return () => {
-      if (window.searchTimeouts) {
-        Object.values(window.searchTimeouts).forEach(timeout => {
+  // At the top of your component, add a ref to track this component's timeouts
+const searchTimeoutsRef = useRef({});
+
+    // Replace the cleanup useEffect with this:
+    useEffect(() => {
+      return () => {
+        // Only clear THIS component's timeouts
+        Object.values(searchTimeoutsRef.current).forEach((timeout) => {
           clearTimeout(timeout);
         });
-        window.searchTimeouts = {};
-      }
-    };
-  }, []);
+        searchTimeoutsRef.current = {};
+      };
+    }, []);
 
   const loadPlasmaData = async () => {
     try {
@@ -291,8 +293,8 @@ const Plasma = () => {
     ]);
   };
 
-     // Updated handleReleaseItemChange function with debounced search
-     const handleReleaseItemChange = async (index, field, value) => {
+    // Updated handleReleaseItemChange function with debounced search
+    const handleReleaseItemChange = async (index, field, value) => {
       if (field === "serialId") {
         // Always update the UI immediately
         setSelectedItems((prev) =>
@@ -302,34 +304,29 @@ const Plasma = () => {
               : item
           )
         );
-    
+
         // Clear any existing timeout for this index
-        if (window.searchTimeouts && window.searchTimeouts[index]) {
-          clearTimeout(window.searchTimeouts[index]);
+        if (searchTimeoutsRef.current[index]) {
+          clearTimeout(searchTimeoutsRef.current[index]);
         }
-    
-        // Initialize timeouts object if it doesn't exist
-        if (!window.searchTimeouts) {
-          window.searchTimeouts = {};
-        }
-    
+
         // If value is empty, don't search
         if (!value || value.trim() === "") {
           setError(null);
           return;
         }
-    
+
         // Set a timeout to search after user stops typing (or after barcode scanner finishes)
-        window.searchTimeouts[index] = setTimeout(async () => {
+        searchTimeoutsRef.current[index] = setTimeout(async () => {
           try {
             if (!window.electronAPI) {
               setError("Electron API not available");
               return;
             }
-    
-            // FIXED: Use the correct plasma-specific method
+
+            // Use the correct plasma-specific method
             const stockData = await window.electronAPI.getPlasmaStockBySerialId(value.trim());
-    
+
             if (stockData && !Array.isArray(stockData)) {
               // Single exact match found
               setSelectedItems((prev) =>
@@ -411,7 +408,6 @@ const Plasma = () => {
         );
       }
     };
-
   const addReleaseItem = () => {
     setSelectedItems((prev) => [
       ...prev,

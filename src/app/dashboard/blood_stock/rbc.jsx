@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 const RedBloodCell = () => {
   const [bloodData, setBloodData] = useState([]);
@@ -52,38 +52,40 @@ const RedBloodCell = () => {
     loadBloodData();
   }, []);
 
-  // Cleanup function to clear timeouts when component unmounts
+    // At the top of your component, add a ref to track this component's timeouts
+  const searchTimeoutsRef = useRef({});
+
+  // Replace the cleanup useEffect with this:
   useEffect(() => {
     return () => {
-      if (window.searchTimeouts) {
-        Object.values(window.searchTimeouts).forEach((timeout) => {
-          clearTimeout(timeout);
-        });
-        window.searchTimeouts = {};
-      }
+      // Only clear THIS component's timeouts
+      Object.values(searchTimeoutsRef.current).forEach((timeout) => {
+        clearTimeout(timeout);
+      });
+      searchTimeoutsRef.current = {};
     };
   }, []);
 
-  const loadBloodData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+    const loadBloodData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
 
-      if (!window.electronAPI) {
-        throw new Error(
-          "Electron API not available. Make sure you are running this in an Electron environment and that preload.js is properly configured."
-        );
+        if (!window.electronAPI) {
+          throw new Error(
+            "Electron API not available. Make sure you are running this in an Electron environment and that preload.js is properly configured."
+          );
+        }
+
+        const data = await window.electronAPI.getAllBloodStock();
+        setBloodData(data);
+      } catch (err) {
+        console.error("Error loading blood data:", err);
+        setError(`Failed to load blood data: ${err.message}`);
+      } finally {
+        setLoading(false);
       }
-
-      const data = await window.electronAPI.getAllBloodStock();
-      setBloodData(data);
-    } catch (err) {
-      console.error("Error loading blood data:", err);
-      setError(`Failed to load blood data: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
   // Handle search
   const handleSearch = async (e) => {
@@ -266,124 +268,120 @@ const RedBloodCell = () => {
   };
 
   // Updated handleReleaseItemChange function with debounced search
-  const handleReleaseItemChange = async (index, field, value) => {
-    if (field === "serialId") {
-      // Always update the UI immediately
-      setSelectedItems((prev) =>
-        prev.map((item, i) =>
-          i === index ? { ...item, [field]: value, found: false } : item
-        )
-      );
+    const handleReleaseItemChange = async (index, field, value) => {
+      if (field === "serialId") {
+        // Always update the UI immediately
+        setSelectedItems((prev) =>
+          prev.map((item, i) =>
+            i === index 
+              ? { ...item, [field]: value, found: false }
+              : item
+          )
+        );
 
-      // Clear any existing timeout for this index
-      if (window.searchTimeouts && window.searchTimeouts[index]) {
-        clearTimeout(window.searchTimeouts[index]);
-      }
-
-      // Initialize timeouts object if it doesn't exist
-      if (!window.searchTimeouts) {
-        window.searchTimeouts = {};
-      }
-
-      // If value is empty, don't search
-      if (!value || value.trim() === "") {
-        setError(null);
-        return;
-      }
-
-      // Set a timeout to search after user stops typing (or after barcode scanner finishes)
-      window.searchTimeouts[index] = setTimeout(async () => {
-        try {
-          if (!window.electronAPI) {
-            setError("Electron API not available");
-            return;
-          }
-
-          const stockData = await window.electronAPI.getBloodStockBySerialId(
-            value.trim()
-          );
-
-          if (stockData && !Array.isArray(stockData)) {
-            // Single exact match found
-            setSelectedItems((prev) =>
-              prev.map((item, i) =>
-                i === index
-                  ? {
-                      ...item,
-                      serialId: value.trim(),
-                      bloodType: stockData.type,
-                      rhFactor: stockData.rhFactor,
-                      volume: stockData.volume,
-                      collection: stockData.collection,
-                      expiration: stockData.expiration,
-                      status: stockData.status,
-                      found: true,
-                    }
-                  : item
-              )
-            );
-            setError(null);
-          } else if (Array.isArray(stockData) && stockData.length > 0) {
-            // Multiple partial matches found, use first one
-            const firstMatch = stockData[0];
-            setSelectedItems((prev) =>
-              prev.map((item, i) =>
-                i === index
-                  ? {
-                      ...item,
-                      serialId: value.trim(),
-                      bloodType: firstMatch.type,
-                      rhFactor: firstMatch.rhFactor,
-                      volume: firstMatch.volume,
-                      collection: firstMatch.collection,
-                      expiration: firstMatch.expiration,
-                      status: firstMatch.status,
-                      found: true,
-                    }
-                  : item
-              )
-            );
-            setError(null);
-          } else {
-            // No match found
-            setSelectedItems((prev) =>
-              prev.map((item, i) =>
-                i === index
-                  ? {
-                      ...item,
-                      serialId: value.trim(),
-                      bloodType: "O",
-                      rhFactor: "+",
-                      volume: 100,
-                      collection: "",
-                      expiration: "",
-                      status: "Stored",
-                      found: false,
-                    }
-                  : item
-              )
-            );
-            setError(`No blood stock found with serial ID: ${value.trim()}`);
-          }
-        } catch (err) {
-          console.error("Error fetching blood stock by serial ID:", err);
-          setError("Failed to fetch blood stock data");
-          setSelectedItems((prev) =>
-            prev.map((item, i) =>
-              i === index ? { ...item, found: false } : item
-            )
-          );
+        // Clear any existing timeout for this index
+        if (searchTimeoutsRef.current[index]) {
+          clearTimeout(searchTimeoutsRef.current[index]);
         }
-      }, 300); // 300ms delay - should work well for both manual typing and barcode scanners
-    } else {
-      // Handle other field changes normally
-      setSelectedItems((prev) =>
-        prev.map((item, i) =>
-          i === index ? { ...item, [field]: value } : item
-        )
-      );
-    }
-  };
+
+        // If value is empty, don't search
+        if (!value || value.trim() === "") {
+          setError(null);
+          return;
+        }
+
+        // Set a timeout to search after user stops typing (or after barcode scanner finishes)
+        searchTimeoutsRef.current[index] = setTimeout(async () => {
+          try {
+            if (!window.electronAPI) {
+              setError("Electron API not available");
+              return;
+            }
+
+            // Use the correct plasma-specific method
+            const stockData = await window.electronAPI.getBloodStockBySerialId(value.trim());
+
+            if (stockData && !Array.isArray(stockData)) {
+              // Single exact match found
+              setSelectedItems((prev) =>
+                prev.map((item, i) =>
+                  i === index
+                    ? {
+                        ...item,
+                        serialId: value.trim(),
+                        bloodType: stockData.type,
+                        rhFactor: stockData.rhFactor,
+                        volume: stockData.volume,
+                        collection: stockData.collection,
+                        expiration: stockData.expiration,
+                        status: stockData.status,
+                        found: true,
+                      }
+                    : item
+                )
+              );
+              setError(null);
+            } else if (Array.isArray(stockData) && stockData.length > 0) {
+              // Multiple partial matches found, use first one
+              const firstMatch = stockData[0];
+              setSelectedItems((prev) =>
+                prev.map((item, i) =>
+                  i === index
+                    ? {
+                        ...item,
+                        serialId: value.trim(),
+                        bloodType: firstMatch.type,
+                        rhFactor: firstMatch.rhFactor,
+                        volume: firstMatch.volume,
+                        collection: firstMatch.collection,
+                        expiration: firstMatch.expiration,
+                        status: firstMatch.status,
+                        found: true,
+                      }
+                    : item
+                )
+              );
+              setError(null);
+            } else {
+              // No match found
+              setSelectedItems((prev) =>
+                prev.map((item, i) =>
+                  i === index
+                    ? {
+                        ...item,
+                        serialId: value.trim(),
+                        bloodType: "O",
+                        rhFactor: "+",
+                        volume: 100,
+                        collection: "",
+                        expiration: "",
+                        status: "Stored",
+                        found: false,
+                      }
+                    : item
+                )
+              );
+              setError(`No red blood cell stock found with serial ID: ${value.trim()}`);
+            }
+          } catch (err) {
+            console.error("Error fetching red blood cell stock by serial ID:", err);
+            setError("Failed to fetch red blood cell stock data");
+            setSelectedItems((prev) =>
+              prev.map((item, i) =>
+                i === index ? { ...item, found: false } : item
+              )
+            );
+          }
+        }, 300); // 300ms delay - should work well for both manual typing and barcode scanners
+      } else {
+        // Handle other field changes normally
+        setSelectedItems((prev) =>
+          prev.map((item, i) =>
+            i === index ? { ...item, [field]: value } : item
+          )
+        );
+      }
+    };
 
   const addReleaseItem = () => {
     setSelectedItems((prev) => [

@@ -169,35 +169,32 @@ const setupIpcHandlers = () => {
     }
   });
 
-  // Handler for getting platelet stock by serial ID (for release functionality)
-ipcMain.handle('db:getPlateletStockBySerialId', async (event, serialId) => {
-  try {
-    return await dbService.getPlateletStockBySerialId(serialId);
-  } catch (error) {
-    throw error;
-  }
-});
+  ipcMain.handle("db:getPlateletStockBySerialId", async (_event, serialId) => {
+    try {
+      return await dbService.getPlateletStockBySerialId(serialId);
+    } catch (error) {
+      console.error("IPC Error - getPlateletStockBySerialId:", error);
+      throw error;
+    }
+  });
 
-// Handler for releasing platelet stock
-ipcMain.handle('db:releasePlateletStock', async (event, releaseData) => {
-  try {
-    return await dbService.releasePlateletStock(releaseData);
-  } catch (error) {
-    console.error('Error in releasePlateletStock handler:', error);
-    throw error;
-  }
-});
+  ipcMain.handle("db:releasePlateletStock", async (_event, releaseData) => {
+    try {
+      return await dbService.releasePlateletStock(releaseData);
+    } catch (error) {
+      console.error("IPC Error - releasePlateletStock:", error);
+      throw error;
+    }
+  });
 
-// Handler for getting released platelet stock records
-ipcMain.handle('db:getReleasedPlateletStock', async (event) => {
-  try {
-    return await dbService.getReleasedPlateletStock();
-  } catch (error) {
-    console.error('Error in getReleasedPlateletStock handler:', error);
-    throw error;
-  }
-});
-
+  ipcMain.handle("db:getReleasedPlateletStock", async () => {
+    try {
+      return await dbService.getReleasedPlateletStock();
+    } catch (error) {
+      console.error("IPC Error - getReleasedPlateletStock:", error);
+      throw error;
+    }
+  });
 
   // ========== PLASMA IPC HANDLERS ==========
   ipcMain.handle("db:getPlasmaStock", async () => {
@@ -245,36 +242,117 @@ ipcMain.handle('db:getReleasedPlateletStock', async (event) => {
     }
   });
 
+  ipcMain.handle("db:releasePlasmaStock", async (_event, releaseData) => {
+    try {
+      const result = await dbService.releasePlasmaStock(releaseData);
+      return result;
+    } catch (error) {
+      console.error("IPC Error - releasePlasmaStock:", error);
+      throw error;
+    }
+  });
 
-// Add these to your existing PLASMA IPC HANDLERS section in main.js
-ipcMain.handle("db:releasePlasmaStock", async (_event, releaseData) => {
-  try {
-    const result = await dbService.releasePlasmaStock(releaseData);
-    return result;
-  } catch (error) {
-    console.error("IPC Error - releasePlasmaStock:", error);
-    throw error;
-  }
-});
+  ipcMain.handle("db:getReleasedPlasmaStock", async () => {
+    try {
+      return await dbService.getReleasedPlasmaStock();
+    } catch (error) {
+      console.error("IPC Error - getReleasedPlasmaStock:", error);
+      throw error;
+    }
+  });
 
-ipcMain.handle("db:getReleasedPlasmaStock", async () => {
-  try {
-    return await dbService.getReleasedPlasmaStock();
-  } catch (error) {
-    console.error("IPC Error - getReleasedPlasmaStock:", error);
-    throw error;
-  }
-});
+  ipcMain.handle("db:getPlasmaStockBySerialId", async (_event, serialId) => {
+    try {
+      return await dbService.getPlasmaStockBySerialId(serialId);
+    } catch (error) {
+      console.error("IPC Error - getPlasmaStockBySerialId:", error);
+      throw error;
+    }
+  });
 
-ipcMain.handle("db:getPlasmaStockBySerialId", async (_event, serialId) => {
-  try {
-    return await dbService.getPlasmaStockBySerialId(serialId);
-  } catch (error) {
-    console.error("IPC Error - getPlasmaStockBySerialId:", error);
-    throw error;
-  }
-});
-};
+  // ========== DONOR RECORD IPC HANDLERS ==========
+  ipcMain.handle("db:getAllDonorRecords", async () => {
+    try {
+      return await dbService.getAllDonorRecords();
+    } catch (error) {
+      console.error("IPC Error - getAllDonorRecords:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:addDonorRecord", async (_event, donorData) => {
+    try {
+      return await dbService.addDonorRecord(donorData);
+    } catch (error) {
+      console.error("IPC Error - addDonorRecord:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:updateDonorRecord", async (_event, id, donorData) => {
+    try {
+      return await dbService.updateDonorRecord(id, donorData);
+    } catch (error) {
+      console.error("IPC Error - updateDonorRecord:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:deleteDonorRecords", async (_event, ids) => {
+    try {
+      return await dbService.deleteDonorRecords(ids);
+    } catch (error) {
+      console.error("IPC Error - deleteDonorRecords:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:searchDonorRecords", async (_event, searchTerm) => {
+    try {
+      return await dbService.searchDonorRecords(searchTerm);
+    } catch (error) {
+      console.error("IPC Error - searchDonorRecords:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:generateNextDonorId", async () => {
+    try {
+      return await dbService.generateNextDonorId();
+    } catch (error) {
+      console.error("IPC Error - generateNextDonorId:", error);
+      throw error;
+    }
+  });
+
+    // ========== RESTORE BLOOD STOCK IPC HANDLERS ==========
+  ipcMain.handle("db:restoreBloodStock", async (_event, serialIds) => {
+    try {
+      return await dbService.restoreBloodStock(serialIds);
+    } catch (error) {
+      console.error("IPC Error - restoreBloodStock:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:restorePlasmaStock", async (_event, serialIds) => {
+    try {
+      return await dbService.restorePlasmaStock(serialIds);
+    } catch (error) {
+      console.error("IPC Error - restorePlasmaStock:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:restorePlateletStock", async (_event, serialIds) => {
+    try {
+      return await dbService.restorePlateletStock(serialIds);
+    } catch (error) {
+      console.error("IPC Error - restorePlateletStock:", error);
+      throw error;
+    }
+  });
+}; 
 
 // Electron app lifecycle
 if (started) app.quit();
