@@ -145,35 +145,35 @@ const dbService = {
     }
   },
 
-  // Add new red blood cell stock record
-  async addBloodStock(bloodData) {
-    try {
-      const query = `
-        INSERT INTO blood_stock (
-          bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
-          bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
-        RETURNING bs_id
-      `;
-      
-      const values = [
-        bloodData.serial_id,
-        bloodData.type,
-        bloodData.rhFactor,
-        parseInt(bloodData.volume),
-        new Date(bloodData.collection),
-        new Date(bloodData.expiration),
-        bloodData.status || 'Stored',
-        'Red Blood Cell'
-      ];
-      
-      const result = await pool.query(query, values);
-      return result.rows[0];
-    } catch (error) {
-      console.error('Error adding red blood cell stock:', error);
-      throw error;
-    }
-  },
+    // Add new red blood cell stock record
+    async addBloodStock(bloodData) {
+      try {
+        const query = `
+          INSERT INTO blood_stock (
+            bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
+            bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
+          RETURNING bs_id
+        `;
+        
+        const values = [
+          bloodData.serial_id,
+          bloodData.type,
+          bloodData.rhFactor,
+          parseInt(bloodData.volume),
+          new Date(bloodData.collection),
+          new Date(bloodData.expiration),
+          bloodData.status || 'Stored',
+          'Red Blood Cell'
+        ];
+        
+        const result = await pool.query(query, values);
+        return result.rows[0];
+      } catch (error) {
+        console.error('Error adding red blood cell stock:', error);
+        throw error;
+      }
+    },
 
   // Update red blood cell stock record
   async updateBloodStock(id, bloodData) {
@@ -505,35 +505,35 @@ async releasePlasmaStock(releaseData) {
     }
   },
 
-  // Add new platelet stock record
-  async addPlateletStock(plateletData) {
-    try {
-      const query = `
-        INSERT INTO blood_stock (
-          bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
-          bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
-        RETURNING bs_id
-      `;
+    // Add new platelet stock record
+    async addPlateletStock(plateletData) {
+      try {
+        const query = `
+          INSERT INTO blood_stock (
+            bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
+            bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
+          RETURNING bs_id
+        `;
+        
+        const values = [
+          plateletData.serial_id,
+          plateletData.type,
+          plateletData.rhFactor,
+          parseInt(plateletData.volume),
+          new Date(plateletData.collection),
+          new Date(plateletData.expiration),
+          plateletData.status || 'Stored',
+          'Platelet'
+        ];
       
-      const values = [
-        plateletData.serial_id,
-        plateletData.type,
-        plateletData.rhFactor,
-        parseInt(plateletData.volume),
-        new Date(plateletData.collection),
-        new Date(plateletData.expiration),
-        plateletData.status || 'Stored',
-        'Platelet'
-      ];
-     
-      const result = await pool.query(query, values);
-      return result.rows[0];
-    } catch (error) {
-      console.error('Error adding platelet stock:', error);
-      throw error;
-    }
-  },
+        const result = await pool.query(query, values);
+        return result.rows[0];
+      } catch (error) {
+        console.error('Error adding platelet stock:', error);
+        throw error;
+      }
+    },
 
   // Update platelet stock record
   async updatePlateletStock(id, plateletData) {
@@ -924,35 +924,35 @@ async getPlasmaStockBySerialId(serialId) {
   }
 },
 
-// Add new plasma stock record
-async addPlasmaStock(plasmaData) {
-  try {
-    const query = `
-      INSERT INTO blood_stock (
-        bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
-        bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
-      RETURNING bs_id
-    `;
-    
-    const values = [
-      plasmaData.serial_id,
-      plasmaData.type,
-      plasmaData.rhFactor,
-      parseInt(plasmaData.volume),
-      new Date(plasmaData.collection),
-      new Date(plasmaData.expiration),
-      plasmaData.status || 'Stored',
-      'Plasma'
-    ];
-    
-    const result = await pool.query(query, values);
-    return result.rows[0];
-  } catch (error) {
-    console.error('Error adding plasma stock:', error);
-    throw error;
-  }
-},
+    // Add new plasma stock record
+    async addPlasmaStock(plasmaData) {
+      try {
+        const query = `
+          INSERT INTO blood_stock (
+            bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
+            bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
+          RETURNING bs_id
+        `;
+        
+        const values = [
+          plasmaData.serial_id,
+          plasmaData.type,
+          plasmaData.rhFactor,
+          parseInt(plasmaData.volume),
+          new Date(plasmaData.collection),
+          new Date(plasmaData.expiration),
+          plasmaData.status || 'Stored',
+          'Plasma'
+        ];
+        
+        const result = await pool.query(query, values);
+        return result.rows[0];
+      } catch (error) {
+        console.error('Error adding plasma stock:', error);
+        throw error;
+      }
+    },
 
 // Update plasma stock record
 async updatePlasmaStock(id, plasmaData) {

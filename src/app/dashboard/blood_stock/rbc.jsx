@@ -1,14 +1,31 @@
 import React, { useState, useEffect, useRef } from "react";
+import Loader from "../../../components/Loader";
 
 const RedBloodCell = () => {
   const [bloodData, setBloodData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [releasing, setReleasing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showReleaseModal, setShowReleaseModal] = useState(false);
   const [showReleaseDetailsModal, setShowReleaseDetailsModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState({
+    title: "",
+    description: "",
+  });
   const [selectedItems, setSelectedItems] = useState([]);
+  const [editingItem, setEditingItem] = useState(null);
+  const [sortConfig, setSortConfig] = useState({
+    key: "created",
+    direction: "desc",
+  });
+  const [filterConfig, setFilterConfig] = useState({ field: "", value: "" });
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [stockItems, setStockItems] = useState([
     {
       id: 1,
@@ -34,13 +51,11 @@ const RedBloodCell = () => {
     releasedBy: "",
   });
 
-  // Load data from database on component mount
-  useEffect(() => {
-    console.log("window.electronAPI:", window.electronAPI);
-    console.log("typeof window.electronAPI:", typeof window.electronAPI);
+  const sortDropdownRef = useRef(null);
+  const filterDropdownRef = useRef(null);
 
+  useEffect(() => {
     if (window.electronAPI) {
-      console.log("electronAPI methods:", Object.keys(window.electronAPI));
       try {
         const testResult = window.electronAPI.test();
         console.log("API test result:", testResult);
@@ -48,17 +63,33 @@ const RedBloodCell = () => {
         console.error("API test failed:", err);
       }
     }
-
     loadBloodData();
   }, []);
 
-    // At the top of your component, add a ref to track this component's timeouts
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (
+        sortDropdownRef.current &&
+        !sortDropdownRef.current.contains(e.target)
+      ) {
+        setShowSortDropdown(false);
+      }
+      if (
+        filterDropdownRef.current &&
+        !filterDropdownRef.current.contains(e.target)
+      ) {
+        setShowFilterDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const searchTimeoutsRef = useRef({});
 
-  // Replace the cleanup useEffect with this:
   useEffect(() => {
     return () => {
-      // Only clear THIS component's timeouts
       Object.values(searchTimeoutsRef.current).forEach((timeout) => {
         clearTimeout(timeout);
       });
@@ -66,28 +97,27 @@ const RedBloodCell = () => {
     };
   }, []);
 
-    const loadBloodData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  const loadBloodData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        if (!window.electronAPI) {
-          throw new Error(
-            "Electron API not available. Make sure you are running this in an Electron environment and that preload.js is properly configured."
-          );
-        }
-
-        const data = await window.electronAPI.getAllBloodStock();
-        setBloodData(data);
-      } catch (err) {
-        console.error("Error loading blood data:", err);
-        setError(`Failed to load blood data: ${err.message}`);
-      } finally {
-        setLoading(false);
+      if (!window.electronAPI) {
+        throw new Error(
+          "Electron API not available. Make sure you are running this in an Electron environment."
+        );
       }
-    };
 
-  // Handle search
+      const data = await window.electronAPI.getAllBloodStock();
+      setBloodData(data);
+    } catch (err) {
+      console.error("Error loading blood data:", err);
+      setError(`Failed to load blood data: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSearch = async (e) => {
     const value = e.target.value;
     setSearchTerm(value);
@@ -119,9 +149,14 @@ const RedBloodCell = () => {
   };
 
   const toggleAllSelection = () => {
-    const allSelected = bloodData.every((item) => item.selected);
+    const allSelected = displayData.every((item) => item.selected);
     setBloodData((prevData) =>
-      prevData.map((item) => ({ ...item, selected: !allSelected }))
+      prevData.map((item) => {
+        if (displayData.find((d) => d.id === item.id)) {
+          return { ...item, selected: !allSelected };
+        }
+        return item;
+      })
     );
   };
 
@@ -154,6 +189,14 @@ const RedBloodCell = () => {
     );
   };
 
+  const handleEditItemChange = (field, value) => {
+    const updated = { ...editingItem, [field]: value };
+    if (field === "collection") {
+      updated.expiration = calculateExpiration(value);
+    }
+    setEditingItem(updated);
+  };
+
   const addNewRow = () => {
     const newId = Math.max(...stockItems.map((item) => item.id)) + 1;
     setStockItems((prev) => [
@@ -180,6 +223,7 @@ const RedBloodCell = () => {
   const handleSaveAllStock = async (e) => {
     e.preventDefault();
     try {
+      setSaving(true);
       if (!window.electronAPI) {
         setError("Electron API not available");
         return;
@@ -188,6 +232,7 @@ const RedBloodCell = () => {
       for (const item of stockItems) {
         if (!item.serial_id || !item.collection) {
           setError("Please fill in all required fields for all items");
+          setSaving(false);
           return;
         }
       }
@@ -220,9 +265,81 @@ const RedBloodCell = () => {
       ]);
       await loadBloodData();
       setError(null);
+
+      // Show success modal
+      setSuccessMessage({
+        title: "Stock Added Successfully!",
+        description:
+          "Blood units have been added to the inventory. Check the stock report for details.",
+      });
+      setShowSuccessModal(true);
     } catch (err) {
       console.error("Error adding blood stock:", err);
       setError(`Failed to add blood stock: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEditClick = () => {
+    const selected = bloodData.find((item) => item.selected);
+    if (selected) {
+      const formatDate = (date) => {
+        if (!date) return "";
+        const d = new Date(date);
+        const adjustedDate = new Date(
+          d.getTime() - d.getTimezoneOffset() * 60000
+        );
+        return adjustedDate.toISOString().split("T")[0];
+      };
+
+      const editItem = {
+        ...selected,
+        collection: formatDate(selected.collection),
+        expiration: formatDate(selected.expiration),
+      };
+
+      setEditingItem(editItem);
+      setShowEditModal(true);
+    }
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    try {
+      setSaving(true);
+      if (!window.electronAPI) {
+        setError("Electron API not available");
+        return;
+      }
+
+      if (!editingItem.serial_id || !editingItem.collection) {
+        setError("Please fill in all required fields");
+        setSaving(false);
+        return;
+      }
+
+      const stockData = {
+        serial_id: editingItem.serial_id,
+        type: editingItem.type,
+        rhFactor: editingItem.rhFactor,
+        volume: editingItem.volume,
+        collection: editingItem.collection,
+        expiration: editingItem.expiration,
+        status: editingItem.status,
+      };
+
+      await window.electronAPI.updateBloodStock(editingItem.id, stockData);
+      setShowEditModal(false);
+      setEditingItem(null);
+      await loadBloodData();
+      clearAllSelection();
+      setError(null);
+    } catch (err) {
+      console.error("Error updating blood stock:", err);
+      setError(`Failed to update blood stock: ${err.message}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -245,11 +362,55 @@ const RedBloodCell = () => {
 
       await window.electronAPI.deleteBloodStock(selectedIds);
       await loadBloodData();
+      clearAllSelection();
       setError(null);
     } catch (err) {
       console.error("Error deleting items:", err);
       setError("Failed to delete items");
     }
+  };
+
+  const handleSort = (key) => {
+    let direction = "asc";
+    if (sortConfig.key === key && sortConfig.direction === "asc") {
+      direction = "desc";
+    }
+    setSortConfig({ key, direction });
+    setShowSortDropdown(false);
+  };
+
+  const getSortedAndFilteredData = () => {
+    let filtered = [...bloodData];
+
+    if (filterConfig.field && filterConfig.value) {
+      filtered = filtered.filter((item) => {
+        const value = item[filterConfig.field];
+        if (value === null || value === undefined) return false;
+        return value
+          .toString()
+          .toLowerCase()
+          .includes(filterConfig.value.toLowerCase());
+      });
+    }
+
+    const sorted = filtered.sort((a, b) => {
+      const aVal = a[sortConfig.key];
+      const bVal = b[sortConfig.key];
+
+      if (aVal === null || aVal === undefined) return 1;
+      if (bVal === null || bVal === undefined) return -1;
+
+      let comparison = 0;
+      if (typeof aVal === "string") {
+        comparison = aVal.localeCompare(bVal);
+      } else if (typeof aVal === "number") {
+        comparison = aVal - bVal;
+      }
+
+      return sortConfig.direction === "asc" ? comparison : -comparison;
+    });
+
+    return sorted;
   };
 
   const handleReleaseStock = () => {
@@ -263,125 +424,121 @@ const RedBloodCell = () => {
         collection: "",
         expiration: "",
         status: "Stored",
+        found: false,
       },
     ]);
   };
 
-  // Updated handleReleaseItemChange function with debounced search
-    const handleReleaseItemChange = async (index, field, value) => {
-      if (field === "serialId") {
-        // Always update the UI immediately
-        setSelectedItems((prev) =>
-          prev.map((item, i) =>
-            i === index 
-              ? { ...item, [field]: value, found: false }
-              : item
-          )
-        );
+  const handleReleaseItemChange = async (index, field, value) => {
+    if (field === "serialId") {
+      setSelectedItems((prev) =>
+        prev.map((item, i) =>
+          i === index ? { ...item, [field]: value, found: false } : item
+        )
+      );
 
-        // Clear any existing timeout for this index
-        if (searchTimeoutsRef.current[index]) {
-          clearTimeout(searchTimeoutsRef.current[index]);
-        }
+      if (searchTimeoutsRef.current[index]) {
+        clearTimeout(searchTimeoutsRef.current[index]);
+      }
 
-        // If value is empty, don't search
-        if (!value || value.trim() === "") {
-          setError(null);
-          return;
-        }
+      if (!value || value.trim() === "") {
+        setError(null);
+        return;
+      }
 
-        // Set a timeout to search after user stops typing (or after barcode scanner finishes)
-        searchTimeoutsRef.current[index] = setTimeout(async () => {
-          try {
-            if (!window.electronAPI) {
-              setError("Electron API not available");
-              return;
-            }
+      searchTimeoutsRef.current[index] = setTimeout(async () => {
+        try {
+          if (!window.electronAPI) {
+            setError("Electron API not available");
+            return;
+          }
 
-            // Use the correct plasma-specific method
-            const stockData = await window.electronAPI.getBloodStockBySerialId(value.trim());
+          const stockData = await window.electronAPI.getBloodStockBySerialId(
+            value.trim()
+          );
 
-            if (stockData && !Array.isArray(stockData)) {
-              // Single exact match found
-              setSelectedItems((prev) =>
-                prev.map((item, i) =>
-                  i === index
-                    ? {
-                        ...item,
-                        serialId: value.trim(),
-                        bloodType: stockData.type,
-                        rhFactor: stockData.rhFactor,
-                        volume: stockData.volume,
-                        collection: stockData.collection,
-                        expiration: stockData.expiration,
-                        status: stockData.status,
-                        found: true,
-                      }
-                    : item
-                )
-              );
-              setError(null);
-            } else if (Array.isArray(stockData) && stockData.length > 0) {
-              // Multiple partial matches found, use first one
-              const firstMatch = stockData[0];
-              setSelectedItems((prev) =>
-                prev.map((item, i) =>
-                  i === index
-                    ? {
-                        ...item,
-                        serialId: value.trim(),
-                        bloodType: firstMatch.type,
-                        rhFactor: firstMatch.rhFactor,
-                        volume: firstMatch.volume,
-                        collection: firstMatch.collection,
-                        expiration: firstMatch.expiration,
-                        status: firstMatch.status,
-                        found: true,
-                      }
-                    : item
-                )
-              );
-              setError(null);
-            } else {
-              // No match found
-              setSelectedItems((prev) =>
-                prev.map((item, i) =>
-                  i === index
-                    ? {
-                        ...item,
-                        serialId: value.trim(),
-                        bloodType: "O",
-                        rhFactor: "+",
-                        volume: 100,
-                        collection: "",
-                        expiration: "",
-                        status: "Stored",
-                        found: false,
-                      }
-                    : item
-                )
-              );
-              setError(`No red blood cell stock found with serial ID: ${value.trim()}`);
-            }
-          } catch (err) {
-            console.error("Error fetching red blood cell stock by serial ID:", err);
-            setError("Failed to fetch red blood cell stock data");
+          if (stockData && !Array.isArray(stockData)) {
             setSelectedItems((prev) =>
               prev.map((item, i) =>
-                i === index ? { ...item, found: false } : item
+                i === index
+                  ? {
+                      ...item,
+                      serialId: value.trim(),
+                      bloodType: stockData.type,
+                      rhFactor: stockData.rhFactor,
+                      volume: stockData.volume,
+                      collection: stockData.collection,
+                      expiration: stockData.expiration,
+                      status: stockData.status,
+                      found: true,
+                    }
+                  : item
               )
             );
+            setError(null);
+          } else if (Array.isArray(stockData) && stockData.length > 0) {
+            const firstMatch = stockData[0];
+            setSelectedItems((prev) =>
+              prev.map((item, i) =>
+                i === index
+                  ? {
+                      ...item,
+                      serialId: value.trim(),
+                      bloodType: firstMatch.type,
+                      rhFactor: firstMatch.rhFactor,
+                      volume: firstMatch.volume,
+                      collection: firstMatch.collection,
+                      expiration: firstMatch.expiration,
+                      status: firstMatch.status,
+                      found: true,
+                    }
+                  : item
+              )
+            );
+            setError(null);
+          } else {
+            setSelectedItems((prev) =>
+              prev.map((item, i) =>
+                i === index
+                  ? {
+                      ...item,
+                      serialId: value.trim(),
+                      bloodType: "O",
+                      rhFactor: "+",
+                      volume: 100,
+                      collection: "",
+                      expiration: "",
+                      status: "Stored",
+                      found: false,
+                    }
+                  : item
+              )
+            );
+            setError(
+              `No red blood cell stock found with serial ID: ${value.trim()}`
+            );
           }
-        }, 300); // 300ms delay - should work well for both manual typing and barcode scanners
-      } else {
-        // Handle other field changes normally
-        setSelectedItems((prev) =>
-          prev.map((item, i) =>
-            i === index ? { ...item, [field]: value } : item
-          )
-        );
-      }
-    };
+        } catch (err) {
+          console.error(
+            "Error fetching red blood cell stock by serial ID:",
+            err
+          );
+          setError("Failed to fetch red blood cell stock data");
+          setSelectedItems((prev) =>
+            prev.map((item, i) =>
+              i === index ? { ...item, found: false } : item
+            )
+          );
+        }
+      }, 300);
+    } else {
+      setSelectedItems((prev) =>
+        prev.map((item, i) =>
+          i === index ? { ...item, [field]: value } : item
+        )
+      );
+    }
+  };
 
   const addReleaseItem = () => {
     setSelectedItems((prev) => [
@@ -406,7 +563,6 @@ const RedBloodCell = () => {
   };
 
   const proceedToReleaseDetails = () => {
-    // Filter only items that have valid serial IDs and were found in database
     const validItems = selectedItems.filter(
       (item) => item.serialId && item.found
     );
@@ -416,7 +572,6 @@ const RedBloodCell = () => {
       return;
     }
 
-    // Update selectedItems to only include valid items
     setSelectedItems(validItems);
     setShowReleaseModal(false);
     setShowReleaseDetailsModal(true);
@@ -431,18 +586,19 @@ const RedBloodCell = () => {
 
   const confirmRelease = async () => {
     try {
+      setReleasing(true);
       if (!window.electronAPI) {
         setError("Electron API not available");
         return;
       }
 
-      // Get only the valid items that were found in the database
       const validItems = selectedItems.filter(
         (item) => item.found && item.serialId
       );
 
       if (validItems.length === 0) {
         setError("No valid items to release");
+        setReleasing(false);
         return;
       }
 
@@ -452,15 +608,12 @@ const RedBloodCell = () => {
         serialIds: serialIds,
       };
 
-      console.log("Releasing multiple items:", releasePayload);
-
       const result = await window.electronAPI.releaseBloodStock(releasePayload);
 
       if (result.success) {
         setShowReleaseDetailsModal(false);
         setShowReleaseModal(false);
 
-        // Reset selected items to initial state
         setSelectedItems([
           {
             serialId: "",
@@ -474,7 +627,6 @@ const RedBloodCell = () => {
           },
         ]);
 
-        // Reset release data
         setReleaseData({
           receivingFacility: "",
           address: "",
@@ -488,22 +640,40 @@ const RedBloodCell = () => {
           releasedBy: "",
         });
 
-        // Reload the blood data to reflect the released items are removed
         await loadBloodData();
         setError(null);
 
-        // Show success message with count
-        alert(
-          `Successfully released ${result.releasedCount} blood stock item(s).`
-        );
+        // Show success modal
+        setSuccessMessage({
+          title: "Stock Released Successfully!",
+          description:
+            "Blood units have been released to receiving facility. Check the invoice for details.",
+        });
+        setShowSuccessModal(true);
       }
     } catch (err) {
       console.error("Error releasing blood stock:", err);
       setError(`Failed to release blood stock: ${err.message}`);
+    } finally {
+      setReleasing(false);
     }
   };
 
+  const displayData = getSortedAndFilteredData();
   const selectedCount = bloodData.filter((item) => item.selected).length;
+  const singleSelected = selectedCount === 1;
+
+  const getSortLabel = () => {
+    const labels = {
+      serial_id: "Serial ID",
+      type: "Blood Type",
+      rhFactor: "RH Factor",
+      volume: "Volume",
+      status: "Status",
+      created: "Sort by",
+    };
+    return labels[sortConfig.key] || "Sort";
+  };
 
   const styles = {
     container: {
@@ -513,9 +683,7 @@ const RedBloodCell = () => {
       fontFamily: "Barlow",
       borderRadius: "8px",
     },
-    header: {
-      margin: 0,
-    },
+    header: { margin: 0 },
     title: {
       fontSize: "24px",
       fontWeight: "bold",
@@ -542,9 +710,7 @@ const RedBloodCell = () => {
       alignItems: "center",
       gap: "16px",
     },
-    searchContainer: {
-      position: "relative",
-    },
+    searchContainer: { position: "relative" },
     searchIcon: {
       position: "absolute",
       left: "12px",
@@ -583,9 +749,18 @@ const RedBloodCell = () => {
       fontSize: "14px",
       color: "#374151",
       fontFamily: "Barlow",
+      transition: "all 0.2s ease",
+      position: "relative",
+      minWidth: "100px",
     },
     buttonHover: {
-      backgroundColor: "#f9fafb",
+      backgroundColor: "white",
+      borderColor: "#8daef2",
+    },
+    buttonActive: {
+      backgroundColor: "#2C58DC",
+      borderColor: "#2C58DC",
+      color: "white",
     },
     releaseButton: {
       display: "flex",
@@ -599,6 +774,13 @@ const RedBloodCell = () => {
       cursor: "pointer",
       fontSize: "14px",
       fontFamily: "Barlow",
+      transition: "all 0.2s ease",
+    },
+    releaseButtonHover: {
+      backgroundColor: "#1e40af",
+    },
+    releaseButtonActive: {
+      backgroundColor: "#1d3a8a",
     },
     addButton: {
       display: "flex",
@@ -612,6 +794,42 @@ const RedBloodCell = () => {
       cursor: "pointer",
       fontSize: "14px",
       fontFamily: "Barlow",
+      transition: "all 0.2s ease",
+    },
+    addButtonHover: {
+      backgroundColor: "#ffb300",
+    },
+    addButtonActive: {
+      backgroundColor: "#ff9800",
+    },
+    dropdown: {
+      position: "absolute",
+      top: "100%",
+      left: 0,
+      backgroundColor: "white",
+      border: "#8daef2",
+      borderRadius: "6px",
+      boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+      zIndex: 1000,
+      minWidth: "200px",
+      marginTop: "4px",
+    },
+    dropdownItem: {
+      padding: "10px 16px",
+      cursor: "pointer",
+      fontSize: "14px",
+      color: "#374151",
+      transition: "background-color 0.2s ease",
+      borderBottom: "1px solid #e5e7eb",
+      fontFamily: "Barlow",
+    },
+    dropdownItemHover: {
+      backgroundColor: "#f3f4f6",
+    },
+    dropdownItemActive: {
+      backgroundColor: "#dbeafe",
+      color: "#1e40af",
+      fontWeight: "600",
     },
     tableContainer: {
       backgroundColor: "white",
@@ -619,14 +837,8 @@ const RedBloodCell = () => {
       boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
       overflow: "hidden",
     },
-    table: {
-      width: "100%",
-      borderCollapse: "collapse",
-    },
-    thead: {
-      backgroundColor: "#f9fafb",
-      borderBottom: "1px solid #e5e7eb",
-    },
+    table: { width: "100%", borderCollapse: "collapse" },
+    thead: { backgroundColor: "#f9fafb", borderBottom: "1px solid #e5e7eb" },
     th: {
       padding: "12px 16px",
       textAlign: "left",
@@ -635,16 +847,12 @@ const RedBloodCell = () => {
       color: "#6b7280",
       textTransform: "uppercase",
       letterSpacing: "0.05em",
+      cursor: "pointer",
+      userSelect: "none",
     },
-    tbody: {
-      backgroundColor: "white",
-    },
-    tr: {
-      borderBottom: "1px solid #A3A3A3",
-    },
-    trEven: {
-      backgroundColor: "#f9fafb",
-    },
+    tbody: { backgroundColor: "white" },
+    tr: { borderBottom: "1px solid #A3A3A3" },
+    trEven: { backgroundColor: "#f9fafb" },
     td: {
       padding: "12px 16px",
       fontSize: "12px",
@@ -662,40 +870,9 @@ const RedBloodCell = () => {
       color: "#991b1b",
       borderRadius: "9999px",
     },
-    pagination: {
-      backgroundColor: "white",
-      padding: "12px 16px",
-      borderTop: "1px solid #e5e7eb",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    paginationButton: {
-      fontSize: "14px",
-      color: "#6b7280",
-      backgroundColor: "transparent",
-      border: "none",
-      cursor: "pointer",
-    },
-    paginationButtonNext: {
-      fontSize: "14px",
-      color: "#2563eb",
-      backgroundColor: "transparent",
-      border: "none",
-      cursor: "pointer",
-    },
-    paginationText: {
-      fontSize: "14px",
-      color: "#374151",
-    },
-    checkbox: {
-      width: "16px",
-      height: "16px",
-      cursor: "pointer",
-    },
-    trSelected: {
-      backgroundColor: "#e6f7ff",
-    },
+
+    checkbox: { width: "16px", height: "16px", cursor: "pointer" },
+    trSelected: { backgroundColor: "#e6f7ff" },
     actionBar: {
       position: "fixed",
       bottom: "20px",
@@ -722,6 +899,10 @@ const RedBloodCell = () => {
       cursor: "pointer",
       fontSize: "16px",
       borderRight: "1px solid #2d3748",
+      transition: "background-color 0.2s ease",
+    },
+    closeButtonHover: {
+      backgroundColor: "#3a4556",
     },
     counterSection: {
       padding: "12px 24px",
@@ -746,6 +927,24 @@ const RedBloodCell = () => {
       fontSize: "14px",
       fontFamily: "Barlow",
       borderRight: "1px solid #2d3748",
+      transition: "background-color 0.2s ease",
+    },
+    editButtonHover: {
+      backgroundColor: "#3a4556",
+    },
+    editButtonDisabled: {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      padding: "12px 16px",
+      backgroundColor: "#4a5568",
+      color: "#9ca3af",
+      border: "none",
+      cursor: "not-allowed",
+      fontSize: "14px",
+      fontFamily: "Barlow",
+      borderRight: "1px solid #2d3748",
+      opacity: 0.5,
     },
     deleteButton: {
       display: "flex",
@@ -758,6 +957,10 @@ const RedBloodCell = () => {
       cursor: "pointer",
       fontSize: "14px",
       fontFamily: "Barlow",
+      transition: "background-color 0.2s ease",
+    },
+    deleteButtonHover: {
+      backgroundColor: "#3a4556",
     },
     loadingContainer: {
       display: "flex",
@@ -785,6 +988,10 @@ const RedBloodCell = () => {
       borderRadius: "4px",
       cursor: "pointer",
       fontSize: "12px",
+      transition: "background-color 0.2s ease",
+    },
+    refreshButtonHover: {
+      backgroundColor: "#047857",
     },
     modalOverlay: {
       position: "fixed",
@@ -811,30 +1018,6 @@ const RedBloodCell = () => {
       flexDirection: "column",
       fontFamily: "Barlow",
     },
-    releaseModal: {
-      backgroundColor: "white",
-      borderRadius: "8px",
-      width: "95%",
-      maxWidth: "900px",
-      maxHeight: "90vh",
-      overflow: "hidden",
-      boxShadow: "0 20px 25px rgba(0, 0, 0, 0.25)",
-      display: "flex",
-      flexDirection: "column",
-      fontFamily: "Barlow",
-    },
-    releaseDetailsModal: {
-      backgroundColor: "white",
-      borderRadius: "8px",
-      width: "95%",
-      maxWidth: "900px",
-      maxHeight: "90vh",
-      overflow: "hidden",
-      boxShadow: "0 20px 25px rgba(0, 0, 0, 0.25)",
-      display: "flex",
-      flexDirection: "column",
-      fontFamily: "Barlow",
-    },
     modalHeader: {
       display: "flex",
       alignItems: "center",
@@ -843,11 +1026,7 @@ const RedBloodCell = () => {
       borderBottom: "1px solid #e5e7eb",
       backgroundColor: "white",
     },
-    modalTitleSection: {
-      display: "flex",
-      flexDirection: "column",
-      gap: "2px",
-    },
+    modalTitleSection: { display: "flex", flexDirection: "column", gap: "2px" },
     modalTitle: {
       fontSize: "20px",
       fontWeight: "600",
@@ -874,28 +1053,12 @@ const RedBloodCell = () => {
       width: "28px",
       height: "28px",
       borderRadius: "4px",
+      transition: "background-color 0.2s ease",
     },
-    modalContent: {
-      flex: 1,
-      padding: "30px",
-      overflowY: "auto",
+    modalCloseButtonHover: {
+      backgroundColor: "#f3f4f6",
     },
-    barcodeSection: {
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      marginBottom: "15px",
-      padding: "10px 10px",
-      border: "2px dashed #d1d5db",
-      borderRadius: "8px",
-      backgroundColor: "white",
-      justifyContent: "center",
-    },
-    barcodeIcon: {
-      width: "100px",
-      height: "100px",
-      objectFit: "contain",
-    },
+    modalContent: { flex: 1, padding: "30px", overflowY: "auto" },
     barcodeText: {
       color: "#dc2626",
       fontSize: "12px",
@@ -910,22 +1073,12 @@ const RedBloodCell = () => {
       marginBottom: "15px",
       padding: "0 5px",
     },
-    releaseTableHeader: {
-      display: "grid",
-      gridTemplateColumns: "1fr .5fr .5fr 1fr .5fr 1fr .5fr .5fr",
-      gap: "10px",
-      marginBottom: "15px",
-      padding: "0 5px",
-    },
     tableHeaderCell: {
       fontSize: "12px",
       fontWeight: "500",
       color: "#374151",
       fontFamily: "Barlow",
       textAlign: "left",
-    },
-    rowsContainer: {
-      marginBottom: "20px",
     },
     dataRow: {
       display: "grid",
@@ -934,15 +1087,6 @@ const RedBloodCell = () => {
       marginBottom: "15px",
       alignItems: "center",
     },
-
-    releaseDataRow: {
-      display: "grid",
-      gridTemplateColumns: "1.5fr 1fr .8fr 1fr 1fr 1fr .5fr .5fr",
-      gap: "15px",
-      marginBottom: "15px",
-      alignItems: "left",
-    },
-
     fieldInput: {
       padding: "8px 12px",
       border: "1px solid #d1d5db",
@@ -953,6 +1097,10 @@ const RedBloodCell = () => {
       backgroundColor: "white",
       width: "100%",
       boxSizing: "border-box",
+      transition: "border-color 0.2s ease",
+    },
+    fieldInputFocus: {
+      borderColor: "#3b82f6",
     },
     fieldSelect: {
       padding: "8px 12px",
@@ -965,6 +1113,10 @@ const RedBloodCell = () => {
       cursor: "pointer",
       width: "100%",
       boxSizing: "border-box",
+      transition: "border-color 0.2s ease",
+    },
+    fieldSelectFocus: {
+      borderColor: "#3b82f6",
     },
     fieldInputDisabled: {
       padding: "8px 12px",
@@ -992,12 +1144,21 @@ const RedBloodCell = () => {
       fontSize: "14px",
       fontFamily: "Barlow",
       marginBottom: "20px",
+      transition: "all 0.2s ease",
+    },
+    addRowButtonHover: {
+      backgroundColor: "#e5e7eb",
+      borderColor: "#9ca3af",
+    },
+    addRowButtonActive: {
+      backgroundColor: "#d1d5db",
     },
     modalFooter: {
       padding: "20px 30px",
       borderTop: "1px solid #e5e7eb",
       display: "flex",
       justifyContent: "center",
+      gap: "12px",
       backgroundColor: "white",
     },
     saveButton: {
@@ -1011,79 +1172,176 @@ const RedBloodCell = () => {
       fontWeight: "600",
       fontFamily: "Barlow",
       minWidth: "120px",
+      transition: "all 0.2s ease",
     },
-    proceedButton: {
-      padding: "12px 48px",
-      backgroundColor: "#2563eb",
-      color: "white",
-      border: "none",
-      borderRadius: "6px",
-      cursor: "pointer",
-      fontSize: "16px",
-      fontWeight: "600",
-      fontFamily: "Barlow",
-      minWidth: "120px",
+    saveButtonHover: {
+      backgroundColor: "#ffb300",
     },
-    confirmButton: {
-      padding: "12px 48px",
-      backgroundColor: "#2563eb",
-      color: "white",
-      border: "none",
-      borderRadius: "6px",
-      cursor: "pointer",
-      fontSize: "16px",
-      fontWeight: "600",
-      fontFamily: "Barlow",
-      minWidth: "120px",
+    saveButtonActive: {
+      backgroundColor: "#ff9800",
     },
-    releaseFormGrid: {
+    filterContainer: {
       display: "grid",
-      gridTemplateColumns: "1fr 1fr 1fr",
+      gridTemplateColumns: "1fr 1fr",
       gap: "20px",
       marginBottom: "20px",
     },
-    releaseFormGroup: {
+    formGroup: {
       display: "flex",
       flexDirection: "column",
-      gap: "5px",
+      gap: "8px",
     },
-    releaseFormLabel: {
+    label: {
       fontSize: "14px",
       fontWeight: "500",
       color: "#374151",
-      fontFamily: "Barlow",
     },
-    releaseFormInput: {
-      padding: "10px 12px",
-      border: "1px solid #d1d5db",
+    filterButton: {
+      padding: "12px 24px",
+      backgroundColor: "#059669",
+      color: "white",
+      border: "none",
       borderRadius: "6px",
-      fontSize: "14px",
-      fontFamily: "Barlow",
-      outline: "none",
-      backgroundColor: "white",
-    },
-    releaseFormSelect: {
-      padding: "10px 12px",
-      border: "1px solid #d1d5db",
-      borderRadius: "6px",
-      fontSize: "14px",
-      fontFamily: "Barlow",
-      outline: "none",
-      backgroundColor: "white",
       cursor: "pointer",
+      fontSize: "14px",
+      fontWeight: "600",
+      fontFamily: "Barlow",
+      transition: "all 0.2s ease",
+    },
+    filterButtonHover: {
+      backgroundColor: "#047857",
+    },
+    filterButtonActive: {
+      backgroundColor: "#065f46",
+    },
+    clearFilterButton: {
+      padding: "12px 24px",
+      backgroundColor: "#9ca3af",
+      color: "white",
+      border: "none",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontSize: "14px",
+      fontWeight: "600",
+      fontFamily: "Barlow",
+      transition: "all 0.2s ease",
+    },
+    clearFilterButtonHover: {
+      backgroundColor: "#8b91a0",
+    },
+    clearFilterButtonActive: {
+      backgroundColor: "#6b7280",
+    },
+    rowsContainer: {
+      marginBottom: "20px",
+    },
+    dropdownContainer: {
+      position: "relative",
+    },
+    // Success Modal Styles
+    successModalOverlay: {
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 3000,
+      padding: "10px",
+    },
+    successModal: {
+      backgroundColor: "white",
+      borderRadius: "11px",
+      width: "30%",
+      hegith: "10%",
+      maxWidth: "350px",
+      padding: "40px 30px 30px",
+      boxShadow: "0 20px 25px rgba(0, 0, 0, 0.25)",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      fontFamily: "Barlow",
+      position: "relative",
+    },
+    successCloseButton: {
+      position: "absolute",
+      top: "16px",
+      right: "16px",
+      background: "none",
+      border: "none",
+      fontSize: "24px",
+      color: "#9ca3af",
+      cursor: "pointer",
+      padding: "4px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      width: "32px",
+      height: "32px",
+      borderRadius: "4px",
+      transition: "background-color 0.2s ease",
+    },
+    successCloseButtonHover: {
+      backgroundColor: "#f3f4f6",
+    },
+    successIcon: {
+      width: "30px",
+      height: "30px",
+      backgroundColor: "#10b981",
+      borderRadius: "50%",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    successTitle: {
+      fontSize: "20px",
+      fontWeight: "bold",
+      color: "#165C3C",
+      textAlign: "center",
+      fontFamily: "Barlow",
+    },
+    successDescription: {
+      fontSize: "13px",
+      color: "#6b7280",
+      textAlign: "center",
+      lineHeight: "1.5",
+      fontFamily: "Barlow",
+      marginTop: "-5px",
+      paddingLeft: "20px",
+      paddingRight: "20px",
+    },
+    successOkButton: {
+      padding: "12px 60px",
+      backgroundColor: "#FFC200",
+      color: "black",
+      border: "none",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontSize: "16px",
+      fontWeight: "600",
+      fontFamily: "Barlow",
+      transition: "all 0.2s ease",
+    },
+    successOkButtonHover: {
+      backgroundColor: "#ffb300",
     },
   };
 
-  const allSelected =
-    bloodData.length > 0 && bloodData.every((item) => item.selected);
-  const someSelected = bloodData.some((item) => item.selected) && !allSelected;
+  const [hoverStates, setHoverStates] = useState({});
 
-  if (loading) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.loadingContainer}>Loading blood stock data...</div>
-      </div>
-    );
+  const handleMouseEnter = (key) => {
+    setHoverStates((prev) => ({ ...prev, [key]: true }));
+  };
+
+  const handleMouseLeave = (key) => {
+    setHoverStates((prev) => ({ ...prev, [key]: false }));
+  };
+
+  if (loading || saving || releasing) {
+    return <Loader />;
   }
 
   return (
@@ -1102,7 +1360,15 @@ const RedBloodCell = () => {
             />
           </svg>
           <span>{error}</span>
-          <button style={styles.refreshButton} onClick={loadBloodData}>
+          <button
+            style={{
+              ...styles.refreshButton,
+              ...(hoverStates.refresh ? styles.refreshButtonHover : {}),
+            }}
+            onClick={loadBloodData}
+            onMouseEnter={() => handleMouseEnter("refresh")}
+            onMouseLeave={() => handleMouseLeave("refresh")}
+          >
             Retry
           </button>
         </div>
@@ -1135,49 +1401,234 @@ const RedBloodCell = () => {
         </div>
 
         <div style={styles.rightControls}>
-          <button style={styles.button}>
-            <span>Sort by</span>
-            <svg
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          <div style={styles.dropdownContainer} ref={sortDropdownRef}>
+            <button
+              style={{
+                ...styles.button,
+                ...(hoverStates.sort ? styles.buttonHover : {}),
+                ...(showSortDropdown ? styles.buttonActive : {}),
+              }}
+              onClick={() => setShowSortDropdown(!showSortDropdown)}
+              onMouseEnter={() => handleMouseEnter("sort")}
+              onMouseLeave={() => handleMouseLeave("sort")}
+              title="Sort"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="m19 9-7 7-7-7"
-              />
-            </svg>
-          </button>
+              <span>{getSortLabel()}</span>
+              <svg
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                style={{
+                  transform: showSortDropdown
+                    ? "rotate(180deg)"
+                    : "rotate(0deg)",
+                  transition: "transform 0.2s ease",
+                }}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="m19 9-7 7-7-7"
+                />
+              </svg>
+            </button>
+            {showSortDropdown && (
+              <div style={styles.dropdown}>
+                {[
+                  { key: "serial_id", label: "Serial ID" },
+                  { key: "type", label: "Blood Type" },
+                  { key: "rhFactor", label: "RH Factor" },
+                  { key: "volume", label: "Volume" },
+                  { key: "status", label: "Status" },
+                  { key: "created", label: "Sort by" },
+                ].map((item) => (
+                  <div
+                    key={item.key}
+                    style={{
+                      ...styles.dropdownItem,
+                      ...(sortConfig.key === item.key
+                        ? styles.dropdownItemActive
+                        : {}),
+                      ...(hoverStates[`sort-${item.key}`] &&
+                      sortConfig.key !== item.key
+                        ? styles.dropdownItemHover
+                        : {}),
+                    }}
+                    onClick={() => handleSort(item.key)}
+                    onMouseEnter={() => handleMouseEnter(`sort-${item.key}`)}
+                    onMouseLeave={() => handleMouseLeave(`sort-${item.key}`)}
+                  >
+                    {item.label}{" "}
+                    {sortConfig.key === item.key &&
+                      (sortConfig.direction === "asc" ? "↑" : "↓")}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
-          <button style={styles.button}>
-            <svg
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          <div style={styles.dropdownContainer} ref={filterDropdownRef}>
+            <button
+              style={{
+                ...styles.button,
+                ...(hoverStates.filter ? styles.buttonHover : {}),
+                ...(showFilterDropdown ? styles.buttonActive : {}),
+              }}
+              onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+              onMouseEnter={() => handleMouseEnter("filter")}
+              onMouseLeave={() => handleMouseLeave("filter")}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
-              />
-            </svg>
-            <span>Filter</span>
-          </button>
+              <svg
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+                />
+              </svg>
+              <span>Filter</span>
+              <svg
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                style={{
+                  transform: showFilterDropdown
+                    ? "rotate(180deg)"
+                    : "rotate(0deg)",
+                  transition: "transform 0.2s ease",
+                }}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="m19 9-7 7-7-7"
+                />
+              </svg>
+            </button>
+            {showFilterDropdown && (
+              <div style={{ ...styles.dropdown, minWidth: "300px" }}>
+                <div
+                  style={{
+                    padding: "12px 16px",
+                    borderBottom: "1px solid #e5e7eb",
+                  }}
+                >
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Filter Field</label>
+                    <select
+                      style={styles.fieldSelect}
+                      value={filterConfig.field}
+                      onChange={(e) =>
+                        setFilterConfig({
+                          ...filterConfig,
+                          field: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="">Select a field</option>
+                      <option value="serial_id">Serial ID</option>
+                      <option value="type">Blood Type</option>
+                      <option value="rhFactor">RH Factor</option>
+                      <option value="status">Status</option>
+                      <option value="volume">Volume</option>
+                    </select>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    padding: "12px 16px",
+                    borderBottom: "1px solid #e5e7eb",
+                  }}
+                >
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Filter Value</label>
+                    <input
+                      type="text"
+                      style={styles.fieldInput}
+                      value={filterConfig.value}
+                      onChange={(e) =>
+                        setFilterConfig({
+                          ...filterConfig,
+                          value: e.target.value,
+                        })
+                      }
+                      placeholder="Enter value to filter"
+                    />
+                  </div>
+                </div>
+                <div style={{ padding: "8px", display: "flex", gap: "8px" }}>
+                  <button
+                    style={{
+                      ...styles.clearFilterButton,
+                      flex: 1,
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                      ...(hoverStates.clearFilter
+                        ? styles.clearFilterButtonHover
+                        : {}),
+                    }}
+                    onClick={() => {
+                      setFilterConfig({ field: "", value: "" });
+                      setShowFilterDropdown(false);
+                    }}
+                    onMouseEnter={() => handleMouseEnter("clearFilter")}
+                    onMouseLeave={() => handleMouseLeave("clearFilter")}
+                  >
+                    Clear
+                  </button>
+                  <button
+                    style={{
+                      ...styles.filterButton,
+                      flex: 1,
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                      ...(hoverStates.applyFilter
+                        ? styles.filterButtonHover
+                        : {}),
+                    }}
+                    onClick={() => setShowFilterDropdown(false)}
+                    onMouseEnter={() => handleMouseEnter("applyFilter")}
+                    onMouseLeave={() => handleMouseLeave("applyFilter")}
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
-          <button style={styles.releaseButton} onClick={handleReleaseStock}>
+          <button
+            style={{
+              ...styles.releaseButton,
+              ...(hoverStates.release ? styles.releaseButtonHover : {}),
+            }}
+            onClick={handleReleaseStock}
+            onMouseEnter={() => handleMouseEnter("release")}
+            onMouseLeave={() => handleMouseLeave("release")}
+          >
             Release Stock
           </button>
 
           <button
-            style={styles.addButton}
+            style={{
+              ...styles.addButton,
+              ...(hoverStates.add ? styles.addButtonHover : {}),
+            }}
             onClick={() => setShowAddModal(true)}
+            onMouseEnter={() => handleMouseEnter("add")}
+            onMouseLeave={() => handleMouseLeave("add")}
           >
             <svg
               width="16"
@@ -1206,28 +1657,61 @@ const RedBloodCell = () => {
                 <input
                   type="checkbox"
                   style={styles.checkbox}
-                  checked={allSelected}
-                  ref={(input) => {
-                    if (input) {
-                      input.indeterminate = someSelected;
-                    }
-                  }}
+                  checked={
+                    displayData.length > 0 &&
+                    displayData.every((item) => item.selected)
+                  }
                   onChange={toggleAllSelection}
                 />
               </th>
-              <th style={{ ...styles.th, width: "14%" }}>SERIAL ID</th>
-              <th style={{ ...styles.th, width: "8%" }}>BLOOD TYPE</th>
-              <th style={{ ...styles.th, width: "7%" }}>RH FACTOR</th>
-              <th style={{ ...styles.th, width: "8%" }}>VOLUME (ML)</th>
+              <th
+                style={{ ...styles.th, width: "14%", cursor: "pointer" }}
+                onClick={() => handleSort("serial_id")}
+              >
+                SERIAL ID{" "}
+                {sortConfig.key === "serial_id" &&
+                  (sortConfig.direction === "asc" ? "↑" : "↓")}
+              </th>
+              <th
+                style={{ ...styles.th, width: "8%", cursor: "pointer" }}
+                onClick={() => handleSort("type")}
+              >
+                BLOOD TYPE{" "}
+                {sortConfig.key === "type" &&
+                  (sortConfig.direction === "asc" ? "↑" : "↓")}
+              </th>
+              <th
+                style={{ ...styles.th, width: "7%", cursor: "pointer" }}
+                onClick={() => handleSort("rhFactor")}
+              >
+                RH FACTOR{" "}
+                {sortConfig.key === "rhFactor" &&
+                  (sortConfig.direction === "asc" ? "↑" : "↓")}
+              </th>
+              <th
+                style={{ ...styles.th, width: "8%", cursor: "pointer" }}
+                onClick={() => handleSort("volume")}
+              >
+                VOLUME (ML){" "}
+                {sortConfig.key === "volume" &&
+                  (sortConfig.direction === "asc" ? "↑" : "↓")}
+              </th>
               <th style={{ ...styles.th, width: "12%" }}>DATE OF COLLECTION</th>
               <th style={{ ...styles.th, width: "12%" }}>EXPIRATION DATE</th>
-              <th style={{ ...styles.th, width: "8%" }}>STATUS</th>
+              <th
+                style={{ ...styles.th, width: "8%", cursor: "pointer" }}
+                onClick={() => handleSort("status")}
+              >
+                STATUS{" "}
+                {sortConfig.key === "status" &&
+                  (sortConfig.direction === "asc" ? "↑" : "↓")}
+              </th>
               <th style={{ ...styles.th, width: "13%" }}>CREATED AT</th>
               <th style={{ ...styles.th, width: "13%" }}>MODIFIED AT</th>
             </tr>
           </thead>
           <tbody style={styles.tbody}>
-            {bloodData.length === 0 ? (
+            {displayData.length === 0 ? (
               <tr>
                 <td
                   colSpan="10"
@@ -1237,7 +1721,7 @@ const RedBloodCell = () => {
                 </td>
               </tr>
             ) : (
-              bloodData.map((item, index) => (
+              displayData.map((item, index) => (
                 <tr
                   key={item.id}
                   style={{
@@ -1249,7 +1733,7 @@ const RedBloodCell = () => {
                     <input
                       type="checkbox"
                       style={styles.checkbox}
-                      checked={item.selected}
+                      checked={item.selected || false}
                       onChange={() => toggleRowSelection(item.id)}
                     />
                   </td>
@@ -1269,19 +1753,18 @@ const RedBloodCell = () => {
             )}
           </tbody>
         </table>
-
-        <div style={styles.pagination}>
-          <button style={styles.paginationButton}>Previous</button>
-          <span style={styles.paginationText}>
-            Page 1 of {Math.ceil(bloodData.length / 20)}
-          </span>
-          <button style={styles.paginationButtonNext}>Next</button>
-        </div>
       </div>
 
       {selectedCount > 0 && (
         <div style={styles.actionBar}>
-          <button style={styles.closeButton} onClick={clearAllSelection}>
+          <button
+            style={styles.closeButton}
+            onClick={clearAllSelection}
+            onMouseEnter={() => handleMouseEnter("close")}
+            onMouseLeave={() => handleMouseLeave("close")}
+            onMouseDown={() => handleMouseEnter("closeActive")}
+            onMouseUp={() => handleMouseLeave("closeActive")}
+          >
             <svg
               width="16"
               height="16"
@@ -1304,25 +1787,43 @@ const RedBloodCell = () => {
             </span>
           </div>
 
-          <button style={styles.editButton}>
-            <svg
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          {singleSelected && (
+            <button
+              style={{
+                ...styles.editButton,
+                ...(hoverStates.edit ? styles.editButtonHover : {}),
+              }}
+              onClick={handleEditClick}
+              onMouseEnter={() => handleMouseEnter("edit")}
+              onMouseLeave={() => handleMouseLeave("edit")}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-              />
-            </svg>
-            <span>Edit</span>
-          </button>
+              <svg
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                />
+              </svg>
+              <span>Edit</span>
+            </button>
+          )}
 
-          <button style={styles.deleteButton} onClick={handleDelete}>
+          <button
+            style={{
+              ...styles.deleteButton,
+              ...(hoverStates.delete ? styles.deleteButtonHover : {}),
+            }}
+            onClick={handleDelete}
+            onMouseEnter={() => handleMouseEnter("delete")}
+            onMouseLeave={() => handleMouseLeave("delete")}
+          >
             <svg
               width="16"
               height="16"
@@ -1342,6 +1843,55 @@ const RedBloodCell = () => {
         </div>
       )}
 
+      {/* SUCCESS MODAL */}
+      {showSuccessModal && (
+        <div style={styles.successModalOverlay}>
+          <div style={styles.successModal}>
+            <button
+              style={{
+                ...styles.successCloseButton,
+                ...(hoverStates.successClose
+                  ? styles.successCloseButtonHover
+                  : {}),
+              }}
+              onClick={() => setShowSuccessModal(false)}
+              onMouseEnter={() => handleMouseEnter("successClose")}
+              onMouseLeave={() => handleMouseLeave("successClose")}
+            >
+              ×
+            </button>
+
+            <div style={styles.successIcon}>
+              <svg width="48" height="48" fill="white" viewBox="0 0 20 20">
+                <path
+                  fillRule="evenodd"
+                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+
+            <h3 style={styles.successTitle}>{successMessage.title}</h3>
+            <p style={styles.successDescription}>
+              {successMessage.description}
+            </p>
+
+            <button
+              style={{
+                ...styles.successOkButton,
+                ...(hoverStates.successOk ? styles.successOkButtonHover : {}),
+              }}
+              onClick={() => setShowSuccessModal(false)}
+              onMouseEnter={() => handleMouseEnter("successOk")}
+              onMouseLeave={() => handleMouseLeave("successOk")}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Add Stock Modal */}
       {showAddModal && (
         <div style={styles.modalOverlay} onClick={() => setShowAddModal(false)}>
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
@@ -1351,22 +1901,21 @@ const RedBloodCell = () => {
                 <p style={styles.modalSubtitle}>Add New Stock</p>
               </div>
               <button
-                style={styles.modalCloseButton}
+                style={{
+                  ...styles.modalCloseButton,
+                  ...(hoverStates.closeModal
+                    ? styles.modalCloseButtonHover
+                    : {}),
+                }}
                 onClick={() => setShowAddModal(false)}
+                onMouseEnter={() => handleMouseEnter("closeModal")}
+                onMouseLeave={() => handleMouseLeave("closeModal")}
               >
                 ×
               </button>
             </div>
 
             <div style={styles.modalContent}>
-              <div style={styles.barcodeSection}>
-                <img
-                  src="/src/assets/scanner.gif"
-                  alt="Barcode Scanner"
-                  style={styles.barcodeIcon}
-                />
-              </div>
-
               <p style={styles.barcodeText}>(if scanner is unavailable)</p>
               <div style={styles.tableHeader}>
                 <div style={styles.tableHeaderCell}>Barcode Serial ID</div>
@@ -1391,7 +1940,7 @@ const RedBloodCell = () => {
                           e.target.value
                         )
                       }
-                      placeholder=""
+                      placeholder="Enter Serial ID"
                     />
                     <select
                       style={styles.fieldSelect}
@@ -1453,8 +2002,13 @@ const RedBloodCell = () => {
 
               <button
                 type="button"
-                style={styles.addRowButton}
+                style={{
+                  ...styles.addRowButton,
+                  ...(hoverStates.addRow ? styles.addRowButtonHover : {}),
+                }}
                 onClick={addNewRow}
+                onMouseEnter={() => handleMouseEnter("addRow")}
+                onMouseLeave={() => handleMouseLeave("addRow")}
               >
                 <svg
                   width="16"
@@ -1477,8 +2031,13 @@ const RedBloodCell = () => {
             <div style={styles.modalFooter}>
               <button
                 type="button"
-                style={styles.saveButton}
+                style={{
+                  ...styles.saveButton,
+                  ...(hoverStates.saveStock ? styles.saveButtonHover : {}),
+                }}
                 onClick={handleSaveAllStock}
+                onMouseEnter={() => handleMouseEnter("saveStock")}
+                onMouseLeave={() => handleMouseLeave("saveStock")}
               >
                 Save
               </button>
@@ -1487,34 +2046,146 @@ const RedBloodCell = () => {
         </div>
       )}
 
-      {showReleaseModal && (
+      {/* Edit Stock Modal */}
+      {showEditModal && editingItem && (
         <div
           style={styles.modalOverlay}
-          onClick={() => setShowReleaseModal(false)}
+          onClick={() => setShowEditModal(false)}
         >
-          <div style={styles.releaseModal} onClick={(e) => e.stopPropagation()}>
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <div style={styles.modalTitleSection}>
                 <h3 style={styles.modalTitle}>Red Blood Cell</h3>
-                <p style={styles.modalSubtitle}>Release Stock</p>
+                <p style={styles.modalSubtitle}>Edit Stock</p>
               </div>
               <button
-                style={styles.modalCloseButton}
-                onClick={() => setShowReleaseModal(false)}
+                style={{
+                  ...styles.modalCloseButton,
+                  ...(hoverStates.closeEditModal
+                    ? styles.modalCloseButtonHover
+                    : {}),
+                }}
+                onClick={() => setShowEditModal(false)}
+                onMouseEnter={() => handleMouseEnter("closeEditModal")}
+                onMouseLeave={() => handleMouseLeave("closeEditModal")}
               >
                 ×
               </button>
             </div>
 
             <div style={styles.modalContent}>
-              <div style={styles.barcodeSection}>
-                <img
-                  src="/src/assets/scanner.gif"
-                  alt="Barcode Scanner"
-                  style={styles.barcodeIcon}
-                />
+              <div style={styles.tableHeader}>
+                <div style={styles.tableHeaderCell}>Barcode Serial ID</div>
+                <div style={styles.tableHeaderCell}>Blood Type</div>
+                <div style={styles.tableHeaderCell}>Rh Factor</div>
+                <div style={styles.tableHeaderCell}>Volume (mL)</div>
+                <div style={styles.tableHeaderCell}>Date of Collection</div>
+                <div style={styles.tableHeaderCell}>Expiration Date</div>
               </div>
 
+              <div style={styles.dataRow}>
+                <input
+                  type="text"
+                  style={styles.fieldInput}
+                  value={editingItem.serial_id}
+                  onChange={(e) =>
+                    handleEditItemChange("serial_id", e.target.value)
+                  }
+                  placeholder="Enter Serial ID"
+                />
+                <select
+                  style={styles.fieldSelect}
+                  value={editingItem.type}
+                  onChange={(e) => handleEditItemChange("type", e.target.value)}
+                >
+                  <option value="O">O</option>
+                  <option value="A">A</option>
+                  <option value="B">B</option>
+                  <option value="AB">AB</option>
+                </select>
+                <select
+                  style={styles.fieldSelect}
+                  value={editingItem.rhFactor}
+                  onChange={(e) =>
+                    handleEditItemChange("rhFactor", e.target.value)
+                  }
+                >
+                  <option value="+">+</option>
+                  <option value="-">-</option>
+                </select>
+                <input
+                  type="number"
+                  style={styles.fieldInput}
+                  value={editingItem.volume}
+                  onChange={(e) =>
+                    handleEditItemChange("volume", e.target.value)
+                  }
+                  min="1"
+                />
+                <input
+                  type="date"
+                  style={styles.fieldInput}
+                  value={editingItem.collection}
+                  onChange={(e) =>
+                    handleEditItemChange("collection", e.target.value)
+                  }
+                />
+                <input
+                  type="date"
+                  style={styles.fieldInputDisabled}
+                  value={editingItem.expiration}
+                  readOnly
+                  disabled
+                />
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <button
+                type="button"
+                style={{
+                  ...styles.saveButton,
+                  ...(hoverStates.saveEdit ? styles.saveButtonHover : {}),
+                }}
+                onClick={handleSaveEdit}
+                onMouseEnter={() => handleMouseEnter("saveEdit")}
+                onMouseLeave={() => handleMouseLeave("saveEdit")}
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Release Stock Modal */}
+      {showReleaseModal && (
+        <div
+          style={styles.modalOverlay}
+          onClick={() => setShowReleaseModal(false)}
+        >
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <div style={styles.modalTitleSection}>
+                <h3 style={styles.modalTitle}>Red Blood Cell</h3>
+                <p style={styles.modalSubtitle}>Release Stock</p>
+              </div>
+              <button
+                style={{
+                  ...styles.modalCloseButton,
+                  ...(hoverStates.closeReleaseModal
+                    ? styles.modalCloseButtonHover
+                    : {}),
+                }}
+                onClick={() => setShowReleaseModal(false)}
+                onMouseEnter={() => handleMouseEnter("closeReleaseModal")}
+                onMouseLeave={() => handleMouseLeave("closeReleaseModal")}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={styles.modalContent}>
               <p style={styles.barcodeText}>(if scanner is unavailable)</p>
 
               <div
@@ -1552,75 +2223,29 @@ const RedBloodCell = () => {
                       borderRadius: "4px",
                     }}
                   >
-                    {/* Serial ID Input with Search */}
                     <div style={{ position: "relative" }}>
-                      <>
-                        <style>{`
-                      .serial-input::placeholder {
-                        font-size: 12px;
-                      }
-                    `}</style>
-                        <input
-                          type="text"
-                          className="serial-input"
-                          style={{
-                            ...styles.fieldInput,
-                            paddingRight: "30px",
-                            border: item.found
-                              ? "1px solid #0ea5e9"
-                              : item.serialId && !item.found
-                                ? "1px solid #ef4444"
-                                : "1px solid #d1d5db",
-                          }}
-                          value={item.serialId}
-                          onChange={(e) =>
-                            handleReleaseItemChange(
-                              index,
-                              "serialId",
-                              e.target.value
-                            )
-                          }
-                          onPaste={(e) => {
-                            // Handle paste events (some barcode scanners simulate paste)
-                            e.preventDefault();
-                            const pastedText = e.clipboardData
-                              .getData("text")
-                              .trim();
-                            handleReleaseItemChange(
-                              index,
-                              "serialId",
-                              pastedText
-                            );
-                          }}
-                          onKeyDown={(e) => {
-                            // Handle Enter key to force immediate search
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              if (
-                                window.searchTimeouts &&
-                                window.searchTimeouts[index]
-                              ) {
-                                clearTimeout(window.searchTimeouts[index]);
-                              }
-                              // Trigger immediate search
-                              setTimeout(() => {
-                                const currentValue = e.target.value.trim();
-                                if (currentValue) {
-                                  handleReleaseItemChange(
-                                    index,
-                                    "serialId",
-                                    currentValue
-                                  );
-                                }
-                              }, 0);
-                            }
-                          }}
-                          placeholder="Enter Serial ID"
-                          autoComplete="off"
-                          spellCheck="false"
-                        />
-                      </>
-                      {/* Status Indicator */}
+                      <input
+                        type="text"
+                        style={{
+                          ...styles.fieldInput,
+                          paddingRight: "30px",
+                          border: item.found
+                            ? "1px solid #0ea5e9"
+                            : item.serialId && !item.found
+                              ? "1px solid #ef4444"
+                              : "1px solid #d1d5db",
+                        }}
+                        value={item.serialId}
+                        onChange={(e) =>
+                          handleReleaseItemChange(
+                            index,
+                            "serialId",
+                            e.target.value
+                          )
+                        }
+                        placeholder="Enter Serial ID"
+                        autoComplete="off"
+                      />
                       <div
                         style={{
                           position: "absolute",
@@ -1660,53 +2285,36 @@ const RedBloodCell = () => {
                       </div>
                     </div>
 
-                    {/* Blood Type */}
-                    <>
-                      <style>{`
-                      .no-arrow {
-                        /* remove the default dropdown/chevron icon */
-                        -webkit-appearance: none;
-                        -moz-appearance: none;
-                        appearance: none;
-                        background: none;      /* no background image */
-                        background-color: transparent; /* keep your own color if you want */
-                      }
-                    `}</style>
+                    <select
+                      style={{
+                        ...styles.fieldSelect,
+                        fontSize: "12px",
+                        backgroundColor: item.found ? "#f0f9ff" : "#f9fafb",
+                        color: item.found ? "#374151" : "#9ca3af",
+                      }}
+                      value={item.bloodType}
+                      disabled
+                    >
+                      <option value="O">O</option>
+                      <option value="A">A</option>
+                      <option value="B">B</option>
+                      <option value="AB">AB</option>
+                    </select>
 
-                      <select
-                        className="no-arrow"
-                        style={{
-                          ...styles.fieldSelect,
-                          fontSize: "12px",
-                          backgroundColor: item.found ? "#f0f9ff" : "#f9fafb",
-                          color: item.found ? "#374151" : "#9ca3af",
-                        }}
-                        value={item.bloodType}
-                        disabled
-                      >
-                        <option value="O">O</option>
-                        <option value="A">A</option>
-                        <option value="B">B</option>
-                        <option value="AB">AB</option>
-                      </select>
+                    <select
+                      style={{
+                        ...styles.fieldSelect,
+                        fontSize: "12px",
+                        backgroundColor: item.found ? "#f0f9ff" : "#f9fafb",
+                        color: item.found ? "#374151" : "#9ca3af",
+                      }}
+                      value={item.rhFactor}
+                      disabled
+                    >
+                      <option value="+">+</option>
+                      <option value="-">-</option>
+                    </select>
 
-                      <select
-                        className="no-arrow"
-                        style={{
-                          ...styles.fieldSelect,
-                          fontSize: "12px",
-                          backgroundColor: item.found ? "#f0f9ff" : "#f9fafb",
-                          color: item.found ? "#374151" : "#9ca3af",
-                        }}
-                        value={item.rhFactor}
-                        disabled
-                      >
-                        <option value="+">+</option>
-                        <option value="-">-</option>
-                      </select>
-                    </>
-
-                    {/* Volume */}
                     <input
                       type="number"
                       style={{
@@ -1719,7 +2327,6 @@ const RedBloodCell = () => {
                       disabled
                     />
 
-                    {/* Collection Date */}
                     <input
                       type="date"
                       style={{
@@ -1732,7 +2339,6 @@ const RedBloodCell = () => {
                       disabled
                     />
 
-                    {/* Expiration Date */}
                     <input
                       type="date"
                       style={{
@@ -1745,7 +2351,6 @@ const RedBloodCell = () => {
                       disabled
                     />
 
-                    {/* Status Badge */}
                     <span
                       style={{
                         padding: "4px 8px",
@@ -1761,7 +2366,6 @@ const RedBloodCell = () => {
                       {item.found ? item.status : "Not Found"}
                     </span>
 
-                    {/* Remove Button */}
                     <button
                       type="button"
                       style={{
@@ -1777,9 +2381,19 @@ const RedBloodCell = () => {
                         justifyContent: "center",
                         gap: "4px",
                         whiteSpace: "nowrap",
+                        transition: "background-color 0.2s ease",
+                        ...(hoverStates[`removeRelease-${index}`]
+                          ? { backgroundColor: "#dc2626" }
+                          : {}),
                       }}
                       onClick={() => removeReleaseItem(index)}
                       disabled={selectedItems.length === 1}
+                      onMouseEnter={() =>
+                        handleMouseEnter(`removeRelease-${index}`)
+                      }
+                      onMouseLeave={() =>
+                        handleMouseLeave(`removeRelease-${index}`)
+                      }
                     >
                       <svg
                         width="12"
@@ -1801,8 +2415,13 @@ const RedBloodCell = () => {
 
               <button
                 type="button"
-                style={styles.addRowButton}
+                style={{
+                  ...styles.addRowButton,
+                  ...(hoverStates.addRelease ? styles.addRowButtonHover : {}),
+                }}
                 onClick={addReleaseItem}
+                onMouseEnter={() => handleMouseEnter("addRelease")}
+                onMouseLeave={() => handleMouseLeave("addRelease")}
               >
                 <svg
                   width="16"
@@ -1821,7 +2440,6 @@ const RedBloodCell = () => {
                 <span>Add Another Item</span>
               </button>
 
-              {/* Summary */}
               <div
                 style={{
                   backgroundColor: "#f8fafc",
@@ -1857,8 +2475,13 @@ const RedBloodCell = () => {
             <div style={styles.modalFooter}>
               <button
                 type="button"
-                style={styles.saveButton}
+                style={{
+                  ...styles.saveButton,
+                  ...(hoverStates.proceedRelease ? styles.saveButtonHover : {}),
+                }}
                 onClick={proceedToReleaseDetails}
+                onMouseEnter={() => handleMouseEnter("proceedRelease")}
+                onMouseLeave={() => handleMouseLeave("proceedRelease")}
               >
                 Proceed
               </button>
@@ -1867,30 +2490,34 @@ const RedBloodCell = () => {
         </div>
       )}
 
+      {/* Release Details Modal */}
       {showReleaseDetailsModal && (
         <div
           style={styles.modalOverlay}
           onClick={() => setShowReleaseDetailsModal(false)}
         >
-          <div
-            style={styles.releaseDetailsModal}
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <div style={styles.modalTitleSection}>
                 <h3 style={styles.modalTitle}>Red Blood Cell</h3>
-                <p style={styles.modalSubtitle}>Release Stock</p>
+                <p style={styles.modalSubtitle}>Release Stock - Details</p>
               </div>
               <button
-                style={styles.modalCloseButton}
+                style={{
+                  ...styles.modalCloseButton,
+                  ...(hoverStates.closeDetailsModal
+                    ? styles.modalCloseButtonHover
+                    : {}),
+                }}
                 onClick={() => setShowReleaseDetailsModal(false)}
+                onMouseEnter={() => handleMouseEnter("closeDetailsModal")}
+                onMouseLeave={() => handleMouseLeave("closeDetailsModal")}
               >
                 ×
               </button>
             </div>
 
             <div style={styles.modalContent}>
-              {/* Items Summary */}
               <div
                 style={{
                   backgroundColor: "#f0f9ff",
@@ -1968,15 +2595,12 @@ const RedBloodCell = () => {
                 </div>
               </div>
 
-              {/* Release Form */}
-              <div style={styles.releaseFormGrid}>
-                <div style={styles.releaseFormGroup}>
-                  <label style={styles.releaseFormLabel}>
-                    Receiving Facility
-                  </label>
+              <div style={styles.filterContainer}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Receiving Facility</label>
                   <input
                     type="text"
-                    style={styles.releaseFormInput}
+                    style={styles.fieldInput}
                     value={releaseData.receivingFacility}
                     onChange={(e) =>
                       handleReleaseDataChange(
@@ -1986,10 +2610,10 @@ const RedBloodCell = () => {
                     }
                   />
                 </div>
-                <div style={styles.releaseFormGroup}>
-                  <label style={styles.releaseFormLabel}>Classification</label>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Classification</label>
                   <select
-                    style={styles.releaseFormSelect}
+                    style={styles.fieldSelect}
                     value={releaseData.classification}
                     onChange={(e) =>
                       handleReleaseDataChange("classification", e.target.value)
@@ -2001,13 +2625,14 @@ const RedBloodCell = () => {
                     <option value="Urgent">Urgent</option>
                   </select>
                 </div>
-                <div style={styles.releaseFormGroup}>
-                  <label style={styles.releaseFormLabel}>
-                    Authorized Recipient
-                  </label>
+              </div>
+
+              <div style={styles.filterContainer}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Authorized Recipient</label>
                   <input
                     type="text"
-                    style={styles.releaseFormInput}
+                    style={styles.fieldInput}
                     value={releaseData.authorizedRecipient}
                     onChange={(e) =>
                       handleReleaseDataChange(
@@ -2017,25 +2642,25 @@ const RedBloodCell = () => {
                     }
                   />
                 </div>
-              </div>
-
-              <div style={styles.releaseFormGrid}>
-                <div style={styles.releaseFormGroup}>
-                  <label style={styles.releaseFormLabel}>Address</label>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Address</label>
                   <input
                     type="text"
-                    style={styles.releaseFormInput}
+                    style={styles.fieldInput}
                     value={releaseData.address}
                     onChange={(e) =>
                       handleReleaseDataChange("address", e.target.value)
                     }
                   />
                 </div>
-                <div style={styles.releaseFormGroup}>
-                  <label style={styles.releaseFormLabel}>Contact Number</label>
+              </div>
+
+              <div style={styles.filterContainer}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Contact Number</label>
                   <input
                     type="tel"
-                    style={styles.releaseFormInput}
+                    style={styles.fieldInput}
                     value={releaseData.contactNumber}
                     onChange={(e) =>
                       handleReleaseDataChange("contactNumber", e.target.value)
@@ -2043,13 +2668,13 @@ const RedBloodCell = () => {
                     placeholder="+ 63"
                   />
                 </div>
-                <div style={styles.releaseFormGroup}>
-                  <label style={styles.releaseFormLabel}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>
                     Authorized Recipient Designation
                   </label>
                   <input
                     type="text"
-                    style={styles.releaseFormInput}
+                    style={styles.fieldInput}
                     value={releaseData.recipientDesignation}
                     onChange={(e) =>
                       handleReleaseDataChange(
@@ -2061,24 +2686,22 @@ const RedBloodCell = () => {
                 </div>
               </div>
 
-              <div style={styles.releaseFormGrid}>
-                <div style={styles.releaseFormGroup}>
-                  <label style={styles.releaseFormLabel}>Date of Release</label>
+              <div style={styles.filterContainer}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Date of Release</label>
                   <input
                     type="date"
-                    style={styles.releaseFormInput}
+                    style={styles.fieldInput}
                     value={releaseData.dateOfRelease}
                     onChange={(e) =>
                       handleReleaseDataChange("dateOfRelease", e.target.value)
                     }
                   />
                 </div>
-                <div style={styles.releaseFormGroup}>
-                  <label style={styles.releaseFormLabel}>
-                    Condition Upon Release
-                  </label>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Condition Upon Release</label>
                   <select
-                    style={styles.releaseFormSelect}
+                    style={styles.fieldSelect}
                     value={releaseData.conditionUponRelease}
                     onChange={(e) =>
                       handleReleaseDataChange(
@@ -2093,13 +2716,14 @@ const RedBloodCell = () => {
                     <option value="Damaged">Damaged</option>
                   </select>
                 </div>
-                <div style={styles.releaseFormGroup}>
-                  <label style={styles.releaseFormLabel}>
-                    Request Reference Number
-                  </label>
+              </div>
+
+              <div style={styles.filterContainer}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Request Reference Number</label>
                   <input
                     type="text"
-                    style={styles.releaseFormInput}
+                    style={styles.fieldInput}
                     value={releaseData.requestReference}
                     onChange={(e) =>
                       handleReleaseDataChange(
@@ -2109,30 +2733,30 @@ const RedBloodCell = () => {
                     }
                   />
                 </div>
-              </div>
-
-              <div style={styles.releaseFormGrid}>
-                <div style={styles.releaseFormGroup}>
-                  <label style={styles.releaseFormLabel}>Released by</label>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Released by</label>
                   <input
                     type="text"
-                    style={styles.releaseFormInput}
+                    style={styles.fieldInput}
                     value={releaseData.releasedBy}
                     onChange={(e) =>
                       handleReleaseDataChange("releasedBy", e.target.value)
                     }
                   />
                 </div>
-                <div style={styles.releaseFormGroup}></div>
-                <div style={styles.releaseFormGroup}></div>
               </div>
             </div>
 
             <div style={styles.modalFooter}>
               <button
                 type="button"
-                style={styles.confirmButton}
+                style={{
+                  ...styles.saveButton,
+                  ...(hoverStates.confirmRelease ? styles.saveButtonHover : {}),
+                }}
                 onClick={confirmRelease}
+                onMouseEnter={() => handleMouseEnter("confirmRelease")}
+                onMouseLeave={() => handleMouseLeave("confirmRelease")}
               >
                 Confirm Release (
                 {selectedItems.filter((item) => item.found).length} items)
