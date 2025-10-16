@@ -1063,6 +1063,22 @@ const Plasma = () => {
       marginBottom: "10px",
       fontFamily: "Barlow",
     },
+    barcodeSection: {
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      marginBottom: "15px",
+      padding: "10px 10px",
+      border: "2px dashed #d1d5db",
+      borderRadius: "8px",
+      backgroundColor: "white",
+      justifyContent: "center",
+    },
+    barcodeIcon: {
+      width: "100px",
+      height: "100px",
+      objectFit: "contain",
+    },
     tableHeader: {
       display: "grid",
       gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr",
@@ -1912,6 +1928,13 @@ const Plasma = () => {
             </div>
 
             <div style={styles.modalContent}>
+            <div style={styles.barcodeSection}>
+                <img
+                  src="/src/assets/scanner.gif"
+                  alt="Barcode Scanner"
+                  style={styles.barcodeIcon}
+                />
+              </div>
               <p style={styles.barcodeText}>(if scanner is unavailable)</p>
               <div style={styles.tableHeader}>
                 <div style={styles.tableHeaderCell}>Barcode Serial ID</div>
@@ -2182,6 +2205,13 @@ const Plasma = () => {
             </div>
 
             <div style={styles.modalContent}>
+            <div style={styles.barcodeSection}>
+                <img
+                  src="/src/assets/scanner.gif"
+                  alt="Barcode Scanner"
+                  style={styles.barcodeIcon}
+                />
+              </div>
               <p style={styles.barcodeText}>(if scanner is unavailable)</p>
 
               <div

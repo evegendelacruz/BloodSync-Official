@@ -103,6 +103,60 @@ const setupIpcHandlers = () => {
     }
   });
 
+// ========== UPDATE/DELETE RELEASED BLOOD IPC HANDLERS ==========
+ipcMain.handle("db:updateReleasedBloodStock", async (_event, id, bloodData) => {
+  try {
+    return await dbService.updateReleasedBloodStock(id, bloodData);
+  } catch (error) {
+    console.error("IPC Error - updateReleasedBloodStock:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("db:deleteReleasedBloodStock", async (_event, ids) => {
+  try {
+    return await dbService.deleteReleasedBloodStock(ids);
+  } catch (error) {
+    console.error("IPC Error - deleteReleasedBloodStock:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("db:updateReleasedPlasmaStock", async (_event, id, plasmaData) => {
+  try {
+    return await dbService.updateReleasedPlasmaStock(id, plasmaData);
+  } catch (error) {
+    console.error("IPC Error - updateReleasedPlasmaStock:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("db:deleteReleasedPlasmaStock", async (_event, ids) => {
+  try {
+    return await dbService.deleteReleasedPlasmaStock(ids);
+  } catch (error) {
+    console.error("IPC Error - deleteReleasedPlasmaStock:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("db:updateReleasedPlateletStock", async (_event, id, plateletData) => {
+  try {
+    return await dbService.updateReleasedPlateletStock(id, plateletData);
+  } catch (error) {
+    console.error("IPC Error - updateReleasedPlateletStock:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("db:deleteReleasedPlateletStock", async (_event, ids) => {
+  try {
+    return await dbService.deleteReleasedPlateletStock(ids);
+  } catch (error) {
+    console.error("IPC Error - deleteReleasedPlateletStock:", error);
+    throw error;
+  }
+});
   // ========== RELEASE STOCK IPC HANDLERS ==========
   ipcMain.handle("db:releaseBloodStock", async (_event, releaseData) => {
     try {
@@ -349,6 +403,241 @@ const setupIpcHandlers = () => {
       return await dbService.restorePlateletStock(serialIds);
     } catch (error) {
       console.error("IPC Error - restorePlateletStock:", error);
+      throw error;
+    }
+  });
+
+  // ========== RED BLOOD CELL NON-CONFORMING IPC HANDLERS ==========
+  ipcMain.handle("db:getAllNonConforming", async () => {
+    try {
+      return await dbService.getAllNonConforming();
+    } catch (error) {
+      console.error("IPC Error - getAllNonConforming:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getBloodStockBySerialIdForNC", async (_event, serialId) => {
+    try {
+      return await dbService.getBloodStockBySerialIdForNC(serialId);
+    } catch (error) {
+      console.error("IPC Error - getBloodStockBySerialIdForNC:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:transferToNonConforming", async (_event, serialIds) => {
+    try {
+      return await dbService.transferToNonConforming(serialIds);
+    } catch (error) {
+      console.error("IPC Error - transferToNonConforming:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:updateNonConforming", async (_event, id, ncData) => {
+    try {
+      return await dbService.updateNonConforming(id, ncData);
+    } catch (error) {
+      console.error("IPC Error - updateNonConforming:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:deleteNonConforming", async (_event, ids) => {
+    try {
+      return await dbService.deleteNonConforming(ids);
+    } catch (error) {
+      console.error("IPC Error - deleteNonConforming:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:searchNonConforming", async (_event, searchTerm) => {
+    try {
+      return await dbService.searchNonConforming(searchTerm);
+    } catch (error) {
+      console.error("IPC Error - searchNonConforming:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:discardNonConformingStock", async (_event, discardData) => {
+    try {
+      return await dbService.discardNonConformingStock(discardData);
+    } catch (error) {
+      console.error("IPC Error - discardNonConformingStock:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getNonConformingBySerialIdForDiscard", async (_event, serialId) => {
+    try {
+      return await dbService.getNonConformingBySerialIdForDiscard(serialId);
+    } catch (error) {
+      console.error("IPC Error - getNonConformingBySerialIdForDiscard:", error);
+      throw error;
+    }
+  });
+
+
+    // Get all platelet non-conforming records
+    ipcMain.handle('db:getAllPlateletNonConforming', async () => {
+    try {
+      return await dbService.getAllPlateletNonConforming();
+    } catch (error) {
+      console.error('Error in getAllPlateletNonConforming:', error);
+      throw error;
+    }
+  });
+
+  // Get platelet stock by serial ID for non-conforming
+  ipcMain.handle('db:getPlateletStockBySerialIdForNC', async (event, serialId) => {
+    try {
+      return await dbService.getPlateletStockBySerialIdForNC(serialId);
+    } catch (error) {
+      console.error('Error in getPlateletStockBySerialIdForNC:', error);
+      throw error;
+    }
+  });
+
+  // Transfer platelet to non-conforming
+  ipcMain.handle('db:transferPlateletToNonConforming', async (event, serialIds) => {
+    try {
+      return await dbService.transferPlateletToNonConforming(serialIds);
+    } catch (error) {
+      console.error('Error in transferPlateletToNonConforming:', error);
+      throw error;
+    }
+  });
+
+  // Update platelet non-conforming record
+  ipcMain.handle('db:updatePlateletNonConforming', async (event, id, ncData) => {
+    try {
+      return await dbService.updatePlateletNonConforming(id, ncData);
+    } catch (error) {
+      console.error('Error in updatePlateletNonConforming:', error);
+      throw error;
+    }
+  });
+
+  // Delete platelet non-conforming records
+  ipcMain.handle('db:deletePlateletNonConforming', async (event, ids) => {
+    try {
+      return await dbService.deletePlateletNonConforming(ids);
+    } catch (error) {
+      console.error('Error in deletePlateletNonConforming:', error);
+      throw error;
+    }
+  });
+
+  // Search platelet non-conforming records
+  ipcMain.handle('db:searchPlateletNonConforming', async (event, searchTerm) => {
+    try {
+      return await dbService.searchPlateletNonConforming(searchTerm);
+    } catch (error) {
+      console.error('Error in searchPlateletNonConforming:', error);
+      throw error;
+    }
+  });
+
+  // Discard platelet non-conforming stock
+  ipcMain.handle('db:discardPlateletNonConformingStock', async (event, discardData) => {
+    try {
+      return await dbService.discardPlateletNonConformingStock(discardData);
+    } catch (error) {
+      console.error('Error in discardPlateletNonConformingStock:', error);
+      throw error;
+    }
+  });
+
+  // Get platelet non-conforming by serial ID for discard
+  ipcMain.handle('db:getPlateletNonConformingBySerialIdForDiscard', async (event, serialId) => {
+    try {
+      return await dbService.getPlateletNonConformingBySerialIdForDiscard(serialId);
+    } catch (error) {
+      console.error('Error in getPlateletNonConformingBySerialIdForDiscard:', error);
+      throw error;
+    }
+  });
+
+
+  // Get all plasma non-conforming records
+  ipcMain.handle('db:getAllPlasmaNonConforming', async () => {
+    try {
+      return await dbService.getAllPlasmaNonConforming();
+    } catch (error) {
+      console.error('Error in getAllPlasmaNonConforming:', error);
+      throw error;
+    }
+  });
+
+  // Get plasma stock by serial ID for non-conforming
+  ipcMain.handle('db:getPlasmaStockBySerialIdForNC', async (event, serialId) => {
+    try {
+      return await dbService.getPlasmaStockBySerialIdForNC(serialId);
+    } catch (error) {
+      console.error('Error in getPlasmaStockBySerialIdForNC:', error);
+      throw error;
+    }
+  });
+
+  // Transfer plasma to non-conforming
+  ipcMain.handle('db:transferPlasmaToNonConforming', async (event, serialIds) => {
+    try {
+      return await dbService.transferPlasmaToNonConforming(serialIds);
+    } catch (error) {
+      console.error('Error in transferPlasmaToNonConforming:', error);
+      throw error;
+    }
+  });
+
+  // Update plasma non-conforming record
+  ipcMain.handle('db:updatePlasmaNonConforming', async (event, id, ncData) => {
+    try {
+      return await dbService.updatePlasmaNonConforming(id, ncData);
+    } catch (error) {
+      console.error('Error in updatePlasmaNonConforming:', error);
+      throw error;
+    }
+  });
+
+  // Delete plasma non-conforming records
+  ipcMain.handle('db:deletePlasmaNonConforming', async (event, ids) => {
+    try {
+      return await dbService.deletePlasmaNonConforming(ids);
+    } catch (error) {
+      console.error('Error in deletePlasmaNonConforming:', error);
+      throw error;
+    }
+  });
+
+  // Search plasma non-conforming records
+  ipcMain.handle('db:searchPlasmaNonConforming', async (event, searchTerm) => {
+    try {
+      return await dbService.searchPlasmaNonConforming(searchTerm);
+    } catch (error) {
+      console.error('Error in searchPlasmaNonConforming:', error);
+      throw error;
+    }
+  });
+
+  // Discard plasma non-conforming stock
+  ipcMain.handle('db:discardPlasmaNonConformingStock', async (event, discardData) => {
+    try {
+      return await dbService.discardPlasmaNonConformingStock(discardData);
+    } catch (error) {
+      console.error('Error in discardPlasmaNonConformingStock:', error);
+      throw error;
+    }
+  });
+
+  // Get plasma non-conforming by serial ID for discard
+  ipcMain.handle('db:getPlasmaNonConformingBySerialIdForDiscard', async (event, serialId) => {
+    try {
+      return await dbService.getPlasmaNonConformingBySerialIdForDiscard(serialId);
+    } catch (error) {
+      console.error('Error in getPlNonConformingBySerialIdForDiscard:', error);
       throw error;
     }
   });

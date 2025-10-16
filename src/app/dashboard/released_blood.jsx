@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { ArchiveRestore } from "lucide-react";
 
 const ReleasedBlood = () => {
@@ -7,7 +7,26 @@ const ReleasedBlood = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState(null);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showConfirmRestoreModal, setShowConfirmRestoreModal] = useState(false);
+  const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState({
+    title: "",
+    description: "",
+  });
   const [selectedItems, setSelectedItems] = useState([]);
+  const [editingItem, setEditingItem] = useState(null);
+  const [sortConfig, setSortConfig] = useState({
+    key: "releasedAt",
+    direction: "desc",
+  });
+  const [filterConfig, setFilterConfig] = useState({ field: "", value: "" });
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+
+  const sortDropdownRef = useRef(null);
+  const filterDropdownRef = useRef(null);
 
   useEffect(() => {
     loadReleasedBloodData();
@@ -22,6 +41,26 @@ const ReleasedBlood = () => {
         window.searchTimeouts = {};
       }
     };
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (
+        sortDropdownRef.current &&
+        !sortDropdownRef.current.contains(e.target)
+      ) {
+        setShowSortDropdown(false);
+      }
+      if (
+        filterDropdownRef.current &&
+        !filterDropdownRef.current.contains(e.target)
+      ) {
+        setShowFilterDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const loadReleasedBloodData = async () => {
@@ -69,6 +108,51 @@ const ReleasedBlood = () => {
     item.category?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const handleSort = (key) => {
+    let direction = "asc";
+    if (sortConfig.key === key && sortConfig.direction === "asc") {
+      direction = "desc";
+    }
+    setSortConfig({ key, direction });
+    setShowSortDropdown(false);
+  };
+
+  const getSortedAndFilteredData = () => {
+    let filtered = [...filteredData];
+
+    if (filterConfig.field && filterConfig.value) {
+      filtered = filtered.filter((item) => {
+        const value = item[filterConfig.field];
+        if (value === null || value === undefined) return false;
+        return value
+          .toString()
+          .toLowerCase()
+          .includes(filterConfig.value.toLowerCase());
+      });
+    }
+
+    const sorted = filtered.sort((a, b) => {
+      const aVal = a[sortConfig.key];
+      const bVal = b[sortConfig.key];
+
+      if (aVal === null || aVal === undefined) return 1;
+      if (bVal === null || bVal === undefined) return -1;
+
+      let comparison = 0;
+      if (typeof aVal === "string") {
+        comparison = aVal.localeCompare(bVal);
+      } else if (typeof aVal === "number") {
+        comparison = aVal - bVal;
+      }
+
+      return sortConfig.direction === "asc" ? comparison : -comparison;
+    });
+
+    return sorted;
+  };
+
+  const displayData = getSortedAndFilteredData();
+
   const toggleRowSelection = (id) => {
     setBloodData(prevData => 
       prevData.map(item => 
@@ -78,9 +162,14 @@ const ReleasedBlood = () => {
   };
 
   const toggleAllSelection = () => {
-    const allSelected = filteredData.every(item => item.selected);
-    setBloodData(prevData => 
-      prevData.map(item => ({ ...item, selected: !allSelected }))
+    const allSelected = displayData.every(item => item.selected);
+    setBloodData((prevData) =>
+      prevData.map((item) => {
+        if (displayData.find((d) => d.id === item.id)) {
+          return { ...item, selected: !allSelected };
+        }
+        return item;
+      })
     );
   };
 
@@ -90,7 +179,8 @@ const ReleasedBlood = () => {
     );
   };
 
-  const selectedCount = filteredData.filter(item => item.selected).length;
+  const selectedCount = displayData.filter(item => item.selected).length;
+  const singleSelected = selectedCount === 1;
 
   const getCategoryBadgeStyle = (category) => {
     const baseStyle = {
@@ -143,6 +233,152 @@ const ReleasedBlood = () => {
     }
   };
 
+  const handleEditClick = () => {
+    const selected = bloodData.find((item) => item.selected);
+    if (selected) {
+      const formatDate = (date) => {
+        if (!date) return "";
+        const d = new Date(date);
+        const adjustedDate = new Date(
+          d.getTime() - d.getTimezoneOffset() * 60000
+        );
+        return adjustedDate.toISOString().split("T")[0];
+      };
+
+      const editItem = {
+        ...selected,
+        collection: formatDate(selected.collection),
+        expiration: formatDate(selected.expiration),
+      };
+
+      setEditingItem(editItem);
+      setShowEditModal(true);
+    }
+  };
+
+  const calculateExpiration = (collectionDate) => {
+    if (!collectionDate) return "";
+    const collection = new Date(collectionDate);
+    const expiration = new Date(collection);
+    expiration.setDate(collection.getDate() + 35);
+    return expiration.toISOString().split("T")[0];
+  };
+
+  const handleEditItemChange = (field, value) => {
+    const updated = { ...editingItem, [field]: value };
+    if (field === "collection") {
+      updated.expiration = calculateExpiration(value);
+    }
+    setEditingItem(updated);
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    try {
+      if (!window.electronAPI) {
+        setError("Electron API not available");
+        return;
+      }
+
+      if (!editingItem.serial_id || !editingItem.collection) {
+        setError("Please fill in all required fields");
+        return;
+      }
+
+      const stockData = {
+        serial_id: editingItem.serial_id,
+        type: editingItem.type,
+        rhFactor: editingItem.rhFactor,
+        volume: editingItem.volume,
+        collection: editingItem.collection,
+        expiration: editingItem.expiration,
+        status: editingItem.status,
+      };
+
+      // Update released blood directly without restoring
+      // Use the correct API function names based on your backend
+      if (editingItem.category === 'Red Blood Cell') {
+        await window.electronAPI.updateReleasedBloodStock(editingItem.id, stockData);
+      } else if (editingItem.category === 'Plasma') {
+        await window.electronAPI.updateReleasedPlasmaStock(editingItem.id, stockData);
+      } else if (editingItem.category === 'Platelet') {
+        await window.electronAPI.updateReleasedPlateletStock(editingItem.id, stockData);
+      }
+
+      setShowEditModal(false);
+      setEditingItem(null);
+      await loadReleasedBloodData();
+      clearAllSelection();
+      setError(null);
+
+      setSuccessMessage({
+        title: "Updated Successfully!",
+        description: "Released blood record has been updated.",
+      });
+      setShowSuccessModal(true);
+    } catch (err) {
+      console.error("Error updating released blood stock:", err);
+      setError(`Failed to update released blood stock: ${err.message}`);
+    }
+  };
+
+  const handleDeleteClick = () => {
+    setShowConfirmDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    try {
+      if (!window.electronAPI) {
+        setError("Electron API not available");
+        return;
+      }
+
+      const selectedIds = bloodData
+        .filter((item) => item.selected)
+        .map((item) => ({ id: item.id, category: item.category }));
+      
+      if (selectedIds.length === 0) return;
+
+      // Group by category
+      const itemsByCategory = {
+        'Red Blood Cell': [],
+        'Plasma': [],
+        'Platelet': []
+      };
+
+      selectedIds.forEach(item => {
+        if (itemsByCategory[item.category]) {
+          itemsByCategory[item.category].push(item.id);
+        }
+      });
+
+      // Delete from each category
+      if (itemsByCategory['Red Blood Cell'].length > 0) {
+        await window.electronAPI.deleteReleasedBloodStock(itemsByCategory['Red Blood Cell']);
+      }
+      if (itemsByCategory['Plasma'].length > 0) {
+        await window.electronAPI.deleteReleasedPlasmaStock(itemsByCategory['Plasma']);
+      }
+      if (itemsByCategory['Platelet'].length > 0) {
+        await window.electronAPI.deleteReleasedPlateletStock(itemsByCategory['Platelet']);
+      }
+
+      setShowConfirmDeleteModal(false);
+      await loadReleasedBloodData();
+      clearAllSelection();
+      setError(null);
+
+      setSuccessMessage({
+        title: "Deleted Successfully!",
+        description: `${selectedIds.length} released blood record(s) have been deleted.`,
+      });
+      setShowSuccessModal(true);
+    } catch (err) {
+      console.error("Error deleting items:", err);
+      setError("Failed to delete items");
+    }
+  };
+
   const handleRestoreStock = () => {
     setShowRestoreModal(true);
     setSelectedItems([
@@ -188,7 +424,6 @@ const ReleasedBlood = () => {
             return;
           }
 
-          // Search in released blood records across all categories
           const [rbcData, plasmaData, plateletData] = await Promise.all([
             window.electronAPI.getReleasedBloodStock(),
             window.electronAPI.getReleasedPlasmaStock(),
@@ -197,12 +432,10 @@ const ReleasedBlood = () => {
 
           const allReleasedData = [...rbcData, ...plasmaData, ...plateletData];
           
-          // Find exact match
           let stockData = allReleasedData.find(item => 
             item.serial_id === value.trim()
           );
 
-          // If no exact match, find partial matches
           if (!stockData) {
             const partialMatches = allReleasedData.filter(item =>
               item.serial_id.toLowerCase().includes(value.trim().toLowerCase())
@@ -289,6 +522,20 @@ const ReleasedBlood = () => {
     }
   };
 
+  const proceedToConfirmRestore = () => {
+    const validItems = selectedItems.filter(
+      (item) => item.found && item.serialId
+    );
+
+    if (validItems.length === 0) {
+      setError("No valid items to restore");
+      return;
+    }
+
+    setShowRestoreModal(false);
+    setShowConfirmRestoreModal(true);
+  };
+
   const confirmRestore = async () => {
     try {
       if (!window.electronAPI) {
@@ -305,7 +552,6 @@ const ReleasedBlood = () => {
         return;
       }
   
-      // Group items by category
       const itemsByCategory = {
         'Red Blood Cell': [],
         'Plasma': [],
@@ -321,7 +567,6 @@ const ReleasedBlood = () => {
       let totalRestored = 0;
       const results = [];
   
-      // Restore RBC items
       if (itemsByCategory['Red Blood Cell'].length > 0) {
         try {
           const result = await window.electronAPI.restoreBloodStock(itemsByCategory['Red Blood Cell']);
@@ -333,7 +578,6 @@ const ReleasedBlood = () => {
         }
       }
   
-      // Restore Plasma items
       if (itemsByCategory['Plasma'].length > 0) {
         try {
           const result = await window.electronAPI.restorePlasmaStock(itemsByCategory['Plasma']);
@@ -345,7 +589,6 @@ const ReleasedBlood = () => {
         }
       }
   
-      // Restore Platelet items
       if (itemsByCategory['Platelet'].length > 0) {
         try {
           const result = await window.electronAPI.restorePlateletStock(itemsByCategory['Platelet']);
@@ -357,8 +600,7 @@ const ReleasedBlood = () => {
         }
       }
   
-      // Close modal and reset
-      setShowRestoreModal(false);
+      setShowConfirmRestoreModal(false);
       setSelectedItems([
         {
           serialId: "",
@@ -373,17 +615,33 @@ const ReleasedBlood = () => {
         },
       ]);
   
-      // Reload the released blood data
       await loadReleasedBloodData();
       
       if (totalRestored > 0) {
         setError(null);
-        alert(`Successfully restored ${totalRestored} blood stock item(s) to inventory.\n${results.join(', ')}`);
+        setSuccessMessage({
+          title: "Stock Restored Successfully!",
+          description: `${totalRestored} blood stock item(s) have been restored to inventory. ${results.join(', ')}`,
+        });
+        setShowSuccessModal(true);
       }
     } catch (err) {
       console.error("Error restoring blood stock:", err);
       setError(`Failed to restore blood stock: ${err.message}`);
     }
+  };
+
+  const getSortLabel = () => {
+    const labels = {
+      serial_id: "Serial ID",
+      type: "Blood Type",
+      rhFactor: "RH Factor",
+      volume: "Volume",
+      status: "Status",
+      category: "Category",
+      releasedAt: "Sort by",
+    };
+    return labels[sortConfig.key] || "Sort";
   };
 
   const styles = {
@@ -464,6 +722,14 @@ const ReleasedBlood = () => {
       fontSize: "14px",
       color: "#374151",
       fontFamily: "Barlow",
+      transition: "all 0.2s ease",
+      position: "relative",
+      minWidth: "100px",
+    },
+    buttonActive: {
+      backgroundColor: "#2C58DC",
+      borderColor: "#2C58DC",
+      color: "white",
     },
     releaseButton: {
       display: "flex",
@@ -477,6 +743,32 @@ const ReleasedBlood = () => {
       cursor: "pointer",
       fontSize: "14px",
       fontFamily: "Barlow",
+    },
+    dropdown: {
+      position: "absolute",
+      top: "100%",
+      left: 0,
+      backgroundColor: "white",
+      border: "#8daef2",
+      borderRadius: "6px",
+      boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+      zIndex: 1000,
+      minWidth: "200px",
+      marginTop: "4px",
+    },
+    dropdownItem: {
+      padding: "10px 16px",
+      cursor: "pointer",
+      fontSize: "14px",
+      color: "#374151",
+      transition: "background-color 0.2s ease",
+      borderBottom: "1px solid #e5e7eb",
+      fontFamily: "Barlow",
+    },
+    dropdownItemActive: {
+      backgroundColor: "#dbeafe",
+      color: "#1e40af",
+      fontWeight: "600",
     },
     tableContainer: {
       backgroundColor: "white",
@@ -521,32 +813,7 @@ const ReleasedBlood = () => {
       color: "#065f46",
       borderRadius: "9999px",
     },
-    pagination: {
-      backgroundColor: "white",
-      padding: "12px 16px",
-      borderTop: "1px solid #e5e7eb",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    paginationButton: {
-      fontSize: "14px",
-      color: "#6b7280",
-      backgroundColor: "transparent",
-      border: "none",
-      cursor: "pointer",
-    },
-    paginationButtonNext: {
-      fontSize: "14px",
-      color: "#2563eb",
-      backgroundColor: "transparent",
-      border: "none",
-      cursor: "pointer",
-    },
-    paginationText: {
-      fontSize: "14px",
-      color: "#374151",
-    },
+  
     checkbox: {
       width: "16px",
       height: "16px",
@@ -761,6 +1028,18 @@ const ReleasedBlood = () => {
       width: "100%",
       boxSizing: "border-box",
     },
+    fieldSelect: {
+      padding: "8px 12px",
+      border: "1px solid #d1d5db",
+      borderRadius: "4px",
+      fontSize: "14px",
+      fontFamily: "Barlow",
+      outline: "none",
+      backgroundColor: "white",
+      cursor: "pointer",
+      width: "100%",
+      boxSizing: "border-box",
+    },
     fieldInputDisabled: {
       padding: "8px 12px",
       border: "1px solid #d1d5db",
@@ -807,10 +1086,129 @@ const ReleasedBlood = () => {
       fontFamily: "Barlow",
       minWidth: "120px",
     },
+    saveButton: {
+      padding: "12px 48px",
+      backgroundColor: "#FFC200",
+      color: "black",
+      border: "none",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontSize: "16px",
+      fontWeight: "600",
+      fontFamily: "Barlow",
+      minWidth: "120px",
+    },
+    formGroup: {
+      display: "flex",
+      flexDirection: "column",
+      gap: "8px",
+    },
+    label: {
+      fontSize: "14px",
+      fontWeight: "500",
+      color: "#374151",
+    },
+    successModalOverlay: {
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 3000,
+      padding: "10px",
+    },
+    successModal: {
+      backgroundColor: "white",
+      borderRadius: "11px",
+      width: "30%",
+      maxWidth: "350px",
+      padding: "40px 30px 30px",
+      boxShadow: "0 20px 25px rgba(0, 0, 0, 0.25)",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      fontFamily: "Barlow",
+      position: "relative",
+    },
+    successCloseButton: {
+      position: "absolute",
+      top: "16px",
+      right: "16px",
+      background: "none",
+      border: "none",
+      fontSize: "24px",
+      color: "#9ca3af",
+      cursor: "pointer",
+      padding: "4px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      width: "32px",
+      height: "32px",
+      borderRadius: "4px",
+    },
+    successIcon: {
+      width: "30px",
+      height: "30px",
+      backgroundColor: "#10b981",
+      borderRadius: "50%",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    successTitle: {
+      fontSize: "20px",
+      fontWeight: "bold",
+      color: "#165C3C",
+      textAlign: "center",
+      fontFamily: "Barlow",
+    },
+    successDescription: {
+      fontSize: "13px",
+      color: "#6b7280",
+      textAlign: "center",
+      lineHeight: "1.5",
+      fontFamily: "Barlow",
+      marginTop: "-5px",
+      paddingLeft: "20px",
+      paddingRight: "20px",
+    },
+    successOkButton: {
+      padding: "12px 60px",
+      backgroundColor: "#FFC200",
+      color: "black",
+      border: "none",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontSize: "16px",
+      fontWeight: "600",
+      fontFamily: "Barlow",
+    },
+    dropdownContainer: {
+      position: "relative",
+    },
+    tableHeader: {
+      display: "grid",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr",
+      gap: "15px",
+      marginBottom: "15px",
+      padding: "0 5px",
+    },
+    dataRow: {
+      display: "grid",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr",
+      gap: "15px",
+      marginBottom: "15px",
+      alignItems: "center",
+    },
   };
 
-  const allSelected = filteredData.length > 0 && filteredData.every(item => item.selected);
-  const someSelected = filteredData.some(item => item.selected) && !allSelected;
+  const allSelected = displayData.length > 0 && displayData.every(item => item.selected);
+  const someSelected = displayData.some(item => item.selected) && !allSelected;
 
   if (loading) {
     return (
@@ -869,41 +1267,203 @@ const ReleasedBlood = () => {
         </div>
 
         <div style={styles.rightControls}>
-          <button style={styles.button}>
-            <span>Sort by</span>
-            <svg
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          <div style={styles.dropdownContainer} ref={sortDropdownRef}>
+            <button
+              style={{
+                ...styles.button,
+                ...(showSortDropdown ? styles.buttonActive : {}),
+              }}
+              onClick={() => setShowSortDropdown(!showSortDropdown)}
+              title="Sort"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="m19 9-7 7-7-7"
-              />
-            </svg>
-          </button>
+              <span>{getSortLabel()}</span>
+              <svg
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                style={{
+                  transform: showSortDropdown
+                    ? "rotate(180deg)"
+                    : "rotate(0deg)",
+                  transition: "transform 0.2s ease",
+                }}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="m19 9-7 7-7-7"
+                />
+              </svg>
+            </button>
+            {showSortDropdown && (
+              <div style={styles.dropdown}>
+                {[
+                  { key: "serial_id", label: "Serial ID" },
+                  { key: "type", label: "Blood Type" },
+                  { key: "rhFactor", label: "RH Factor" },
+                  { key: "volume", label: "Volume" },
+                  { key: "status", label: "Status" },
+                  { key: "category", label: "Category" },
+                  { key: "releasedAt", label: "Sort by" },
+                ].map((item) => (
+                  <div
+                    key={item.key}
+                    style={{
+                      ...styles.dropdownItem,
+                      ...(sortConfig.key === item.key
+                        ? styles.dropdownItemActive
+                        : {}),
+                    }}
+                    onClick={() => handleSort(item.key)}
+                  >
+                    {item.label}{" "}
+                    {sortConfig.key === item.key &&
+                      (sortConfig.direction === "asc" ? "↑" : "↓")}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
-          <button style={styles.button}>
-            <svg
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          <div style={styles.dropdownContainer} ref={filterDropdownRef}>
+            <button
+              style={{
+                ...styles.button,
+                ...(showFilterDropdown ? styles.buttonActive : {}),
+              }}
+              onClick={() => setShowFilterDropdown(!showFilterDropdown)}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
-              />
-            </svg>
-            <span>Filter</span>
-          </button>
+              <svg
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+                />
+              </svg>
+              <span>Filter</span>
+              <svg
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                style={{
+                  transform: showFilterDropdown
+                    ? "rotate(180deg)"
+                    : "rotate(0deg)",
+                  transition: "transform 0.2s ease",
+                }}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="m19 9-7 7-7-7"
+                />
+              </svg>
+            </button>
+            {showFilterDropdown && (
+              <div style={{ ...styles.dropdown, minWidth: "300px" }}>
+                <div
+                  style={{
+                    padding: "12px 16px",
+                    borderBottom: "1px solid #e5e7eb",
+                  }}
+                >
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Filter Field</label>
+                    <select
+                      style={styles.fieldSelect}
+                      value={filterConfig.field}
+                      onChange={(e) =>
+                        setFilterConfig({
+                          ...filterConfig,
+                          field: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="">Select a field</option>
+                      <option value="serial_id">Serial ID</option>
+                      <option value="type">Blood Type</option>
+                      <option value="rhFactor">RH Factor</option>
+                      <option value="status">Status</option>
+                      <option value="category">Category</option>
+                      <option value="volume">Volume</option>
+                    </select>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    padding: "12px 16px",
+                    borderBottom: "1px solid #e5e7eb",
+                  }}
+                >
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Filter Value</label>
+                    <input
+                      type="text"
+                      style={styles.fieldInput}
+                      value={filterConfig.value}
+                      onChange={(e) =>
+                        setFilterConfig({
+                          ...filterConfig,
+                          value: e.target.value,
+                        })
+                      }
+                      placeholder="Enter value to filter"
+                    />
+                  </div>
+                </div>
+                <div style={{ padding: "8px", display: "flex", gap: "8px" }}>
+                  <button
+                    style={{
+                      flex: 1,
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                      backgroundColor: "#9ca3af",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      fontFamily: "Barlow",
+                    }}
+                    onClick={() => {
+                      setFilterConfig({ field: "", value: "" });
+                      setShowFilterDropdown(false);
+                    }}
+                  >
+                    Clear
+                  </button>
+                  <button
+                    style={{
+                      flex: 1,
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                      backgroundColor: "#059669",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      fontFamily: "Barlow",
+                    }}
+                    onClick={() => setShowFilterDropdown(false)}
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           <button style={styles.releaseButton} onClick={handleRestoreStock}>
             <ArchiveRestore size={16} style={{ marginRight: "4px" }} />
@@ -942,17 +1502,17 @@ const ReleasedBlood = () => {
             </tr>
           </thead>
           <tbody style={styles.tbody}>
-            {filteredData.length === 0 ? (
+            {displayData.length === 0 ? (
               <tr>
                 <td
-                  colSpan="12"
+                  colSpan="11"
                   style={{ ...styles.td, textAlign: "center", padding: "40px" }}
                 >
-                  {searchTerm ? "No released blood records found matching your search" : "No released blood records found"}
+                  {searchTerm || filterConfig.value ? "No released blood records found matching your criteria" : "No released blood records found"}
                 </td>
               </tr>
             ) : (
-              filteredData.map((item, index) => (
+              displayData.map((item, index) => (
                 <tr 
                   key={item.id} 
                   style={{
@@ -989,14 +1549,6 @@ const ReleasedBlood = () => {
             )}
           </tbody>
         </table>
-
-        <div style={styles.pagination}>
-          <button style={styles.paginationButton}>Previous</button>
-          <span style={styles.paginationText}>
-            Page 1 of {Math.ceil(filteredData.length / 20)}
-          </span>
-          <button style={styles.paginationButtonNext}>Next</button>
-        </div>
       </div>
 
       {selectedCount > 0 && (
@@ -1013,14 +1565,16 @@ const ReleasedBlood = () => {
             </span>
           </div>
           
-          <button style={styles.editButton}>
-            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-            <span>Edit</span>
-          </button>
+          {singleSelected && (
+            <button style={styles.editButton} onClick={handleEditClick}>
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              <span>Edit</span>
+            </button>
+          )}
           
-          <button style={styles.deleteButton}>
+          <button style={styles.deleteButton} onClick={handleDeleteClick}>
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
@@ -1029,6 +1583,143 @@ const ReleasedBlood = () => {
         </div>
       )}
 
+      {/* SUCCESS MODAL */}
+      {showSuccessModal && (
+        <div style={styles.successModalOverlay}>
+          <div style={styles.successModal}>
+            <button
+              style={styles.successCloseButton}
+              onClick={() => setShowSuccessModal(false)}
+            >
+              ×
+            </button>
+
+            <div style={styles.successIcon}>
+              <svg width="48" height="48" fill="white" viewBox="0 0 20 20">
+                <path
+                  fillRule="evenodd"
+                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+
+            <h3 style={styles.successTitle}>{successMessage.title}</h3>
+            <p style={styles.successDescription}>
+              {successMessage.description}
+            </p>
+
+            <button
+              style={styles.successOkButton}
+              onClick={() => setShowSuccessModal(false)}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && editingItem && (
+        <div
+          style={styles.modalOverlay}
+          onClick={() => setShowEditModal(false)}
+        >
+          <div style={styles.restoreModal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <div style={styles.modalTitleSection}>
+                <h3 style={styles.modalTitle}>Edit Released Blood</h3>
+                <p style={styles.modalSubtitle}>Update released blood record</p>
+              </div>
+              <button
+                style={styles.modalCloseButton}
+                onClick={() => setShowEditModal(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={styles.modalContent}>
+              <div style={styles.tableHeader}>
+                <div style={styles.tableHeaderCell}>Barcode Serial ID</div>
+                <div style={styles.tableHeaderCell}>Blood Type</div>
+                <div style={styles.tableHeaderCell}>Rh Factor</div>
+                <div style={styles.tableHeaderCell}>Volume (mL)</div>
+                <div style={styles.tableHeaderCell}>Date of Collection</div>
+                <div style={styles.tableHeaderCell}>Expiration Date</div>
+              </div>
+
+              <div style={styles.dataRow}>
+                <input
+                  type="text"
+                  style={styles.fieldInput}
+                  value={editingItem.serial_id}
+                  onChange={(e) =>
+                    handleEditItemChange("serial_id", e.target.value)
+                  }
+                  placeholder="Enter Serial ID"
+                />
+                <select
+                  style={styles.fieldSelect}
+                  value={editingItem.type}
+                  onChange={(e) => handleEditItemChange("type", e.target.value)}
+                >
+                  <option value="O">O</option>
+                  <option value="A">A</option>
+                  <option value="B">B</option>
+                  <option value="AB">AB</option>
+                </select>
+                <select
+                  style={styles.fieldSelect}
+                  value={editingItem.rhFactor}
+                  onChange={(e) =>
+                    handleEditItemChange("rhFactor", e.target.value)
+                  }
+                >
+                  <option value="+">+</option>
+                  <option value="-">-</option>
+                </select>
+                <input
+                  type="number"
+                  style={styles.fieldInput}
+                  value={editingItem.volume}
+                  onChange={(e) =>
+                    handleEditItemChange("volume", e.target.value)
+                  }
+                  min="1"
+                />
+                <input
+                  type="date"
+                  style={styles.fieldInput}
+                  value={editingItem.collection}
+                  onChange={(e) =>
+                    handleEditItemChange("collection", e.target.value)
+                  }
+                />
+                <input
+                  type="date"
+                  style={styles.fieldInputDisabled}
+                  value={editingItem.expiration}
+                  readOnly
+                  disabled
+                />
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <button
+                type="button"
+                style={styles.saveButton}
+                onClick={handleSaveEdit}
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Restore Stock Modal */}
       {showRestoreModal && (
         <div
           style={styles.modalOverlay}
@@ -1363,10 +2054,358 @@ const ReleasedBlood = () => {
               <button
                 type="button"
                 style={styles.confirmButton}
+                onClick={proceedToConfirmRestore}
+              >
+                Proceed (
+                {selectedItems.filter((item) => item.found).length} items)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Restore Modal */}
+      {showConfirmRestoreModal && (
+        <div
+          style={styles.modalOverlay}
+          onClick={() => setShowConfirmRestoreModal(false)}
+        >
+          <div style={styles.restoreModal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <div style={styles.modalTitleSection}>
+                <h3 style={styles.modalTitle}>Confirm Restore</h3>
+                <p style={styles.modalSubtitle}>Review items before restoring to blood stock</p>
+              </div>
+              <button
+                style={styles.modalCloseButton}
+                onClick={() => setShowConfirmRestoreModal(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={styles.modalContent}>
+              <div
+                style={{
+                  backgroundColor: "#f0f9ff",
+                  border: "1px solid #0ea5e9",
+                  borderRadius: "8px",
+                  padding: "16px",
+                  marginBottom: "24px",
+                }}
+              >
+                <h4
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: "600",
+                    color: "#1e40af",
+                    margin: "0 0 12px 0",
+                  }}
+                >
+                  Items to Restore (
+                  {selectedItems.filter((item) => item.found).length})
+                </h4>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
+                    gap: "12px",
+                    fontSize: "12px",
+                    fontWeight: "500",
+                    color: "#374151",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <div>Serial ID</div>
+                  <div>Category</div>
+                  <div>Blood Type</div>
+                  <div>RH Factor</div>
+                  <div>Volume (mL)</div>
+                </div>
+                {selectedItems
+                  .filter((item) => item.found)
+                  .map((item, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
+                        gap: "12px",
+                        fontSize: "12px",
+                        color: "#6b7280",
+                        padding: "8px 0",
+                        borderTop: index > 0 ? "1px solid #e5e7eb" : "none",
+                      }}
+                    >
+                      <div style={{ fontWeight: "500", color: "#374151" }}>
+                        {item.serialId}
+                      </div>
+                      <div>
+                        <span
+                          style={{
+                            padding: "2px 6px",
+                            ...getCategoryBadgeStyle(item.category),
+                            fontSize: "10px",
+                          }}
+                        >
+                          {getCategoryDisplayName(item.category)}
+                        </span>
+                      </div>
+                      <div>{item.bloodType}</div>
+                      <div>{item.rhFactor}</div>
+                      <div>{item.volume}</div>
+                    </div>
+                  ))}
+                <div
+                  style={{
+                    marginTop: "12px",
+                    paddingTop: "12px",
+                    borderTop: "1px solid #0ea5e9",
+                    fontSize: "14px",
+                    fontWeight: "600",
+                    color: "#1e40af",
+                  }}
+                >
+                  Total Volume:{" "}
+                  {selectedItems
+                    .filter((item) => item.found)
+                    .reduce((sum, item) => sum + item.volume, 0)}{" "}
+                  mL
+                </div>
+              </div>
+
+              <div
+                style={{
+                  backgroundColor: "#fffbeb",
+                  border: "1px solid #fbbf24",
+                  borderRadius: "8px",
+                  padding: "16px",
+                  display: "flex",
+                  gap: "12px",
+                  alignItems: "flex-start",
+                }}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  fill="#f59e0b"
+                  viewBox="0 0 20 20"
+                  style={{ flexShrink: 0, marginTop: "2px" }}
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <div>
+                  <p
+                    style={{
+                      fontSize: "14px",
+                      fontWeight: "600",
+                      color: "#92400e",
+                      margin: "0 0 4px 0",
+                    }}
+                  >
+                    Confirm Restore Action
+                  </p>
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#78350f",
+                      margin: 0,
+                      lineHeight: "1.5",
+                    }}
+                  >
+                    These items will be moved from Released Blood back to the active Blood Stock inventory. This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <button
+                type="button"
+                style={styles.confirmButton}
                 onClick={confirmRestore}
               >
                 Confirm Restore (
                 {selectedItems.filter((item) => item.found).length} items)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Delete Modal */}
+      {showConfirmDeleteModal && (
+        <div
+          style={styles.modalOverlay}
+          onClick={() => setShowConfirmDeleteModal(false)}
+        >
+          <div style={styles.restoreModal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <div style={styles.modalTitleSection}>
+                <h3 style={styles.modalTitle}>Confirm Delete</h3>
+                <p style={styles.modalSubtitle}>Review items before deletion</p>
+              </div>
+              <button
+                style={styles.modalCloseButton}
+                onClick={() => setShowConfirmDeleteModal(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={styles.modalContent}>
+              <div
+                style={{
+                  backgroundColor: "#fef2f2",
+                  border: "1px solid #ef4444",
+                  borderRadius: "8px",
+                  padding: "16px",
+                  marginBottom: "24px",
+                }}
+              >
+                <h4
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: "600",
+                    color: "#991b1b",
+                    margin: "0 0 12px 0",
+                  }}
+                >
+                  Items to Delete ({bloodData.filter((item) => item.selected).length})
+                </h4>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
+                    gap: "12px",
+                    fontSize: "12px",
+                    fontWeight: "500",
+                    color: "#374151",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <div>Serial ID</div>
+                  <div>Category</div>
+                  <div>Blood Type</div>
+                  <div>RH Factor</div>
+                  <div>Volume (mL)</div>
+                </div>
+                {bloodData
+                  .filter((item) => item.selected)
+                  .map((item, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
+                        gap: "12px",
+                        fontSize: "12px",
+                        color: "#6b7280",
+                        padding: "8px 0",
+                        borderTop: index > 0 ? "1px solid #e5e7eb" : "none",
+                      }}
+                    >
+                      <div style={{ fontWeight: "500", color: "#374151" }}>
+                        {item.serial_id}
+                      </div>
+                      <div>
+                        <span
+                          style={{
+                            padding: "2px 6px",
+                            ...getCategoryBadgeStyle(item.category),
+                            fontSize: "10px",
+                          }}
+                        >
+                          {getCategoryDisplayName(item.category)}
+                        </span>
+                      </div>
+                      <div>{item.type}</div>
+                      <div>{item.rhFactor}</div>
+                      <div>{item.volume}</div>
+                    </div>
+                  ))}
+                <div
+                  style={{
+                    marginTop: "12px",
+                    paddingTop: "12px",
+                    borderTop: "1px solid #ef4444",
+                    fontSize: "14px",
+                    fontWeight: "600",
+                    color: "#991b1b",
+                  }}
+                >
+                  Total Volume:{" "}
+                  {bloodData
+                    .filter((item) => item.selected)
+                    .reduce((sum, item) => sum + item.volume, 0)}{" "}
+                  mL
+                </div>
+              </div>
+
+              <div
+                style={{
+                  backgroundColor: "#fef2f2",
+                  border: "1px solid #ef4444",
+                  borderRadius: "8px",
+                  padding: "16px",
+                  display: "flex",
+                  gap: "12px",
+                  alignItems: "flex-start",
+                }}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  fill="#ef4444"
+                  viewBox="0 0 20 20"
+                  style={{ flexShrink: 0, marginTop: "2px" }}
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <div>
+                  <p
+                    style={{
+                      fontSize: "14px",
+                      fontWeight: "600",
+                      color: "#991b1b",
+                      margin: "0 0 4px 0",
+                    }}
+                  >
+                    Confirm Delete Action
+                  </p>
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#7f1d1d",
+                      margin: 0,
+                      lineHeight: "1.5",
+                    }}
+                  >
+                    These items will be permanently deleted from the Released Blood records. This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <button
+                type="button"
+                style={{
+                  ...styles.confirmButton,
+                  backgroundColor: "#ef4444",
+                }}
+                onClick={confirmDelete}
+              >
+                Confirm Delete (
+                {bloodData.filter((item) => item.selected).length} items)
               </button>
             </div>
           </div>

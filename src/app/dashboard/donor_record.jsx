@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Plus, Filter, Search } from "lucide-react";
 
 const DonorRecord = () => {
@@ -10,6 +10,14 @@ const DonorRecord = () => {
   const [searchDonorTerm, setSearchDonorTerm] = useState("");
   const [barangaySearch, setBarangaySearch] = useState("");
   const [showBarangayDropdown, setShowBarangayDropdown] = useState(false);
+  const [sortConfig, setSortConfig] = useState({ key: "sortby", direction: "asc" });
+  const [filterConfig, setFilterConfig] = useState({ field: "", value: "" });
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState({ title: "", description: "" });
+  const sortDropdownRef = useRef(null);
+  const filterDropdownRef = useRef(null);
   const [formData, setFormData] = useState({
     donorId: "",
     firstName: "",
@@ -50,6 +58,20 @@ const DonorRecord = () => {
     loadDonorData();
   }, []);
 
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(e.target)) {
+        setShowSortDropdown(false);
+      }
+      if (filterDropdownRef.current && !filterDropdownRef.current.contains(e.target)) {
+        setShowFilterDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const loadDonorData = async () => {
     try {
       setLoading(true);
@@ -70,21 +92,74 @@ const DonorRecord = () => {
   const handleSearch = async (e) => {
     const value = e.target.value;
     setSearchTerm(value);
-    try {
-      if (!window.electronAPI) {
-        setError("Electron API not available");
-        return;
-      }
-      if (value.trim() === "") {
-        await loadDonorData();
-      } else {
-        const searchResults = await window.electronAPI.searchDonorRecords(value);
-        setDonorData(searchResults);
-      }
-    } catch (err) {
-      console.error("Error searching:", err);
-      setError("Search failed");
+  };
+
+  const filteredData = donorData.filter(item => 
+    item.donorId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.middleName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.bloodType?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.address?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleSort = (key) => {
+    let direction = "asc";
+    if (sortConfig.key === key && sortConfig.direction === "asc") {
+      direction = "desc";
     }
+    setSortConfig({ key, direction });
+    setShowSortDropdown(false);
+  };
+
+  const getSortedAndFilteredData = () => {
+    let filtered = [...filteredData];
+
+    if (filterConfig.field && filterConfig.value) {
+      filtered = filtered.filter((item) => {
+        const value = item[filterConfig.field];
+        if (value === null || value === undefined) return false;
+        return value
+          .toString()
+          .toLowerCase()
+          .includes(filterConfig.value.toLowerCase());
+      });
+    }
+
+    const sorted = filtered.sort((a, b) => {
+      const aVal = a[sortConfig.key];
+      const bVal = b[sortConfig.key];
+
+      if (aVal === null || aVal === undefined) return 1;
+      if (bVal === null || bVal === undefined) return -1;
+
+      let comparison = 0;
+      if (typeof aVal === "string") {
+        comparison = aVal.localeCompare(bVal);
+      } else if (typeof aVal === "number") {
+        comparison = aVal - bVal;
+      }
+
+      return sortConfig.direction === "asc" ? comparison : -comparison;
+    });
+
+    return sorted;
+  };
+
+  const displayData = getSortedAndFilteredData();
+
+  const getSortLabel = () => {
+    const labels = {
+      sort: "Sort by",
+      donorId: "Donor ID",
+      firstName: "First Name",
+      lastName: "Last Name",
+      bloodType: "Blood Type",
+      age: "Age",
+      gender: "Gender",
+      address: "Address",
+    };
+    return labels[sortConfig.key] || "Sort by";
   };
 
   const toggleRowSelection = (id) => {
@@ -96,9 +171,14 @@ const DonorRecord = () => {
   };
 
   const toggleAllSelection = () => {
-    const allSelected = donorData.every((item) => item.selected);
+    const allSelected = displayData.every((item) => item.selected);
     setDonorData((prevData) =>
-      prevData.map((item) => ({ ...item, selected: !allSelected }))
+      prevData.map((item) => {
+        if (displayData.find((d) => d.id === item.id)) {
+          return { ...item, selected: !allSelected };
+        }
+        return item;
+      })
     );
   };
 
@@ -156,7 +236,7 @@ const DonorRecord = () => {
   };
 
   const handleBarangayInputChange = (value) => {
-    setFormData(prev => ({ ...prev, address: value })); // Update formData.address
+    setFormData(prev => ({ ...prev, address: value }));
     setBarangaySearch(value);
     setShowBarangayDropdown(value.length > 0);
   };
@@ -168,11 +248,8 @@ const DonorRecord = () => {
         return;
       }
       
-      // Debug: Log formData to see what's being validated
       console.log("Form Data before validation:", formData);
       
-      // FIXED VALIDATION - Only check actually required fields
-      // donorId is auto-generated, age is auto-calculated, middleName is optional
       if (!formData.firstName?.trim()) {
         setError("First Name is required");
         return;
@@ -206,7 +283,6 @@ const DonorRecord = () => {
         return;
       }
 
-      // Ensure donorId is generated before saving
       if (!formData.donorId) {
         setError("Donor ID not generated. Please try again.");
         return;
@@ -216,7 +292,6 @@ const DonorRecord = () => {
       
       await window.electronAPI.addDonorRecord(formData);
       
-      // Reset form
       setFormData({
         donorId: "", firstName: "", middleName: "", lastName: "", gender: "", birthdate: "",
         age: "", bloodType: "", rhFactor: "", contactNumber: "", address: "",
@@ -226,6 +301,12 @@ const DonorRecord = () => {
       setBarangaySearch("");
       await loadDonorData();
       setError(null);
+
+      setSuccessMessage({
+        title: "Donor Added Successfully!",
+        description: "New donor record has been added to the system.",
+      });
+      setShowSuccessModal(true);
     } catch (err) {
       console.error("Error adding donor:", err);
       setError("Failed to add donor: " + err.message);
@@ -248,13 +329,13 @@ const DonorRecord = () => {
 
   const openAddModal = async () => {
     setShowAddModal(true);
-    setError(null); // Clear any previous errors
-    await generateDonorId(); // Wait for ID generation
+    setError(null);
+    await generateDonorId();
   };
 
-  const selectedCount = donorData.filter((item) => item.selected).length;
-  const allSelected = donorData.length > 0 && donorData.every((item) => item.selected);
-  const someSelected = donorData.some((item) => item.selected) && !allSelected;
+  const selectedCount = displayData.filter((item) => item.selected).length;
+  const allSelected = displayData.length > 0 && displayData.every((item) => item.selected);
+  const someSelected = displayData.some((item) => item.selected) && !allSelected;
 
   if (loading) {
     return (
@@ -298,16 +379,143 @@ const DonorRecord = () => {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <button style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", border: "1px solid #d1d5db", borderRadius: "6px", backgroundColor: "white", cursor: "pointer", fontSize: "14px", color: "#374151" }}>
-            <span>Sort by</span>
-            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m19 9-7 7-7-7" />
-            </svg>
-          </button>
-          <button style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", backgroundColor: "white", color: "#374151", border: "1px solid #d1d5db", borderRadius: "6px", cursor: "pointer", fontSize: "14px" }}>
-            <Filter size={16} />
-            <span>Filter</span>
-          </button>
+          <div style={{ position: "relative" }} ref={sortDropdownRef}>
+            <button 
+              style={{ 
+                display: "flex", 
+                alignItems: "center", 
+                gap: "8px", 
+                padding: "8px 16px", 
+                border: "1px solid #d1d5db", 
+                borderRadius: "6px", 
+                backgroundColor: showSortDropdown ? "#2C58DC" : "white", 
+                cursor: "pointer", 
+                fontSize: "14px", 
+                fontFamily: "Barlow",
+                color: showSortDropdown ? "white" : "#374151",
+                transition: "all 0.2s ease",
+                minWidth: "100px"
+              }}
+              onClick={() => setShowSortDropdown(!showSortDropdown)}
+            >
+              <span>{getSortLabel()}</span>
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ transform: showSortDropdown ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease" }}>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m19 9-7 7-7-7" />
+              </svg>
+            </button>
+            {showSortDropdown && (
+              <div style={{ position: "absolute", top: "100%", left: 0, backgroundColor: "white", border: "#8daef2", borderRadius: "6px", boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)", zIndex: 1000, minWidth: "200px", marginTop: "4px" }}>
+                {[
+                  { key: "sort", label: "Sort by" },
+                  { key: "donorId", label: "Donor ID" },
+                  { key: "firstName", label: "First Name" },
+                  { key: "lastName", label: "Last Name" },
+                  { key: "bloodType", label: "Blood Type" },
+                  { key: "age", label: "Age" },
+                  { key: "gender", label: "Gender" },
+                  { key: "address", label: "Address" },
+                ].map((item) => (
+                  <div
+                    key={item.key}
+                    style={{
+                      padding: "10px 16px",
+                      cursor: "pointer",
+                      fontSize: "14px",
+                      color: "#374151",
+                      transition: "background-color 0.2s ease",
+                      borderBottom: "1px solid #e5e7eb",
+                      fontFamily: "Barlow",
+                      backgroundColor: sortConfig.key === item.key ? "#dbeafe" : "transparent",
+                      fontWeight: sortConfig.key === item.key ? "600" : "normal",
+                    }}
+                    onClick={() => handleSort(item.key)}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = sortConfig.key === item.key ? "#dbeafe" : "#f3f4f6"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = sortConfig.key === item.key ? "#dbeafe" : "transparent"; }}
+                  >
+                    {item.label} {sortConfig.key === item.key && (sortConfig.direction === "asc" ? "↑" : "↓")}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ position: "relative" }} ref={filterDropdownRef}>
+            <button 
+              style={{ 
+                display: "flex", 
+                alignItems: "center", 
+                gap: "8px", 
+                padding: "8px 16px", 
+                backgroundColor: showFilterDropdown ? "#2C58DC" : "white", 
+                color: showFilterDropdown ? "white" : "#374151", 
+                border: "1px solid #d1d5db", 
+                fontFamily: "Barlow",
+                borderRadius: "6px", 
+                cursor: "pointer", 
+                fontSize: "14px",
+                transition: "all 0.2s ease"
+              }}
+              onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+            >
+              <Filter size={16} />
+              <span>Filter</span>
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ transform: showFilterDropdown ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease" }}>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m19 9-7 7-7-7" />
+              </svg>
+            </button>
+            {showFilterDropdown && (
+              <div style={{ position: "absolute", top: "100%", left: 0, backgroundColor: "white", border: "#8daef2", borderRadius: "6px", boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)", zIndex: 1000, minWidth: "300px", marginTop: "4px" }}>
+                <div style={{ padding: "12px 16px", borderBottom: "1px solid #e5e7eb" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <label style={{ fontSize: "14px", fontWeight: "500", color: "#374151" }}>Filter Field</label>
+                    <select
+                      style={{ padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "14px", fontFamily: "Barlow", outline: "none", backgroundColor: "white", cursor: "pointer", width: "100%", boxSizing: "border-box" }}
+                      value={filterConfig.field}
+                      onChange={(e) => setFilterConfig({ ...filterConfig, field: e.target.value })}
+                    >
+                      <option value="">Select a field</option>
+                      <option value="donorId">Donor ID</option>
+                      <option value="firstName">First Name</option>
+                      <option value="lastName">Last Name</option>
+                      <option value="bloodType">Blood Type</option>
+                      <option value="gender">Gender</option>
+                      <option value="address">Address</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{ padding: "12px 16px", borderBottom: "1px solid #e5e7eb" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <label style={{ fontSize: "14px", fontWeight: "500", color: "#374151" }}>Filter Value</label>
+                    <input
+                      type="text"
+                      style={{ padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "14px", fontFamily: "Barlow", outline: "none", backgroundColor: "white", width: "100%", boxSizing: "border-box" }}
+                      value={filterConfig.value}
+                      onChange={(e) => setFilterConfig({ ...filterConfig, value: e.target.value })}
+                      placeholder="Enter value to filter"
+                    />
+                  </div>
+                </div>
+                <div style={{ padding: "8px", display: "flex", gap: "8px" }}>
+                  <button
+                    style={{ flex: 1, padding: "8px 12px", fontSize: "12px", backgroundColor: "#9ca3af", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontFamily: "Barlow" }}
+                    onClick={() => {
+                      setFilterConfig({ field: "", value: "" });
+                      setShowFilterDropdown(false);
+                    }}
+                  >
+                    Clear
+                  </button>
+                  <button
+                    style={{ flex: 1, padding: "8px 12px", fontSize: "12px", backgroundColor: "#059669", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontFamily: "Barlow" }}
+                    onClick={() => setShowFilterDropdown(false)}
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <button style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", backgroundColor: "#2C58DC", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "14px" }}>
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -342,14 +550,14 @@ const DonorRecord = () => {
             </tr>
           </thead>
           <tbody style={{ backgroundColor: "white" }}>
-            {donorData.length === 0 ? (
+            {displayData.length === 0 ? (
               <tr>
                 <td colSpan="12" style={{ padding: "40px", fontSize: "11px", fontFamily: "Arial", color: "#111827", textAlign: "center" }}>
-                  No donor records found
+                  {searchTerm || filterConfig.value ? "No donor records found matching your criteria" : "No donor records found"}
                 </td>
               </tr>
             ) : (
-              donorData.map((item, index) => (
+              displayData.map((item, index) => (
                 <tr key={item.id} style={{ backgroundColor: index % 2 === 1 ? "#f9fafb" : "white", ...(item.selected && { backgroundColor: "#e6f7ff" }) }}>
                   <td style={{ padding: "12px 16px", fontSize: "11px", fontFamily: "Arial", color: "#111827", borderBottom: "1px solid rgba(163, 163, 163, 0.2)" }}>
                     <input type="checkbox" style={{ width: "16px", height: "16px", cursor: "pointer" }} checked={item.selected} onChange={() => toggleRowSelection(item.id)} />
@@ -370,12 +578,6 @@ const DonorRecord = () => {
             )}
           </tbody>
         </table>
-
-        <div style={{ backgroundColor: "white", padding: "16px 24px", borderTop: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <button style={{ fontSize: "14px", color: "#6b7280", backgroundColor: "transparent", border: "none", cursor: "pointer", padding: "4px 8px" }}>Previous</button>
-          <span style={{ fontSize: "14px", color: "#374151", fontWeight: "500" }}>Page 1 of {Math.ceil(donorData.length / 20) || 1}</span>
-          <button style={{ fontSize: "14px", color: "#3b82f6", backgroundColor: "transparent", border: "none", cursor: "pointer", padding: "4px 8px" }}>Next</button>
-        </div>
       </div>
 
       {selectedCount > 0 && (
@@ -506,6 +708,41 @@ const DonorRecord = () => {
             <div style={{ padding: "16px 30px", borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "center", backgroundColor: "white" }}>
               <button style={{ padding: "12px 48px", backgroundColor: "#FFC200", color: "black", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "16px", fontWeight: "600", fontFamily: "Barlow" }} onClick={handleAddDonor}>Save</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showSuccessModal && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0, 0, 0, 0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000, padding: "10px" }}>
+          <div style={{ backgroundColor: "white", borderRadius: "11px", width: "30%", maxWidth: "350px", padding: "40px 30px 30px", boxShadow: "0 20px 25px rgba(0, 0, 0, 0.25)", display: "flex", flexDirection: "column", alignItems: "center", fontFamily: "Barlow", position: "relative" }}>
+            <button
+              style={{ position: "absolute", top: "16px", right: "16px", background: "none", border: "none", fontSize: "24px", color: "#9ca3af", cursor: "pointer", padding: "4px", display: "flex", alignItems: "center", justifyContent: "center", width: "32px", height: "32px", borderRadius: "4px" }}
+              onClick={() => setShowSuccessModal(false)}
+            >
+              ×
+            </button>
+
+            <div style={{ width: "30px", height: "30px", backgroundColor: "#10b981", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="48" height="48" fill="white" viewBox="0 0 20 20">
+                <path
+                  fillRule="evenodd"
+                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+
+            <h3 style={{ fontSize: "20px", fontWeight: "bold", color: "#165C3C", textAlign: "center", fontFamily: "Barlow" }}>{successMessage.title}</h3>
+            <p style={{ fontSize: "13px", color: "#6b7280", textAlign: "center", lineHeight: "1.5", fontFamily: "Barlow", marginTop: "-5px", paddingLeft: "20px", paddingRight: "20px" }}>
+              {successMessage.description}
+            </p>
+
+            <button
+              style={{ padding: "12px 60px", backgroundColor: "#FFC200", color: "black", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "16px", fontWeight: "600", fontFamily: "Barlow" }}
+              onClick={() => setShowSuccessModal(false)}
+            >
+              OK
+            </button>
           </div>
         </div>
       )}
