@@ -1,18 +1,16 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 const ResetPassword = () => {
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
-    email: "",
     recoveryCode: "",
     newPassword: "",
     confirmPassword: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [modalInfo, setModalInfo] = useState({
@@ -22,84 +20,52 @@ const ResetPassword = () => {
     message: "",
   });
 
-  // Validation states
-  const [validationErrors, setValidationErrors] = useState({
-    email: "",
-    recoveryCode: "",
-    newPassword: "",
-    confirmPassword: ""
-  });
-  const [touched, setTouched] = useState({
-    email: false,
-    recoveryCode: false,
-    newPassword: false,
-    confirmPassword: false
-  });
+  // Timer state for OTP expiration (5 minutes)
+  const [otpExpired, setOtpExpired] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState(300); // 5 minutes in seconds
+  const [otpSentTime, setOtpSentTime] = useState(null);
 
-  // Validation functions
-  const validateEmail = (email) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email) return "Email is required";
-    if (!emailRegex.test(email)) return "Please enter a valid email address";
-    return "";
-  };
-
-  const validateRecoveryCode = (code) => {
-    if (!code) return "Recovery code is required";
-    if (code.length !== 6) return "Recovery code must be 6 digits";
-    if (!/^\d{6}$/.test(code)) return "Recovery code must contain only numbers";
-    return "";
-  };
-
-  const validatePassword = (password) => {
-    if (!password) return "Password is required";
-    if (password.length < 8) return "Password must be at least 8 characters long";
-    if (!/[A-Z]/.test(password)) return "Password must contain at least one uppercase letter";
-    if (!/[a-z]/.test(password)) return "Password must contain at least one lowercase letter";
-    if (!/\d/.test(password)) return "Password must contain at least one digit";
-    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) return "Password must contain at least one special character (!@#$%^&* etc.)";
-    return "";
-  };
-
-  const validateConfirmPassword = (password, confirmPassword) => {
-    if (!confirmPassword) return "Please confirm your password";
-    if (password !== confirmPassword) return "Passwords do not match";
-    return "";
-  };
-
-  const validateField = (name, value) => {
-    switch (name) {
-      case 'email':
-        return validateEmail(value);
-      case 'recoveryCode':
-        return validateRecoveryCode(value);
-      case 'newPassword':
-        return validatePassword(value);
-      case 'confirmPassword':
-        return validateConfirmPassword(formData.newPassword, value);
-      default:
-        return "";
+  useEffect(() => {
+    // Get OTP sent time from sessionStorage
+    const sentTime = sessionStorage.getItem('otpSentTime');
+    if (sentTime) {
+      setOtpSentTime(parseInt(sentTime));
+    } else {
+      // If no OTP sent time, redirect to forgot password
+      navigate("/forgot-password");
     }
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!otpSentTime) return;
+
+    const timer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - otpSentTime) / 1000);
+      const remaining = 300 - elapsed; // 5 minutes = 300 seconds
+
+      if (remaining <= 0) {
+        setOtpExpired(true);
+        setTimeRemaining(0);
+        sessionStorage.removeItem('otpSentTime');
+        clearInterval(timer);
+      } else {
+        setTimeRemaining(remaining);
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [otpSentTime]);
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
-
-    // Real-time validation
-    const error = validateField(name, value);
-    setValidationErrors(prev => ({ ...prev, [name]: error }));
-
-    // Also validate confirm password when new password changes
-    if (name === 'newPassword' && formData.confirmPassword) {
-      const confirmError = validateConfirmPassword(value, formData.confirmPassword);
-      setValidationErrors(prev => ({ ...prev, confirmPassword: confirmError }));
-    }
-  };
-
-  const handleBlur = (e) => {
-    const { name } = e.target;
-    setTouched(prev => ({ ...prev, [name]: true }));
+    setError("");
   };
 
   const closeModal = () => {
@@ -109,44 +75,57 @@ const ResetPassword = () => {
   const handleResetPassword = async (e) => {
     e.preventDefault();
     setError("");
-    setSuccess("");
 
-    // Mark all fields as touched to show validation errors
-    setTouched({
-      email: true,
-      recoveryCode: true,
-      newPassword: true,
-      confirmPassword: true
-    });
+    if (otpExpired) {
+      setError("OTP code has expired. Please request a new one.");
+      return;
+    }
 
-    // Validate all fields
-    const errors = {
-      email: validateEmail(formData.email),
-      recoveryCode: validateRecoveryCode(formData.recoveryCode),
-      newPassword: validatePassword(formData.newPassword),
-      confirmPassword: validateConfirmPassword(formData.newPassword, formData.confirmPassword)
-    };
+    if (!formData.recoveryCode) {
+      setError("Please enter the recovery code");
+      return;
+    }
 
-    setValidationErrors(errors);
+    if (formData.recoveryCode.length !== 6) {
+      setError("Recovery code must be 6 digits");
+      return;
+    }
 
-    // Check if there are any validation errors
-    const hasErrors = Object.values(errors).some(error => error !== "");
-    if (hasErrors) {
-      setError("Please correct the validation errors above");
+    if (!formData.newPassword) {
+      setError("Please enter a new password");
+      return;
+    }
+
+    if (formData.newPassword.length < 6) {
+      setError("Password must be at least 6 characters long");
+      return;
+    }
+
+    if (formData.newPassword !== formData.confirmPassword) {
+      setError("Passwords do not match");
       return;
     }
 
     setLoading(true);
 
     try {
+      const email = sessionStorage.getItem('resetEmail');
+      if (!email) {
+        setError("Session expired. Please start over.");
+        setLoading(false);
+        return;
+      }
+
       // Use IPC instead of fetch
       const data = await window.electronAPI.resetPassword(
-        formData.email,
+        email,
         formData.recoveryCode,
         formData.newPassword
       );
 
       if (data.success) {
+        sessionStorage.removeItem('otpSentTime');
+        sessionStorage.removeItem('resetEmail');
         setModalInfo({
           show: true,
           type: "success",
@@ -366,6 +345,7 @@ const ResetPassword = () => {
           border: 2px solid #e5e7eb;
           font-size: 13px;
           transition: border-color 0.2s;
+          line-height: normal;
         }
 
         .form-group input:focus {
@@ -376,17 +356,36 @@ const ResetPassword = () => {
         .eye-icon {
           position: absolute;
           right: 12px;
-          top: 50%;
-          transform: translateY(-50%);
+          top: 12px;
           cursor: pointer;
           color: #666;
           font-size: 16px;
           background: none;
           border: none;
+          padding: 0;
+          width: 20px;
+          height: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
 
         .eye-icon:hover {
           color: #333;
+        }
+
+        .timer-text {
+          color: #ffcf35;
+          font-size: 12px;
+          margin-top: 5px;
+          font-weight: 500;
+        }
+
+        .expired-text {
+          color: #ef4444;
+          font-size: 12px;
+          margin-top: 5px;
+          font-weight: 500;
         }
 
         .btn {
@@ -468,13 +467,6 @@ const ResetPassword = () => {
           margin: 0;
           padding: 0;
         }
-
-        .validation-error {
-          color: #ef4444;
-          font-size: 12px;
-          margin-top: 4px;
-          font-weight: 500;
-        }
       `}</style>
     <div className="page-container">
       <header className="bloodsync-header">
@@ -514,48 +506,32 @@ const ResetPassword = () => {
           <div className={`content ${loading ? "loading" : ""}`}>
             <form onSubmit={handleResetPassword}>
               <div className="form-group">
-                <label htmlFor="email">Email Address</label>
-                <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  onBlur={handleBlur}
-                  placeholder="Enter your email"
-                  required
-                  style={{
-                    borderColor: touched.email && validationErrors.email ? '#ef4444' : '#e5e7eb'
-                  }}
-                />
-                {touched.email && validationErrors.email && (
-                  <div className="validation-error">{validationErrors.email}</div>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="recoveryCode">Enter Recovery Code</label>
+                <label htmlFor="recoveryCode">6-Digit OTP Code</label>
                 <input
                   type="text"
                   id="recoveryCode"
                   name="recoveryCode"
                   value={formData.recoveryCode}
                   onChange={handleInputChange}
-                  onBlur={handleBlur}
                   placeholder="Enter 6-digit code"
                   maxLength="6"
                   required
-                  style={{
-                    borderColor: touched.recoveryCode && validationErrors.recoveryCode ? '#ef4444' : '#e5e7eb'
-                  }}
+                  disabled={otpExpired}
                 />
-                {touched.recoveryCode && validationErrors.recoveryCode && (
-                  <div className="validation-error">{validationErrors.recoveryCode}</div>
+                {!otpExpired && timeRemaining > 0 && (
+                  <div className="timer-text">
+                    Code expires in: {formatTime(timeRemaining)}
+                  </div>
+                )}
+                {otpExpired && (
+                  <div className="expired-text">
+                    OTP code has expired
+                  </div>
                 )}
               </div>
 
               <div className="form-group">
-                <label htmlFor="newPassword">Enter new password</label>
+                <label htmlFor="newPassword">New Password</label>
                 <div className="input-container">
                   <input
                     type={showNewPassword ? "text" : "password"}
@@ -563,28 +539,23 @@ const ResetPassword = () => {
                     name="newPassword"
                     value={formData.newPassword}
                     onChange={handleInputChange}
-                    onBlur={handleBlur}
                     placeholder="Enter new password"
                     required
-                    style={{
-                      borderColor: touched.newPassword && validationErrors.newPassword ? '#ef4444' : '#e5e7eb'
-                    }}
+                    disabled={otpExpired}
                   />
                   <button
                     type="button"
                     className="eye-icon"
                     onClick={() => setShowNewPassword(!showNewPassword)}
+                    tabIndex="-1"
                   >
                     <i className={showNewPassword ? "fa-solid fa-eye-slash" : "fa-solid fa-eye"}></i>
                   </button>
                 </div>
-                {touched.newPassword && validationErrors.newPassword && (
-                  <div className="validation-error">{validationErrors.newPassword}</div>
-                )}
               </div>
 
               <div className="form-group">
-                <label htmlFor="confirmPassword">Confirm new password</label>
+                <label htmlFor="confirmPassword">Confirm New Password</label>
                 <div className="input-container">
                   <input
                     type={showConfirmPassword ? "text" : "password"}
@@ -592,33 +563,29 @@ const ResetPassword = () => {
                     name="confirmPassword"
                     value={formData.confirmPassword}
                     onChange={handleInputChange}
-                    onBlur={handleBlur}
                     placeholder="Confirm new password"
                     required
-                    style={{
-                      borderColor: touched.confirmPassword && validationErrors.confirmPassword ? '#ef4444' : '#e5e7eb'
-                    }}
+                    disabled={otpExpired}
                   />
                   <button
                     type="button"
                     className="eye-icon"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    tabIndex="-1"
                   >
                     <i className={showConfirmPassword ? "fa-solid fa-eye-slash" : "fa-solid fa-eye"}></i>
                   </button>
                 </div>
-                {touched.confirmPassword && validationErrors.confirmPassword && (
-                  <div className="validation-error">{validationErrors.confirmPassword}</div>
-                )}
               </div>
 
+              {error && <p style={{ margin: "10px 0", color: "#ffcf35", fontSize: "14px" }}>{error}</p>}
 
               <button
                 type="submit"
                 className="btn"
-                disabled={loading}
+                disabled={loading || otpExpired}
               >
-                {loading ? "RESETTING..." : "CONFIRM PASSWORD RESET"}
+                {loading ? "RESETTING..." : "RESET PASSWORD"}
               </button>
 
               <button
@@ -632,7 +599,7 @@ const ResetPassword = () => {
                 }}
                 disabled={loading}
               >
-                BACK
+                Back
               </button>
             </form>
           </div>

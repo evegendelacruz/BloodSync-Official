@@ -1,134 +1,150 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
-const ForgotPassword = () => {
+const ResetPasswordOrg = () => {
   const navigate = useNavigate();
+
   const [formData, setFormData] = useState({
-    email: "",
+    recoveryCode: "",
+    newPassword: "",
+    confirmPassword: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [modalInfo, setModalInfo] = useState({
     show: false,
-    type: "", // 'success' or 'error'
+    type: "",
     title: "",
     message: "",
   });
-  const [canResend, setCanResend] = useState(true);
-  const [countdown, setCountdown] = useState(0);
-  const [showGotOTP, setShowGotOTP] = useState(false);
+
+  // Timer state for OTP expiration (5 minutes)
+  const [otpExpired, setOtpExpired] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState(300); // 5 minutes in seconds
   const [otpSentTime, setOtpSentTime] = useState(null);
 
   useEffect(() => {
-    // Check if there's an active OTP session
-    const sentTime = sessionStorage.getItem('otpSentTime');
+    // Get OTP sent time from sessionStorage
+    const sentTime = sessionStorage.getItem('otpSentTimeOrg');
     if (sentTime) {
-      const elapsed = Math.floor((Date.now() - parseInt(sentTime)) / 1000);
-      const remaining = 300 - elapsed; // 5 minutes
-
-      if (remaining > 0) {
-        setShowGotOTP(true);
-        setOtpSentTime(parseInt(sentTime));
-      } else {
-        sessionStorage.removeItem('otpSentTime');
-        sessionStorage.removeItem('resetEmail');
-      }
+      setOtpSentTime(parseInt(sentTime));
+    } else {
+      // If no OTP sent time, redirect to forgot password
+      navigate("/organization/forgot-password");
     }
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     if (!otpSentTime) return;
 
     const timer = setInterval(() => {
       const elapsed = Math.floor((Date.now() - otpSentTime) / 1000);
-      const remaining = 300 - elapsed; // 5 minutes
+      const remaining = 300 - elapsed; // 5 minutes = 300 seconds
 
       if (remaining <= 0) {
-        setShowGotOTP(false);
-        sessionStorage.removeItem('otpSentTime');
-        sessionStorage.removeItem('resetEmail');
+        setOtpExpired(true);
+        setTimeRemaining(0);
+        sessionStorage.removeItem('otpSentTimeOrg');
         clearInterval(timer);
+      } else {
+        setTimeRemaining(remaining);
       }
     }, 1000);
 
     return () => clearInterval(timer);
   }, [otpSentTime]);
 
-  useEffect(() => {
-    if (countdown > 0) {
-      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
-      return () => clearTimeout(timer);
-    } else if (countdown === 0) {
-      setCanResend(true);
-    }
-  }, [countdown]);
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
+    setError("");
   };
 
   const closeModal = () => {
     setModalInfo({ ...modalInfo, show: false });
-    if (modalInfo.type === "success") {
-      // Store email and timestamp in sessionStorage
-      sessionStorage.setItem('resetEmail', formData.email);
-      const currentTime = Date.now();
-      sessionStorage.setItem('otpSentTime', currentTime.toString());
-      setOtpSentTime(currentTime);
-      setShowGotOTP(true);
-
-      // Navigate to reset password page
-      navigate("/reset-password");
-    }
   };
 
-  const handleSendCode = async (e) => {
+  const handleResetPassword = async (e) => {
     e.preventDefault();
     setError("");
 
-    if (!canResend) {
-      setError(`Please wait ${countdown} seconds before requesting another code`);
+    if (otpExpired) {
+      setError("OTP code has expired. Please request a new one.");
       return;
     }
 
-    if (!formData.email) {
-      setError("Please enter your email address");
+    if (!formData.recoveryCode) {
+      setError("Please enter the recovery code");
       return;
     }
 
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-      setError("Please enter a valid email address");
+    if (formData.recoveryCode.length !== 6) {
+      setError("Recovery code must be 6 digits");
+      return;
+    }
+
+    if (!formData.newPassword) {
+      setError("Please enter a new password");
+      return;
+    }
+
+    if (formData.newPassword.length < 6) {
+      setError("Password must be at least 6 characters long");
+      return;
+    }
+
+    if (formData.newPassword !== formData.confirmPassword) {
+      setError("Passwords do not match");
       return;
     }
 
     setLoading(true);
 
     try {
-      // Use IPC instead of fetch
-      const data = await window.electronAPI.generatePasswordResetToken(formData.email);
-      console.log('Password reset response:', data);
+      const email = sessionStorage.getItem('resetEmailOrg');
+      if (!email) {
+        setError("Session expired. Please start over.");
+        setLoading(false);
+        return;
+      }
+
+      // Use IPC for organization password reset
+      const data = await window.electronAPI.resetPasswordOrg(
+        email,
+        formData.recoveryCode,
+        formData.newPassword
+      );
 
       if (data.success) {
-        setCanResend(false);
-        setCountdown(60); // 1 minute cooldown
+        sessionStorage.removeItem('otpSentTimeOrg');
+        sessionStorage.removeItem('resetEmailOrg');
         setModalInfo({
           show: true,
           type: "success",
           title: "Success",
-          message: "Your OTP Code is now sent to your registered email."
+          message: "Password reset successfully! Redirecting to login..."
         });
+        setTimeout(() => {
+          navigate("/login-org");
+        }, 1500);
       } else {
         setModalInfo({
           show: true,
           type: "error",
           title: "Error",
-          message: data.message || "Failed to send recovery code"
+          message: data.message || "Failed to reset password"
         });
       }
     } catch (err) {
-      console.error('Error sending recovery code:', err);
+      console.error('Error resetting password:', err);
       setModalInfo({
         show: true,
         type: "error",
@@ -141,7 +157,7 @@ const ForgotPassword = () => {
   };
 
   const handleBack = () => {
-    navigate("/login");
+    navigate("/forgot-password-org");
   };
 
   const modalStyles = {
@@ -205,7 +221,7 @@ const ForgotPassword = () => {
             <div style={modalStyles.modalHeader}>
               <span style={modalStyles.modalIcon}>
                 <img
-                  src={modalInfo.type === "success" ? "./assets/success.png" : "./assets/error-.png"}
+                  src={modalInfo.type === "success" ? "/assets/success.png" : "/assets/error-.png"}
                   alt={modalInfo.type}
                   style={{ width: '60px', height: '60px' }}
                 />
@@ -226,7 +242,6 @@ const ForgotPassword = () => {
           box-sizing: border-box;
         }
 
-        /* Header Styles */
         .bloodsync-header {
           background: #165c3c;
           padding: 5px 24px;
@@ -265,31 +280,6 @@ const ForgotPassword = () => {
           margin-right: 12px;
         }
 
-        .bloodsync-title {
-          font-size: 20px;
-          font-weight: bold;
-          margin: 0;
-        }
-
-        .bloodsync-subtitle {
-          font-size: 10px;
-          color: rgba(255, 255, 255, 0.8);
-          margin: 0;
-        }
-
-        .doh-title {
-          font-size: 12px;
-          font-weight: 600;
-          margin: 0 0 2px 0;
-        }
-
-        .doh-republic,
-        .doh-tagalog {
-          font-size: 10px;
-          color: rgba(255, 255, 255, 0.8);
-          margin: 0;
-        }
-
         .page-container {
           min-height: 100vh;
           display: flex;
@@ -304,26 +294,15 @@ const ForgotPassword = () => {
           padding: 40px 20px;
         }
 
-        .login-container {
-          background: rgba(22, 92, 60, 0.8);
-          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-          overflow: hidden;
-          width: 350px;
-          min-height: 400px; /* keeps a minimum size */
-          height: auto;      /* adjust based on content */
-          display: flex;
-          flex-direction: column; /* keeps rows stacking */
-        }
-
         .reset-container {
           background: rgba(22, 92, 60, 0.8);
           box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
           overflow: hidden;
           width: 350px;
-          min-height: 300px; /* keeps a minimum size */
-          height: auto;      /* adjust based on content */
+          min-height: 400px;
+          height: auto;
           display: flex;
-          flex-direction: column; /* keeps rows stacking */
+          flex-direction: column;
         }
 
         .login-header {
@@ -363,17 +342,43 @@ const ForgotPassword = () => {
           color: white;
         }
 
+        .form-group .input-container {
+          position: relative;
+        }
+
         .form-group input {
           width: 100%;
           padding: 10px 16px;
           border: 2px solid #e5e7eb;
           font-size: 13px;
           transition: border-color 0.2s;
+          line-height: normal;
         }
 
         .form-group input:focus {
           outline: none;
           border-color: #15803d;
+        }
+
+        .eye-icon {
+          position: absolute;
+          right: 12px;
+          top: 12px;
+          cursor: pointer;
+          color: #666;
+          font-size: 16px;
+          background: none;
+          border: none;
+          padding: 0;
+          width: 20px;
+          height: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .eye-icon:hover {
+          color: #333;
         }
 
         .btn {
@@ -387,6 +392,7 @@ const ForgotPassword = () => {
           transition: transform 0.2s;
           margin-bottom: 16px;
           font-family: Arial;
+          cursor: pointer;
         }
 
         .btn:hover {
@@ -403,10 +409,6 @@ const ForgotPassword = () => {
           transform: none;
         }
 
-        .text-center {
-          text-align: center;
-        }
-
         .link {
           background: none;
           border: none;
@@ -416,23 +418,11 @@ const ForgotPassword = () => {
           text-decoration: none;
           font-weight: bold;
           font-family: inherit;
+          cursor: pointer;
         }
 
         .link:hover {
           text-decoration: underline;
-        }
-
-        .error {
-          color: #ef4444;
-          font-size: 14px;
-          margin-top: 8px;
-          display: none;
-        }
-
-        .success {
-          color: #10b981;
-          font-size: 14px;
-          margin-top: 8px;
         }
 
         .loading {
@@ -440,7 +430,6 @@ const ForgotPassword = () => {
           pointer-events: none;
         }
 
-        /* Footer styling */
         .footer {
           background: #ffcf35;
           color: black;
@@ -450,13 +439,26 @@ const ForgotPassword = () => {
           font-family: Arial;
         }
 
-        /* Responsive adjustments */
+        .timer-text {
+          color: #ffcf35;
+          font-size: 12px;
+          margin-top: 5px;
+          font-weight: 500;
+        }
+
+        .expired-text {
+          color: #ef4444;
+          font-size: 12px;
+          margin-top: 5px;
+          font-weight: 500;
+        }
+
         @media (max-width: 768px) {
           .main-content {
             padding: 20px 16px;
           }
 
-          .login-container {
+          .reset-container {
             max-width: 100%;
           }
         }
@@ -465,7 +467,7 @@ const ForgotPassword = () => {
           font-family: "Barlow", "Arial", "Barlow-Medium", sans-serif;
           background:
              #EDF4E6
-            /* Image background */ url("../assets/Background.png") no-repeat
+            url("../assets/Background.png") no-repeat
             center center fixed;
           background-size: cover;
           min-height: 100vh;
@@ -505,53 +507,93 @@ const ForgotPassword = () => {
       <div className="main-content">
         <div className="reset-container">
           <div className="login-header">
-            <h1>Forgot Password</h1>
-            <p>Enter your email address to receive a recovery code.</p>
+            <h1>Password Reset</h1>
+            <p>Enter the 6-digit code sent to your email and set a new password.</p>
           </div>
 
           <div className={`content ${loading ? "loading" : ""}`}>
-            <form onSubmit={handleSendCode}>
+            <form onSubmit={handleResetPassword}>
               <div className="form-group">
-                <label htmlFor="email">Email Address</label>
+                <label htmlFor="recoveryCode">6-Digit OTP Code</label>
                 <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  value={formData.email}
+                  type="text"
+                  id="recoveryCode"
+                  name="recoveryCode"
+                  value={formData.recoveryCode}
                   onChange={handleInputChange}
-                  placeholder="Enter your email"
+                  placeholder="Enter 6-digit code"
+                  maxLength="6"
                   required
+                  disabled={otpExpired}
                 />
+                {!otpExpired && timeRemaining > 0 && (
+                  <div className="timer-text">
+                    Code expires in: {formatTime(timeRemaining)}
+                  </div>
+                )}
+                {otpExpired && (
+                  <div className="expired-text">
+                    OTP code has expired
+                  </div>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="newPassword">New Password</label>
+                <div className="input-container">
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    id="newPassword"
+                    name="newPassword"
+                    value={formData.newPassword}
+                    onChange={handleInputChange}
+                    placeholder="Enter new password"
+                    required
+                    disabled={otpExpired}
+                  />
+                  <button
+                    type="button"
+                    className="eye-icon"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    tabIndex="-1"
+                  >
+                    <i className={showNewPassword ? "fa-solid fa-eye-slash" : "fa-solid fa-eye"}></i>
+                  </button>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="confirmPassword">Confirm New Password</label>
+                <div className="input-container">
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={handleInputChange}
+                    placeholder="Confirm new password"
+                    required
+                    disabled={otpExpired}
+                  />
+                  <button
+                    type="button"
+                    className="eye-icon"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    tabIndex="-1"
+                  >
+                    <i className={showConfirmPassword ? "fa-solid fa-eye-slash" : "fa-solid fa-eye"}></i>
+                  </button>
+                </div>
               </div>
 
               {error && <p style={{ margin: "10px 0", color: "#ffcf35", fontSize: "14px" }}>{error}</p>}
 
-              {showGotOTP && (
-                <div style={{ textAlign: "center", marginBottom: "15px" }}>
-                  <button
-                    type="button"
-                    onClick={() => navigate("/reset-password")}
-                    className="link"
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "#ffcf35",
-                      textDecoration: "underline",
-                      cursor: "pointer",
-                      fontSize: "14px"
-                    }}
-                  >
-                    Got OTP Code?
-                  </button>
-                </div>
-              )}
-
               <button
                 type="submit"
                 className="btn"
-                disabled={loading || !canResend}
+                disabled={loading || otpExpired}
               >
-                {loading ? "SENDING..." : canResend ? "SEND CODE" : `WAIT ${countdown}s`}
+                {loading ? "RESETTING..." : "RESET PASSWORD"}
               </button>
 
               <button
@@ -561,11 +603,10 @@ const ForgotPassword = () => {
                 style={{
                   display: "block",
                   margin: "10px auto",
-                  cursor: "pointer",
                 }}
                 disabled={loading}
               >
-                Back to Login
+                Back
               </button>
             </form>
           </div>
@@ -579,4 +620,4 @@ const ForgotPassword = () => {
   );
 };
 
-export default ForgotPassword;
+export default ResetPasswordOrg;

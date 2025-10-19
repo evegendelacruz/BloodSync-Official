@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import Spinner from "../../../components/Spinner";
 
 const RedBloodCell = () => {
   const [bloodData, setBloodData] = useState([]);
@@ -89,6 +90,7 @@ const RedBloodCell = () => {
   const handleSearch = async (e) => {
     const value = e.target.value;
     setSearchTerm(value);
+    setLoading(true);
 
     try {
       if (!window.electronAPI) {
@@ -105,6 +107,8 @@ const RedBloodCell = () => {
     } catch (err) {
       console.error("Error searching:", err);
       setError("Search failed");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1083,7 +1087,10 @@ const RedBloodCell = () => {
   if (loading) {
     return (
       <div style={styles.container}>
-        <div style={styles.loadingContainer}>Loading blood stock data...</div>
+        <div style={styles.loadingContainer}>
+          <Spinner />
+          <div>Loading blood stock data...</div>
+        </div>
       </div>
     );
   }

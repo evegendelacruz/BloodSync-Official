@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Filter, Search, Calendar, Mail, Bell, User, CheckCircle, X, Clock, RefreshCw, MoreVertical } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import SidePanelOrg from "../../../components/SidePanelOrg";
 
 // Import components for navigation (you'll need to create these or import from actual files)
@@ -9,7 +10,6 @@ import NotificationOrg from "./(tabs)/notification_org";
 import AppointmentOrg from "./appointment_org";
 import RecentActivityOrg from "./recent_activity_org";
 import ProfileOrg from "./(tabs)/profile/profile";
-import LoginOrg from "../login_org";
 
 // Shared notifications data
 const notificationsData = [
@@ -1696,17 +1696,52 @@ const LogoutDialog = ({ isOpen, onConfirm, onCancel }) => {
 
 // Main DonorRecordOrg Component
 const DonorRecordOrg = () => {
+  const navigate = useNavigate();
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(true);
   const [activeScreen, setActiveScreen] = useState("donor-record-org");
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [isCalendarDropdownOpen, setIsCalendarDropdownOpen] = useState(false);
   const [isMailDropdownOpen, setIsMailDropdownOpen] = useState(false);
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false);
-  const [isLoggedOut, setIsLoggedOut] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [notifications, setNotifications] = useState(notificationsData);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeNotificationMenu, setActiveNotificationMenu] = useState(null);
+  const [currentOrgUser, setCurrentOrgUser] = useState(null);
+
+  // Load current user from localStorage initially
+  useEffect(() => {
+    const userData = localStorage.getItem('currentOrgUser');
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        setCurrentOrgUser(user);
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+      }
+    }
+  }, []);
+
+  // Fetch profile photo on component mount and when user data changes
+  useEffect(() => {
+    const fetchProfilePhoto = async () => {
+      if (currentOrgUser?.userId) {
+        try {
+          const profile = await window.electronAPI.getUserProfile(currentOrgUser.userId);
+
+          if (profile?.profile_photo) {
+            const updatedUser = { ...currentOrgUser, profilePhoto: profile.profile_photo };
+            setCurrentOrgUser(updatedUser);
+            localStorage.setItem('currentOrgUser', JSON.stringify(updatedUser));
+          }
+        } catch (error) {
+          console.error('Error fetching profile photo:', error);
+        }
+      }
+    };
+
+    fetchProfilePhoto();
+  }, [currentOrgUser?.userId]); // Fetch when userId is available
 
   const toggleSidePanel = () => {
     setIsSidePanelOpen(!isSidePanelOpen);
@@ -1759,8 +1794,10 @@ const DonorRecordOrg = () => {
 
   const handleLogoutConfirm = () => {
     setShowLogoutDialog(false);
-    setIsLoggedOut(true);
+    localStorage.removeItem('currentOrgUser');
     console.log("Logging out...");
+    // Navigate to login page
+    navigate('/login-org');
   };
 
   const handleLogoutCancel = () => {
@@ -1844,10 +1881,6 @@ const DonorRecordOrg = () => {
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;
-
-  if (isLoggedOut) {
-    return <LoginOrg />;
-  }
 
   const renderActiveScreen = () => {
     switch (activeScreen) {
@@ -2093,12 +2126,28 @@ return (
 
               {/* User Profile Section with Dropdown */}
               <div className="user-section relative">
-                <span className="user-name">Alaiza Rose Olores</span>
+                <span className="user-name">{currentOrgUser?.fullName || 'Loading...'}</span>
                 <div
                   className={`user-avatar cursor-pointer ${activeScreen === "profile" ? "user-avatar-active" : ""}`}
                   onClick={toggleProfileDropdown}
+                  style={{
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}
                 >
-                  <User className="w-4 h-4 text-gray-600" />
+                  {currentOrgUser?.profilePhoto ? (
+                    <img
+                      src={currentOrgUser.profilePhoto}
+                      alt="Profile"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover'
+                      }}
+                    />
+                  ) : (
+                    <User className="w-4 h-4 text-gray-600" />
+                  )}
                 </div>
                 
                 {isProfileDropdownOpen && (

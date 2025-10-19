@@ -5,8 +5,8 @@ const path = require('path');
 const pool = new Pool({
   user: 'postgres',
   host: 'localhost',
-  database: 'bloodsync_org',
-  password: 'Itsjk117',
+  database: 'postgres_org',
+  password: 'bloodsync',
   port: 5432,
 });
 
@@ -66,6 +66,23 @@ const initializeDatabase = async () => {
         action_description TEXT NOT NULL,
         details JSONB,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create organization_user_profiles table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS organization_user_profiles (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES user_org_doh(id) ON DELETE CASCADE,
+        profile_photo TEXT,
+        gender VARCHAR(50) CHECK (gender IN ('Male', 'Female', 'Non-Binary', 'Prefer Not to Say')),
+        date_of_birth DATE,
+        nationality VARCHAR(100) DEFAULT 'Filipino',
+        civil_status VARCHAR(50) CHECK (civil_status IN ('Single', 'Married', 'Widowed', 'Divorced', 'Separated')),
+        blood_type VARCHAR(3) CHECK (blood_type IN ('AB+', 'AB-', 'A+', 'A-', 'B+', 'B-', 'O+', 'O-')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id)
       )
     `);
 
@@ -1220,6 +1237,565 @@ const closeConnection = async () => {
   }
 };
 
+// ========== ORGANIZATION USER REGISTRATION ==========
+
+// Email sending function for organization user approval
+const sendOrgUserApprovalEmail = async (fullName, email, role, barangay, activationToken) => {
+  try {
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465,
+      secure: true,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+
+    console.log('Preparing to send organization user approval email...');
+    console.log('SMTP_USER:', process.env.SMTP_USER);
+    console.log('SMTP_PASS:', process.env.SMTP_PASS ? '***hidden***' : 'NOT SET');
+
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      console.warn('SMTP credentials (SMTP_USER/SMTP_PASS) not set. Skipping email sending.');
+      console.log(`[EMAIL NOT CONFIGURED] Would send activation email for: ${fullName} (${email})`);
+      console.log(`Activation Token: ${activationToken}`);
+      return;
+    }
+
+    const to = 'bloodsync.doh@gmail.com';
+    const subject = 'New Partnered Organization User Account Registration';
+
+    let barangayInfo = '';
+    if (role === 'Barangay' && barangay) {
+      barangayInfo = `\nBarangay: ${barangay}`;
+    }
+
+    const activationLink = `http://localhost:5173/activate-org?token=${activationToken}`;
+
+    const text = `New Partnered Organization User Account Registration
+
+A new partnered organization user has registered and requires activation approval:
+
+Full Name: ${fullName}
+Role: ${role}${barangayInfo}
+Email: ${email}
+
+To activate this user, click the link below or paste the activation token in the BloodSync application:
+${activationLink}
+
+Activation Token: ${activationToken}
+
+If this is not a verified user, please ignore this message.`;
+
+    console.log('Sending email to:', to);
+    console.log('Email subject:', subject);
+
+    await transporter.sendMail({
+      from: process.env.SMTP_USER,
+      to,
+      subject,
+      text,
+    });
+
+    console.log('Partnered Organization user approval email sent successfully.');
+  } catch (error) {
+    console.error('Error sending partnered organization user approval email:', error);
+  }
+};
+
+// Register organization user
+const registerOrgUser = async (userData) => {
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // Create user_org_doh table if it doesn't exist
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_org_doh (
+        id SERIAL PRIMARY KEY,
+        doh_id TEXT,
+        full_name VARCHAR(255) NOT NULL,
+        role VARCHAR(100) NOT NULL CHECK (role IN ('Barangay', 'Local Government Unit', 'Non-Profit Organization')),
+        barangay VARCHAR(255),
+        email VARCHAR(255) NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        is_active BOOLEAN DEFAULT FALSE,
+        activation_token UUID,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Validate input
+    const full_name = (userData.full_name || '').trim();
+    const role = (userData.role || '').trim();
+    const barangay = (userData.barangay || '').trim();
+    const email = (userData.email || '').trim();
+    const password = userData.password || '';
+
+    if (!full_name || !role || !email || !password) {
+      throw new Error('Missing required fields');
+    }
+
+    // Validate role
+    const allowedRoles = ['Barangay', 'Local Government Unit', 'Non-Profit Organization'];
+    if (!allowedRoles.includes(role)) {
+      throw new Error('Invalid role');
+    }
+
+    // Validate barangay is required when role is Barangay
+    if (role === 'Barangay' && !barangay) {
+      throw new Error('Please select your Barangay to complete registration.');
+    }
+
+    // Check if email already exists
+    const existingUser = await client.query(
+      'SELECT id FROM user_org_doh WHERE email = $1',
+      [email]
+    );
+
+    if (existingUser.rows.length > 0) {
+      throw new Error('Email is already registered');
+    }
+
+    // Hash password
+    const bcrypt = require('bcryptjs');
+    const crypto = require('crypto');
+    const password_hash = await bcrypt.hash(password, 10);
+    const activation_token = crypto.randomUUID();
+
+    // Insert user
+    const insertQuery = `
+      INSERT INTO user_org_doh (
+        full_name, role, barangay, email, password_hash,
+        is_active, activation_token
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id, activation_token
+    `;
+
+    const values = [
+      full_name,
+      role,
+      role === 'Barangay' ? barangay : null,
+      email,
+      password_hash,
+      false, // Not active until approved
+      activation_token
+    ];
+
+    const result = await client.query(insertQuery, values);
+
+    // Send approval email to bloodsync.doh@gmail.com
+    await sendOrgUserApprovalEmail(full_name, email, role, barangay, activation_token);
+
+    await client.query('COMMIT');
+
+    console.log('Organization user registered successfully:');
+    console.log(`Full Name: ${full_name}`);
+    console.log(`Role: ${role}`);
+    if (role === 'Barangay') {
+      console.log(`Barangay: ${barangay}`);
+    }
+    console.log(`Email: ${email}`);
+
+
+    return {
+      userId: result.rows[0].id,
+      activationToken: activation_token
+    };
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error registering organization user:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
+// Activate organization user by token
+const activateOrgUserByToken = async (token) => {
+  try {
+    // First, check if user exists and get current status
+    const checkUser = await pool.query(
+      `SELECT id, is_active FROM user_org_doh WHERE activation_token = $1`,
+      [token]
+    );
+
+    console.log('[DB_ORG] User check result:', checkUser.rows[0]);
+
+    if (checkUser.rowCount === 0) {
+      console.log('[DB_ORG] No organization user found with token:', token);
+      return false;
+    }
+
+    if (checkUser.rows[0].is_active) {
+      console.log('[DB_ORG] Organization user already active');
+      return true;
+    }
+
+    // Proceed with activation
+    const result = await pool.query(
+      `UPDATE user_org_doh SET is_active = TRUE WHERE activation_token = $1 AND is_active = FALSE RETURNING id, is_active`,
+      [token]
+    );
+
+    console.log('[DB_ORG] Activation update result:', result.rows[0]);
+
+    // Verify the update
+    if (result.rowCount > 0) {
+      const verify = await pool.query(
+        `SELECT is_active FROM user_org_doh WHERE activation_token = $1`,
+        [token]
+      );
+      console.log('[DB_ORG] Verification result:', verify.rows[0]);
+      return verify.rows[0].is_active === true;
+    }
+
+    return false;
+  } catch (error) {
+    console.error('[DB_ORG] Error activating organization user:', error);
+    throw error;
+  }
+};
+
+// Decline organization user by token
+const declineOrgUserByToken = async (token) => {
+  try {
+    const result = await pool.query(
+      `DELETE FROM user_org_doh WHERE activation_token = $1 RETURNING id`,
+      [token]
+    );
+    return result.rowCount > 0;
+  } catch (error) {
+    console.error('[DB_ORG] Error declining organization user:', error);
+    throw error;
+  }
+};
+
+// Login organization user
+const loginOrgUser = async (emailOrDohId, password) => {
+  try {
+    const bcrypt = require('bcryptjs');
+
+    // Check if input is DOH ID (format: DOH-XXXXXXXXX) or email
+    const isDohId = /^DOH-\d+$/i.test(emailOrDohId.trim());
+
+    let result;
+    if (isDohId) {
+      // Login with DOH ID
+      result = await pool.query(
+        `SELECT id, email, doh_id, password_hash, role, barangay, is_active, full_name FROM user_org_doh WHERE doh_id = $1`,
+        [emailOrDohId.trim()]
+      );
+    } else {
+      // Login with email
+      result = await pool.query(
+        `SELECT id, email, doh_id, password_hash, role, barangay, is_active, full_name FROM user_org_doh WHERE email = $1`,
+        [emailOrDohId.trim()]
+      );
+    }
+
+    if (result.rowCount === 0) {
+      throw new Error('Invalid credentials');
+    }
+
+    const user = result.rows[0];
+
+    if (!user.is_active) {
+      throw new Error('Account not activated. Please wait for admin approval.');
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+
+    if (!isMatch) {
+      throw new Error('Invalid credentials');
+    }
+
+    return {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      barangay: user.barangay,
+      fullName: user.full_name
+    };
+  } catch (error) {
+    console.error('[DB_ORG] Error logging in organization user:', error);
+    throw error;
+  }
+};
+
+// ========== ORGANIZATION USER PROFILE MANAGEMENT ==========
+
+// Generate DOH ID with random 9-digit number
+const generateDohId = async (client = null) => {
+  const dbClient = client || pool;
+
+  try {
+    let dohId;
+    let isUnique = false;
+    let attempts = 0;
+    const maxAttempts = 100; // Prevent infinite loop
+
+    while (!isUnique && attempts < maxAttempts) {
+      // Generate random 9-digit number (100000000 to 999999999)
+      const randomNumber = Math.floor(Math.random() * 900000000) + 100000000;
+      dohId = `DOH-${String(randomNumber).padStart(9, '0')}`;
+
+      // Check if this DOH ID already exists
+      const checkResult = await dbClient.query(`
+        SELECT doh_id FROM user_org_doh WHERE doh_id = $1
+      `, [dohId]);
+
+      if (checkResult.rows.length === 0) {
+        isUnique = true;
+      }
+
+      attempts++;
+    }
+
+    if (!isUnique) {
+      throw new Error('Failed to generate unique DOH ID after maximum attempts');
+    }
+
+    return dohId;
+  } catch (error) {
+    console.error('Error generating DOH ID:', error);
+    throw error;
+  }
+};
+
+// Get user profile by user ID
+const getUserProfile = async (userId) => {
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // First, ensure the doh_id column exists with UNIQUE constraint
+    await client.query(`
+      ALTER TABLE user_org_doh
+      ADD COLUMN IF NOT EXISTS doh_id VARCHAR(50) UNIQUE
+    `);
+
+    console.log('✓ DOH ID column verified/created in user_org_doh table');
+
+    const result = await client.query(`
+      SELECT
+        u.id as user_id,
+        u.doh_id,
+        u.full_name,
+        u.role,
+        u.barangay,
+        u.email,
+        p.profile_photo,
+        p.gender,
+        TO_CHAR(p.date_of_birth, 'YYYY-MM-DD') as date_of_birth,
+        p.nationality,
+        p.civil_status,
+        p.blood_type
+      FROM user_org_doh u
+      LEFT JOIN organization_user_profiles p ON u.id = p.user_id
+      WHERE u.id = $1
+    `, [userId]);
+
+    if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+
+    let profile = result.rows[0];
+
+    // If DOH ID doesn't exist, generate and save it
+    if (!profile.doh_id) {
+      console.log(`[DB-ORG] Generating new DOH ID for user ${userId}...`);
+      const newDohId = await generateDohId(client);
+
+      await client.query(`
+        UPDATE user_org_doh
+        SET doh_id = $1, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+      `, [newDohId, userId]);
+
+      profile.doh_id = newDohId;
+
+      console.log(`[DB-ORG] ✓ New Organization DOH ID Generated Successfully! DOH ID: ${newDohId} for User ID: ${userId}`);
+    }
+
+    await client.query('COMMIT');
+    return profile;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('[DB-ORG] Error getting user profile:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
+// Update or create user profile
+const updateUserProfile = async (userId, profileData, userName = 'System User') => {
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // Update barangay and doh_id in user_org_doh table if provided
+    if (profileData.barangay !== undefined || profileData.dohId !== undefined) {
+      const updates = [];
+      const values = [];
+      let paramCounter = 1;
+
+      if (profileData.barangay !== undefined) {
+        updates.push(`barangay = $${paramCounter++}`);
+        values.push(profileData.barangay);
+      }
+
+      if (profileData.dohId !== undefined) {
+        updates.push(`doh_id = $${paramCounter++}`);
+        values.push(profileData.dohId);
+      }
+
+      updates.push('updated_at = CURRENT_TIMESTAMP');
+      values.push(userId);
+
+      await client.query(
+        `UPDATE user_org_doh SET ${updates.join(', ')} WHERE id = $${paramCounter}`,
+        values
+      );
+    }
+
+    // Check if profile exists
+    const existingProfile = await client.query(
+      'SELECT id FROM organization_user_profiles WHERE user_id = $1',
+      [userId]
+    );
+
+    let result;
+    if (existingProfile.rows.length > 0) {
+      // Update existing profile
+      const updateQuery = `
+        UPDATE organization_user_profiles SET
+          profile_photo = $2,
+          gender = $3,
+          date_of_birth = $4,
+          nationality = $5,
+          civil_status = $6,
+          blood_type = $7,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = $1
+        RETURNING *
+      `;
+
+      result = await client.query(updateQuery, [
+        userId,
+        profileData.profilePhoto || null,
+        profileData.gender || null,
+        profileData.dateOfBirth || null,
+        profileData.nationality || 'Filipino',
+        profileData.civilStatus || null,
+        profileData.bloodType || null
+      ]);
+
+      // Log activity
+      await logActivity({
+        userName: userName,
+        actionType: 'update',
+        entityType: 'profile',
+        entityId: userId.toString(),
+        actionDescription: `Updated profile information`,
+        details: {
+          userId: userId,
+          updatedFields: Object.keys(profileData)
+        }
+      });
+    } else {
+      // Insert new profile
+      const insertQuery = `
+        INSERT INTO organization_user_profiles (
+          user_id, profile_photo, gender, date_of_birth, nationality, civil_status, blood_type
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *
+      `;
+
+      result = await client.query(insertQuery, [
+        userId,
+        profileData.profilePhoto || null,
+        profileData.gender || null,
+        profileData.dateOfBirth || null,
+        profileData.nationality || 'Filipino',
+        profileData.civilStatus || null,
+        profileData.bloodType || null
+      ]);
+
+      // Log activity
+      await logActivity({
+        userName: userName,
+        actionType: 'add',
+        entityType: 'profile',
+        entityId: userId.toString(),
+        actionDescription: `Created profile information`,
+        details: {
+          userId: userId
+        }
+      });
+    }
+
+    await client.query('COMMIT');
+    return result.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error updating user profile:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
+// Get user activities by user ID
+const getUserActivities = async (userId, limit = 100, offset = 0) => {
+  try {
+    // Get user's full name
+    const userResult = await pool.query(
+      'SELECT full_name FROM user_org_doh WHERE id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return [];
+    }
+
+    const userName = userResult.rows[0].full_name;
+
+    const result = await pool.query(`
+      SELECT
+        id,
+        user_name,
+        action_type,
+        entity_type,
+        entity_id,
+        action_description,
+        details,
+        created_at
+      FROM activity_logs
+      WHERE user_name = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [userName, limit, offset]);
+
+    return result.rows.map(row => ({
+      ...row,
+      details: typeof row.details === 'string' ? JSON.parse(row.details) : row.details
+    }));
+  } catch (error) {
+    console.error('Error getting user activities:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   initializeDatabase,
   // Activity logging methods
@@ -1245,6 +1821,15 @@ module.exports = {
   getAppointmentsByDateRange,
   getAppointmentById,
   getAppointmentStatistics,
+  // Organization user methods
+  registerOrgUser,
+  activateOrgUserByToken,
+  declineOrgUserByToken,
+  loginOrgUser,
+  // Organization user profile methods
+  getUserProfile,
+  updateUserProfile,
+  getUserActivities,
   // Utility methods
   testConnection,
   closeConnection

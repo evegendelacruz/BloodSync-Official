@@ -10,9 +10,9 @@ import Portal from "./portal";
 import LoginOrg from "./organization/login_org";
 import SignUpOrg from "./organization/signup_org";
 import ForgotPasswordOrg from "./organization/forgot_password";
-
-import DonorRecordOrg from "./organization/dashboard/donor_record";
+import ResetPasswordOrg from "./organization/reset-password-org";
 import Activate from "./activate";
+import ActivateOrg from "./organization/activate_org";
 import DonorRecordOrg from "./organization/dashboard/donor_record_org";
 
 
@@ -69,8 +69,10 @@ const App = () => {
       <Route path="reset-password" element={<ResetPassword />} />
       <Route path="dashboard" element={<Dashboard />} />
       <Route path="login-org" element={<LoginOrg />} />
+      <Route path="activate-org" element={<ActivateOrg />} />
       <Route path="signup-org" element={<SignUpOrg />} />
       <Route path="forgot-password-org" element={<ForgotPasswordOrg />} />
+      <Route path="organization/reset-password" element={<ResetPasswordOrg />} />
       <Route path="donor-record-org" element={<DonorRecordOrg />} />
     </Routes>
   );

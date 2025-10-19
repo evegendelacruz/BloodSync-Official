@@ -6,6 +6,7 @@ require('dotenv').config();
 
 // Import database service
 const dbService = require('./db');
+const dbOrgService = require('./db_org');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -87,6 +88,39 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+app.post('/api/login-org', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
+    }
+
+    const user = await dbOrgService.loginOrgUser(email, password);
+
+    res.json({
+      success: true,
+      message: 'Login successful',
+      user: {
+        userId: user.userId,
+        email: user.email,
+        role: user.role,
+        barangay: user.barangay,
+        fullName: user.fullName
+      }
+    });
+  } catch (error) {
+    console.error('Organization login error:', error);
+    res.status(401).json({
+      success: false,
+      message: error.message || 'Login failed'
+    });
+  }
+});
+
 // User activation routes
 app.get('/api/activate', async (req, res) => {
   try {
@@ -147,6 +181,73 @@ app.get('/api/decline', async (req, res) => {
     }
   } catch (error) {
     console.error('Decline error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Decline operation failed'
+    });
+  }
+});
+
+// Organization user activation routes
+app.get('/api/activate-org', async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Activation token is required'
+      });
+    }
+
+    const success = await dbOrgService.activateOrgUserByToken(token);
+
+    if (success) {
+      res.json({
+        success: true,
+        message: 'Partnered Organization user activated successfully'
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid or expired activation token'
+      });
+    }
+  } catch (error) {
+    console.error('Organization activation error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Activation failed'
+    });
+  }
+});
+
+app.get('/api/decline-org', async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token is required'
+      });
+    }
+
+    const success = await dbOrgService.declineOrgUserByToken(token);
+
+    if (success) {
+      res.json({
+        success: true,
+        message: 'Organization user registration declined'
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid token'
+      });
+    }
+  } catch (error) {
+    console.error('Organization decline error:', error);
     res.status(500).json({
       success: false,
       message: 'Decline operation failed'
@@ -312,6 +413,108 @@ app.get('/api/blood-stock/search', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Search failed'
+    });
+  }
+});
+
+// ========== ORGANIZATION USER PROFILE ROUTES ==========
+
+// Get user profile
+app.get('/api/org/profile/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required'
+      });
+    }
+
+    const profile = await dbOrgService.getUserProfile(userId);
+
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        message: 'User profile not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: profile
+    });
+  } catch (error) {
+    console.error('Error getting user profile:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get user profile'
+    });
+  }
+});
+
+// Update user profile
+app.put('/api/org/profile/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { profilePhoto, gender, dateOfBirth, nationality, civilStatus, bloodType, userName } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required'
+      });
+    }
+
+    const profileData = {
+      profilePhoto,
+      gender,
+      dateOfBirth,
+      nationality: nationality || 'Filipino',
+      civilStatus,
+      bloodType
+    };
+
+    const updatedProfile = await dbOrgService.updateUserProfile(userId, profileData, userName || 'System User');
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: updatedProfile
+    });
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to update user profile'
+    });
+  }
+});
+
+// Get user activities/logs
+app.get('/api/org/activities/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { limit = 100, offset = 0 } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required'
+      });
+    }
+
+    const activities = await dbOrgService.getUserActivities(userId, parseInt(limit), parseInt(offset));
+
+    res.json({
+      success: true,
+      data: activities
+    });
+  } catch (error) {
+    console.error('Error getting user activities:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get user activities'
     });
   }
 });

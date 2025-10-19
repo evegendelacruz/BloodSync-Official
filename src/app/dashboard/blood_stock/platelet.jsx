@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import Spinner from "../../../components/Spinner";
 
 const Platelet = () => {
   const [bloodData, setBloodData] = useState([]);
@@ -77,6 +78,7 @@ const Platelet = () => {
     }, []);
 
   const loadBloodData = async () => {
+    const start = Date.now();
     try {
       setLoading(true);
       setError(null);
@@ -95,6 +97,11 @@ const Platelet = () => {
       console.error("Error loading platelet data:", err);
       setError(`Failed to load platelet data: ${err.message}`);
     } finally {
+      const elapsed = Date.now() - start;
+      const remaining = 1000 - elapsed;
+      if (remaining > 0) {
+        await new Promise((res) => setTimeout(res, remaining));
+      }
       setLoading(false);
     }
   };
@@ -103,6 +110,8 @@ const Platelet = () => {
   const handleSearch = async (e) => {
     const value = e.target.value;
     setSearchTerm(value);
+    const start = Date.now();
+    setLoading(true);
 
     try {
       if (!window.electronAPI) {
@@ -121,6 +130,13 @@ const Platelet = () => {
     } catch (err) {
       console.error("Error searching:", err);
       setError("Search failed");
+    } finally {
+      const elapsed = Date.now() - start;
+      const remaining = 1000 - elapsed;
+      if (remaining > 0) {
+        await new Promise((res) => setTimeout(res, remaining));
+      }
+      setLoading(false);
     }
   };
 
@@ -1096,7 +1112,10 @@ const Platelet = () => {
   if (loading) {
     return (
       <div style={styles.container}>
-        <div style={styles.loadingContainer}>Loading platelet stock data...</div>
+        <div style={styles.loadingContainer}>
+          <Spinner />
+          <div>Loading platelet stock data...</div>
+        </div>
       </div>
     );
   }

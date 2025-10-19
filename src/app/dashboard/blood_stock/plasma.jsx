@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import Spinner from "../../../components/Spinner";
 
 const Plasma = () => {
   const [plasmaData, setPlasmaData] = useState([]);
@@ -103,6 +104,7 @@ const Plasma = () => {
   const handleSearch = async (e) => {
     const value = e.target.value;
     setSearchTerm(value);
+    setLoading(true);
 
     try {
       if (!window.electronAPI) {
@@ -121,6 +123,8 @@ const Plasma = () => {
     } catch (err) {
       console.error("Error searching:", err);
       setError("Search failed");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1099,7 +1103,10 @@ const confirmRelease = async () => {
   if (loading) {
     return (
       <div style={styles.container}>
-        <div style={styles.loadingContainer}>Loading plasma stock data...</div>
+        <div style={styles.loadingContainer}>
+          <Spinner />
+          <div>Loading plasma stock data...</div>
+        </div>
       </div>
     );
   }

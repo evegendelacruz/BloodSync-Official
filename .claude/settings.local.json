@@ -1,13 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git pull:*)",
-      "Bash(tasklist)",
-      "Bash(findstr:*)",
-      "Bash(npm run dev:*)",
-      "Bash(node -e \"const {Pool} = require(''pg''); const pool = new Pool({user: ''postgres'', host: ''localhost'', database: ''postgres'', password: ''bloodsync'', port: 5432}); pool.query(''SELECT NOW()'', (err, res) => { if(err) console.error(''DB Error:'', err.message); else console.log(''DB Connected:'', res.rows[0]); pool.end(); });\")"
+      "Bash(wc:*)"
     ],
     "deny": [],
     "ask": []

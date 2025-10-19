@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Clock, Settings, Camera, Upload, Trash2, ChevronDown, X, ZoomIn, ZoomOut } from 'lucide-react';
-import ProfileActivity from '../profile/profile_activity';
-import ProfileSettings from '../profile/profile_settings';
+import ProfileActivityOrg from '../profile/profile_activity';
+import ProfileSettingsOrg from '../profile/profile_settings';
 
 // Barangay list for CDO
 const BARANGAY_LIST = [
@@ -22,7 +22,7 @@ const BARANGAY_LIST = [
   "Tagpangi", "Tignapoloan", "Tuburan", "Tugbok"
 ];
 
-const ProfileComponent = () => {
+const ProfileOrg = () => {
   const [activeTab, setActiveTab] = useState('information');
   const [showPhotoDropdown, setShowPhotoDropdown] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -62,7 +62,7 @@ const ProfileComponent = () => {
     try {
       setIsLoading(true);
       // Get current user from localStorage (set during login)
-      const userStr = localStorage.getItem('currentUser');
+      const userStr = localStorage.getItem('currentOrgUser');
       if (!userStr) {
         console.error('No user found in localStorage');
         setIsLoading(false);
@@ -73,8 +73,8 @@ const ProfileComponent = () => {
       console.log('Loaded user from localStorage:', user);
       setCurrentUser(user);
 
-      // Fetch profile from backend using Electron API (RBC-specific)
-      const profile = await window.electronAPI.getUserProfileRBC(user.userId);
+      // Fetch profile from backend using Electron API
+      const profile = await window.electronAPI.getUserProfile(user.userId);
 
       console.log('Profile data from Electron API:', profile);
 
@@ -117,7 +117,7 @@ const ProfileComponent = () => {
     } catch (error) {
       console.error('Error loading user profile:', error);
       // Fallback to localStorage data
-      const userStr = localStorage.getItem('currentUser');
+      const userStr = localStorage.getItem('currentOrgUser');
       if (userStr) {
         const user = JSON.parse(userStr);
         setProfileData({
@@ -172,7 +172,7 @@ const ProfileComponent = () => {
 
       console.log('Saving profile data:', profileDataToSave);
 
-      const result = await window.electronAPI.updateUserProfileRBC(
+      const result = await window.electronAPI.updateUserProfile(
         currentUser.userId,
         profileDataToSave,
         profileData.fullName
@@ -190,7 +190,7 @@ const ProfileComponent = () => {
         barangay: profileData.barangay,
         profilePhoto: profileData.profilePhoto
       };
-      localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+      localStorage.setItem('currentOrgUser', JSON.stringify(updatedUser));
       setCurrentUser(updatedUser);
 
       await loadUserProfile();
@@ -639,10 +639,9 @@ const ProfileComponent = () => {
               }}
             >
               <option value="">Select Role</option>
-              <option value="Admin">Admin</option>
-              <option value="Doctor">Doctor</option>
-              <option value="Medical Technologist">Medical Technologist</option>
-              <option value="Scheduler">Scheduler</option>
+              <option value="Barangay">Barangay</option>
+              <option value="Local Government Unit">Local Government Unit</option>
+              <option value="Non-Profit Organization">Non-Profit Organization</option>
             </select>
           </div>
           <div style={styles.formGroup}>
@@ -822,9 +821,9 @@ const ProfileComponent = () => {
       case 'information':
         return <ProfileInformation />;
       case 'activity':
-        return <ProfileActivity />;
+        return <ProfileActivityOrg />;
       case 'settings':
-        return <ProfileSettings profileData={profileData} handleInputChange={handleInputChange} handleSaveChanges={handleSaveChanges} handleCancel={handleCancel} />;
+        return <ProfileSettingsOrg profileData={profileData} handleInputChange={handleInputChange} handleSaveChanges={handleSaveChanges} handleCancel={handleCancel} />;
       default:
         return <ProfileInformation />;
     }
@@ -1229,4 +1228,4 @@ const ProfileComponent = () => {
   );
 };
 
-export default ProfileComponent;
+export default ProfileOrg;

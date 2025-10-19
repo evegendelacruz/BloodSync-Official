@@ -97,24 +97,153 @@ const ensurePasswordResetTable = async () => {
   }
 };
 
+// Ensure released_blood table exists
+const ensureReleasedBloodTable = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS released_blood (
+        rb_id SERIAL PRIMARY KEY,
+        rb_serial_id VARCHAR(50) NOT NULL,
+        rb_blood_type VARCHAR(5) NOT NULL,
+        rb_rh_factor VARCHAR(10) NOT NULL,
+        rb_volume INTEGER NOT NULL,
+        rb_timestamp TIMESTAMP NOT NULL,
+        rb_expiration_date TIMESTAMP NOT NULL,
+        rb_status VARCHAR(20) NOT NULL DEFAULT 'Released',
+        rb_created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        rb_modified_at TIMESTAMP,
+        rb_released_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        rb_category VARCHAR(50) NOT NULL,
+        rb_original_id INTEGER,
+        rb_receiving_facility VARCHAR(255),
+        rb_address TEXT,
+        rb_contact_number VARCHAR(50),
+        rb_classification VARCHAR(100),
+        rb_authorized_recipient VARCHAR(255),
+        rb_recipient_designation VARCHAR(100),
+        rb_date_of_release TIMESTAMP,
+        rb_condition_upon_release VARCHAR(100),
+        rb_request_reference VARCHAR(100),
+        rb_released_by VARCHAR(255)
+      )
+    `);
+
+    // Create indexes for better query performance
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_released_blood_serial_id ON released_blood(rb_serial_id);
+      CREATE INDEX IF NOT EXISTS idx_released_blood_category ON released_blood(rb_category);
+      CREATE INDEX IF NOT EXISTS idx_released_blood_status ON released_blood(rb_status);
+      CREATE INDEX IF NOT EXISTS idx_released_blood_released_at ON released_blood(rb_released_at);
+    `);
+
+    console.log('Released blood table ensured successfully');
+    return true;
+  } catch (error) {
+    console.error('Error ensuring released_blood table:', error);
+    throw error;
+  }
+};
+
+// Ensure combined blood type column exists and stays updated
+const ensureBloodStockResultColumn = async () => {
+  try {
+    // Add column if not exists
+    await pool.query(`
+      ALTER TABLE blood_stock
+      ADD COLUMN IF NOT EXISTS bs_result_bloodtype VARCHAR(3)
+    `);
+
+    // Create or replace trigger function to keep bs_result_bloodtype in sync
+    await pool.query(`
+      CREATE OR REPLACE FUNCTION set_bs_result_bloodtype()
+      RETURNS TRIGGER AS $func$
+      BEGIN
+        IF NEW.bs_blood_type IS NOT NULL AND NEW.bs_rh_factor IS NOT NULL THEN
+          NEW.bs_result_bloodtype := NEW.bs_blood_type ||
+            CASE
+              WHEN LOWER(NEW.bs_rh_factor) IN ('positive', 'pos', '+', 'plus') THEN '+'
+              WHEN LOWER(NEW.bs_rh_factor) IN ('negative', 'neg', '-', 'minus') THEN '-'
+              ELSE
+                CASE
+                  WHEN NEW.bs_rh_factor LIKE '%+%' THEN '+'
+                  WHEN NEW.bs_rh_factor LIKE '%-%' THEN '-'
+                  ELSE NULL
+                END
+            END;
+        END IF;
+        RETURN NEW;
+      END;
+      $func$ LANGUAGE plpgsql;
+    `);
+
+    // Create trigger if it does not exist yet
+    const trigCheck = await pool.query(`SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_bs_result_bloodtype'`);
+    if (trigCheck.rowCount === 0) {
+      await pool.query(`
+        CREATE TRIGGER trg_set_bs_result_bloodtype
+        BEFORE INSERT OR UPDATE OF bs_blood_type, bs_rh_factor ON blood_stock
+        FOR EACH ROW
+        EXECUTE FUNCTION set_bs_result_bloodtype();
+      `);
+    }
+
+    // Backfill existing rows where possible
+    await pool.query(`
+      UPDATE blood_stock
+      SET bs_result_bloodtype = bs_blood_type ||
+        CASE
+          WHEN LOWER(bs_rh_factor) IN ('positive', 'pos', '+', 'plus') THEN '+'
+          WHEN LOWER(bs_rh_factor) IN ('negative', 'neg', '-', 'minus') THEN '-'
+          ELSE
+            CASE
+              WHEN bs_rh_factor LIKE '%+%' THEN '+'
+              WHEN bs_rh_factor LIKE '%-%' THEN '-'
+              ELSE NULL
+            END
+        END
+      WHERE (bs_result_bloodtype IS NULL OR bs_result_bloodtype = '')
+        AND bs_blood_type IS NOT NULL AND bs_rh_factor IS NOT NULL;
+    `);
+
+    console.log('✓ bs_result_bloodtype ensured and populated in blood_stock');
+    return true;
+  } catch (error) {
+    console.error('Error ensuring bs_result_bloodtype column:', error);
+    throw error;
+  }
+};
+
 // Email sending functions
-const sendSuperAdminApprovalEmail = async (fullName, email, activationLink) => {
+const sendSuperAdminApprovalEmail = async (fullName, role, email, activationLink) => {
   try {
     console.log('Preparing to send approval email...');
     console.log('SMTP_USER:', process.env.SMTP_USER);
     console.log('SMTP_PASS:', process.env.SMTP_PASS ? '***hidden***' : 'NOT SET');
-    
+
     if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
       console.warn('SMTP credentials (SMTP_USER/SMTP_PASS) not set. Skipping email sending.');
       return;
     }
 
     const to = 'bloodsync.doh@gmail.com';
-    const subject = 'New User Email Activation';
-    const text = `New User Email Activation
+    const subject = 'New Regional Blood Center User Account Registration';
 
-A new user "${fullName}", with an email address "${email}", click this link to activate this user.
-${activationLink}
+    // Extract token from activationLink
+    const token = activationLink.split('token=')[1]?.split('\n')[0] || '';
+    const activationUrl = `http://localhost:5173/activate?token=${token}`;
+
+    const text = `New Regional Blood Center User Account Registration
+
+A new Regional Blood Center user has registered and requires activation approval:
+
+Full Name: ${fullName}
+Role: ${role}
+Email: ${email}
+
+To activate this user, click the link below or paste the activation token in the BloodSync application:
+${activationUrl}
+
+Activation Token: ${token}
 
 If this is not a verified user, please ignore this message.`;
 
@@ -171,6 +300,8 @@ const dbService = {
     try {
       await ensureUserTable();
       await ensurePasswordResetTable();
+      await ensureReleasedBloodTable();
+      await ensureBloodStockResultColumn();
       console.log('All database tables initialized successfully');
       return true;
     } catch (error) {
@@ -217,7 +348,7 @@ const dbService = {
 
       // For Electron app, just send the token - user will need to paste it or we can use a custom protocol
       const activationLink = `Activation Token: ${activation_token}\n\nTo activate this user, paste this token in the BloodSync application activation page, or click: http://localhost:5173/activate?token=${activation_token}`;
-      await sendSuperAdminApprovalEmail(full_name, email, activationLink);
+      await sendSuperAdminApprovalEmail(full_name, role, email, activationLink);
 
       return { userId: insert.rows[0].user_id, activationToken: activation_token };
     } catch (error) {
@@ -315,19 +446,34 @@ const dbService = {
   },
 
   // Password reset methods
-  async generatePasswordResetToken(email) {
+  async generatePasswordResetToken(emailOrDohId) {
     try {
-      // Check if user exists
-      const userCheck = await pool.query(
-        'SELECT user_id, full_name, is_active FROM user_doh WHERE email = $1',
-        [email]
-      );
+      // Check if input is DOH ID (format: DOH-XXXXXXXXX) or email
+      const isDohId = /^DOH-\d+$/i.test(emailOrDohId.trim());
 
-      if (userCheck.rowCount === 0) {
-        throw new Error('Email not found');
+      let userCheck;
+      if (isDohId) {
+        // Query by DOH ID
+        userCheck = await pool.query(
+          'SELECT user_id, email, full_name, is_active FROM user_doh WHERE doh_id = $1',
+          [emailOrDohId.trim()]
+        );
+      } else {
+        // Query by email
+        userCheck = await pool.query(
+          'SELECT user_id, email, full_name, is_active FROM user_doh WHERE email = $1',
+          [emailOrDohId.trim()]
+        );
       }
 
-      if (!userCheck.rows[0].is_active) {
+      if (userCheck.rowCount === 0) {
+        throw new Error(isDohId ? 'DOH ID not found' : 'Email not found');
+      }
+
+      const user = userCheck.rows[0];
+      const email = user.email; // Use the email from database
+
+      if (!user.is_active) {
         throw new Error('Account not activated');
       }
 
@@ -342,16 +488,16 @@ const dbService = {
       await pool.query(
         `INSERT INTO password_reset_tokens (user_id, email, reset_token, expires_at)
          VALUES ($1, $2, $3, $4)`,
-        [userCheck.rows[0].user_id, email, resetToken, tokenExpiry]
+        [user.user_id, email, resetToken, tokenExpiry]
       );
 
       // Send reset email
-      await sendPasswordResetEmail(email, resetToken, userCheck.rows[0].full_name);
+      await sendPasswordResetEmail(email, resetToken, user.full_name);
 
       return {
         success: true,
         resetToken,
-        userName: userCheck.rows[0].full_name
+        userName: user.full_name
       };
     } catch (error) {
       console.error('Error generating password reset token:', error);
@@ -1470,6 +1616,512 @@ const dbService = {
       }));
     } catch (error) {
       console.error('Error fetching released plasma stock:', error);
+      throw error;
+    }
+  },
+
+  // Get blood stock counts by category
+  async getBloodStockCounts() {
+    try {
+      const query = `
+        SELECT
+          bs_category as category,
+          COUNT(*) as count
+        FROM blood_stock
+        WHERE bs_status = 'Stored'
+        GROUP BY bs_category
+      `;
+
+      const result = await pool.query(query);
+
+      // Transform to object format
+      const counts = {
+        redBloodCell: 0,
+        platelet: 0,
+        plasma: 0
+      };
+
+      result.rows.forEach(row => {
+        if (row.category === 'Red Blood Cell') {
+          counts.redBloodCell = parseInt(row.count);
+        } else if (row.category === 'Platelet') {
+          counts.platelet = parseInt(row.count);
+        } else if (row.category === 'Plasma') {
+          counts.plasma = parseInt(row.count);
+        }
+      });
+
+      return counts;
+    } catch (error) {
+      console.error('Error getting blood stock counts:', error);
+      throw error;
+    }
+  },
+
+  // Get blood stock counts by result blood type (combining all categories)
+  async getBloodStockCountsByType() {
+    try {
+      const query = `
+        SELECT
+          bs_result_bloodtype as result_bloodtype,
+          COUNT(*) as count
+        FROM blood_stock
+        WHERE bs_status = 'Stored' AND bs_result_bloodtype IS NOT NULL
+        GROUP BY bs_result_bloodtype
+      `;
+
+      const result = await pool.query(query);
+
+      // Transform to object format with blood types
+      const counts = {
+        'AB+': 0,
+        'AB-': 0,
+        'A+': 0,
+        'A-': 0,
+        'B+': 0,
+        'B-': 0,
+        'O+': 0,
+        'O-': 0
+      };
+
+      result.rows.forEach(row => {
+        const fullType = row.result_bloodtype;
+        if (fullType && counts.hasOwnProperty(fullType)) {
+          counts[fullType] += parseInt(row.count);
+        }
+      });
+
+      return counts;
+    } catch (error) {
+      console.error('Error getting blood stock counts by type:', error);
+      throw error;
+    }
+  },
+
+  // ========== RBC USER PROFILE MANAGEMENT ==========
+
+  // Get RBC user profile
+  async getUserProfileRBC(userId) {
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      // First, ensure the doh_id and updated_at columns exist
+      await client.query(`
+        ALTER TABLE user_doh
+        ADD COLUMN IF NOT EXISTS doh_id VARCHAR(50) UNIQUE
+      `);
+
+      await client.query(`
+        ALTER TABLE user_doh
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP
+      `);
+
+      await client.query(`
+        ALTER TABLE user_doh
+        ADD COLUMN IF NOT EXISTS barangay TEXT
+      `);
+
+      console.log('✓ DOH ID column verified/created in user_doh table');
+
+      // Ensure rbc_user_profiles table exists BEFORE querying it
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS rbc_user_profiles (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER UNIQUE REFERENCES user_doh(user_id) ON DELETE CASCADE,
+          profile_photo TEXT,
+          gender VARCHAR(50) CHECK (gender IN ('Male', 'Female', 'Non-Binary', 'Prefer Not to Say')),
+          date_of_birth DATE,
+          nationality VARCHAR(100) DEFAULT 'Filipino',
+          civil_status VARCHAR(50) CHECK (civil_status IN ('Single', 'Married', 'Widowed', 'Divorced', 'Separated')),
+          blood_type VARCHAR(3) CHECK (blood_type IN ('AB+', 'AB-', 'A+', 'A-', 'B+', 'B-', 'O+', 'O-')),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      console.log('✓ RBC user profiles table verified/created');
+
+      const result = await client.query(`
+        SELECT
+          u.user_id,
+          u.doh_id,
+          u.full_name,
+          u.role,
+          u.barangay,
+          u.email,
+          p.profile_photo,
+          p.gender,
+          TO_CHAR(p.date_of_birth, 'YYYY-MM-DD') as date_of_birth,
+          p.nationality,
+          p.civil_status,
+          p.blood_type
+        FROM user_doh u
+        LEFT JOIN rbc_user_profiles p ON u.user_id = p.user_id
+        WHERE u.user_id = $1
+      `, [userId]);
+
+      if (result.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      let profile = result.rows[0];
+
+      // If DOH ID doesn't exist, generate and save it
+      if (!profile.doh_id) {
+        console.log(`[DB] Generating new DOH ID for user ${userId}...`);
+        const newDohId = await this.generateDohIdRBC(client);
+
+        await client.query(`
+          UPDATE user_doh
+          SET doh_id = $1, updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = $2
+        `, [newDohId, userId]);
+
+        profile.doh_id = newDohId;
+        console.log(`[DB] ✓ New DOH ID generated: ${newDohId} for user ${userId}`);
+      }
+
+      await client.query('COMMIT');
+      return profile;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('[DB] Error getting RBC user profile:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  // Generate DOH ID for RBC users
+  async generateDohIdRBC(client = null) {
+    const shouldReleaseClient = !client;
+    if (!client) {
+      client = await pool.connect();
+    }
+
+    try {
+      let isUnique = false;
+      let dohId;
+
+      while (!isUnique) {
+        const randomNumber = Math.floor(100000000 + Math.random() * 900000000);
+        dohId = `DOH-${randomNumber}`;
+
+        const checkResult = await client.query(
+          'SELECT doh_id FROM user_doh WHERE doh_id = $1',
+          [dohId]
+        );
+
+        if (checkResult.rows.length === 0) {
+          isUnique = true;
+        }
+      }
+
+      return dohId;
+    } finally {
+      if (shouldReleaseClient) {
+        client.release();
+      }
+    }
+  },
+
+  // Update RBC user profile
+  async updateUserProfileRBC(userId, profileData, userName = 'System User') {
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      // Update barangay, role, and full_name in user_doh table if provided
+      const userUpdates = [];
+      const userValues = [];
+      let userParamCounter = 1;
+
+      if (profileData.barangay !== undefined) {
+        userUpdates.push(`barangay = $${userParamCounter++}`);
+        userValues.push(profileData.barangay);
+      }
+
+      if (profileData.role !== undefined) {
+        userUpdates.push(`role = $${userParamCounter++}`);
+        userValues.push(profileData.role);
+      }
+
+      if (profileData.dohId !== undefined) {
+        userUpdates.push(`doh_id = $${userParamCounter++}`);
+        userValues.push(profileData.dohId);
+      }
+
+      if (userUpdates.length > 0) {
+        userUpdates.push('updated_at = CURRENT_TIMESTAMP');
+        userValues.push(userId);
+
+        await client.query(
+          `UPDATE user_doh SET ${userUpdates.join(', ')} WHERE user_id = $${userParamCounter}`,
+          userValues
+        );
+      }
+
+      // Update full_name separately if provided
+      if (userName && userName !== 'System User') {
+        await client.query(
+          'UPDATE user_doh SET full_name = $1, updated_at = CURRENT_TIMESTAMP WHERE user_id = $2',
+          [userName, userId]
+        );
+      }
+
+      // Ensure activity_logs table exists
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS activity_logs (
+          id SERIAL PRIMARY KEY,
+          user_name VARCHAR(255) NOT NULL,
+          action_type VARCHAR(50) NOT NULL,
+          entity_type VARCHAR(50) NOT NULL,
+          entity_id VARCHAR(100),
+          action_description TEXT NOT NULL,
+          details JSONB,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // Create indexes for better performance
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_activity_logs_user ON activity_logs(user_name);
+        CREATE INDEX IF NOT EXISTS idx_activity_logs_entity ON activity_logs(entity_type, entity_id);
+      `);
+
+      // Ensure rbc_user_profiles table exists
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS rbc_user_profiles (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER UNIQUE REFERENCES user_doh(user_id) ON DELETE CASCADE,
+          profile_photo TEXT,
+          gender VARCHAR(50) CHECK (gender IN ('Male', 'Female', 'Non-Binary', 'Prefer Not to Say')),
+          date_of_birth DATE,
+          nationality VARCHAR(100) DEFAULT 'Filipino',
+          civil_status VARCHAR(50) CHECK (civil_status IN ('Single', 'Married', 'Widowed', 'Divorced', 'Separated')),
+          blood_type VARCHAR(3) CHECK (blood_type IN ('AB+', 'AB-', 'A+', 'A-', 'B+', 'B-', 'O+', 'O-')),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // Check if profile exists
+      const existingProfile = await client.query(
+        'SELECT id FROM rbc_user_profiles WHERE user_id = $1',
+        [userId]
+      );
+
+      let result;
+      if (existingProfile.rows.length > 0) {
+        // Update existing profile
+        const updateQuery = `
+          UPDATE rbc_user_profiles SET
+            profile_photo = $2,
+            gender = $3,
+            date_of_birth = $4,
+            nationality = $5,
+            civil_status = $6,
+            blood_type = $7,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = $1
+          RETURNING *
+        `;
+
+        result = await client.query(updateQuery, [
+          userId,
+          profileData.profilePhoto || null,
+          profileData.gender || null,
+          profileData.dateOfBirth || null,
+          profileData.nationality || null,
+          profileData.civilStatus || null,
+          profileData.bloodType || null
+        ]);
+        console.log(`[DB] ✓ RBC user profile updated for user ${userId}`);
+      } else {
+        // Insert new profile
+        const insertQuery = `
+          INSERT INTO rbc_user_profiles (
+            user_id, profile_photo, gender, date_of_birth,
+            nationality, civil_status, blood_type
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+          RETURNING *
+        `;
+
+        result = await client.query(insertQuery, [
+          userId,
+          profileData.profilePhoto || null,
+          profileData.gender || null,
+          profileData.dateOfBirth || null,
+          profileData.nationality || null,
+          profileData.civilStatus || null,
+          profileData.bloodType || null
+        ]);
+        console.log(`[DB] ✓ New RBC user profile created for user ${userId}`);
+      }
+
+      // Log activity
+      await client.query(
+        `INSERT INTO activity_logs (user_name, action_type, action_description, entity_type, entity_id, details)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          userName || 'Unknown User',
+          'update',
+          `${userName || 'User'} updated their profile`,
+          'user_profile',
+          userId.toString(),
+          JSON.stringify({
+            updated_fields: Object.keys(profileData).filter(key => profileData[key] !== undefined)
+          })
+        ]
+      );
+
+      await client.query('COMMIT');
+      console.log(`[DB] ✓ Profile changes saved successfully for user ${userId}`);
+      return { success: true, profile: result.rows[0] };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('[DB] Error updating RBC user profile:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  // Get RBC user activities
+  async getUserActivitiesRBC(userId, limit = 100, offset = 0) {
+    try {
+      // First get the user's full name
+      const userResult = await pool.query(
+        'SELECT full_name FROM user_doh WHERE user_id = $1',
+        [userId]
+      );
+
+      if (userResult.rows.length === 0) {
+        return [];
+      }
+
+      const userName = userResult.rows[0].full_name;
+
+      // Get activities for this user
+      const result = await pool.query(
+        `SELECT
+          id,
+          user_name,
+          action_type,
+          action_description,
+          entity_type,
+          entity_id,
+          details,
+          created_at
+         FROM activity_logs
+         WHERE user_name = $1
+         ORDER BY created_at DESC
+         LIMIT $2 OFFSET $3`,
+        [userName, limit, offset]
+      );
+
+      return result.rows.map(row => ({
+        ...row,
+        details: typeof row.details === 'string' ? JSON.parse(row.details) : row.details
+      }));
+    } catch (error) {
+      console.error('[DB] Error getting RBC user activities:', error);
+      throw error;
+    }
+  },
+
+  // ========== ACTIVITY LOGGING FUNCTIONS ==========
+
+  // Log a single activity
+  async logActivity(activityData) {
+    try {
+      const insertQuery = `
+        INSERT INTO activity_logs (
+          user_name, action_type, entity_type, entity_id,
+          action_description, details
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING *
+      `;
+
+      const values = [
+        activityData.userName,
+        activityData.actionType,
+        activityData.entityType,
+        activityData.entityId,
+        activityData.actionDescription,
+        JSON.stringify(activityData.details || {})
+      ];
+
+      const result = await pool.query(insertQuery, values);
+      return result.rows[0];
+    } catch (error) {
+      console.error('[DB] Error logging activity:', error);
+      // Don't throw error to prevent activity logging from breaking main operations
+    }
+  },
+
+  // Get all activities with pagination
+  async getAllActivitiesRBC(limit = 100, offset = 0) {
+    try {
+      const result = await pool.query(`
+        SELECT
+          id,
+          user_name,
+          action_type,
+          entity_type,
+          entity_id,
+          action_description,
+          details,
+          created_at
+        FROM activity_logs
+        ORDER BY created_at DESC
+        LIMIT $1 OFFSET $2
+      `, [limit, offset]);
+
+      return result.rows.map(row => ({
+        ...row,
+        details: typeof row.details === 'string' ? JSON.parse(row.details) : row.details
+      }));
+    } catch (error) {
+      console.error('[DB] Error getting all activities:', error);
+      throw error;
+    }
+  },
+
+  // Search activities
+  async searchActivitiesRBC(searchTerm, limit = 100) {
+    try {
+      const result = await pool.query(`
+        SELECT
+          id,
+          user_name,
+          action_type,
+          entity_type,
+          entity_id,
+          action_description,
+          details,
+          created_at
+        FROM activity_logs
+        WHERE
+          user_name ILIKE $1 OR
+          action_description ILIKE $1 OR
+          entity_type ILIKE $1 OR
+          entity_id ILIKE $1
+        ORDER BY created_at DESC
+        LIMIT $2
+      `, [`%${searchTerm}%`, limit]);
+
+      return result.rows.map(row => ({
+        ...row,
+        details: typeof row.details === 'string' ? JSON.parse(row.details) : row.details
+      }));
+    } catch (error) {
+      console.error('[DB] Error searching activities:', error);
       throw error;
     }
   },

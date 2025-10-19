@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Calendar, Mail, Bell, User } from "lucide-react";
 import SidePanel from "../../components/SidePanel";
+import Spinner from "../../components/Spinner";
 
 import MailComponent from "./(tabs)/mail";
 import CalendarComponent from "./(tabs)/calendar";
@@ -20,6 +21,77 @@ import PlateletNC from "./non-conforming/platelet";
 import RedBloodCellNC from "./non-conforming/rbc";
 
 const DashboardContent = () => {
+  const [bloodCounts, setBloodCounts] = useState({
+    redBloodCell: 0,
+    platelet: 0,
+    plasma: 0
+  });
+  const [bloodTypeCounts, setBloodTypeCounts] = useState({
+    'AB+': 0,
+    'AB-': 0,
+    'A+': 0,
+    'A-': 0,
+    'B+': 0,
+    'B-': 0,
+    'O+': 0,
+    'O-': 0
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchBloodCounts = async () => {
+      const start = Date.now();
+      try {
+        const counts = await window.electronAPI.getBloodStockCounts();
+        setBloodCounts(counts);
+
+        const typeCounts = await window.electronAPI.getBloodStockCountsByType();
+        setBloodTypeCounts(typeCounts);
+      } catch (error) {
+        console.error('Error fetching blood counts:', error);
+      } finally {
+        const elapsed = Date.now() - start;
+        const remaining = 1000 - elapsed;
+        if (remaining > 0) {
+          await new Promise((res) => setTimeout(res, remaining));
+        }
+        setLoading(false);
+      }
+    };
+
+    fetchBloodCounts();
+    // Refresh counts every 30 seconds
+    const interval = setInterval(fetchBloodCounts, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const totalStored = bloodCounts.redBloodCell + bloodCounts.platelet + bloodCounts.plasma;
+
+  if (loading) {
+    return (
+      <div className="dashboard-content">
+        <div className="loading-wrapper">
+          <Spinner />
+          <div className="loading-text">Loading dashboard...</div>
+        </div>
+        <style jsx>{`
+          .loading-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 50vh;
+            gap: 0.5rem;
+          }
+          .loading-text {
+            color: #6b7280;
+            font-size: 0.875rem;
+          }
+        `}</style>
+      </div>
+    );
+  }
+
   return (
     <div className="dashboard-content">
       {/* Main Stats Section */}
@@ -27,28 +99,28 @@ const DashboardContent = () => {
         {/* Total Stored Blood - Large Card */}
         <div className="main-stats-card">
           <div className="blood-drop-icon">🩸</div>
-          <div className="main-stats-number">628</div>
+          <div className="main-stats-number">{loading ? '...' : totalStored}</div>
           <div className="main-stats-title">Total Stored Blood</div>
-          <div className="main-stats-subtitle">Updated - 11 March 2025 at 1:00 PM</div>
+          <div className="main-stats-subtitle">Updated - {new Date().toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true })}</div>
         </div>
 
         {/* Blood Type Grid */}
         <div className="blood-type-grid">
           {[
-            { type: "AB +", count: 85, date: "2025-03-11 13:00:00" },
-            { type: "A +", count: 96, date: "2025-03-11 13:00:00" },
-            { type: "B +", count: 102, date: "2025-03-11 13:00:00" },
-            { type: "O +", count: 78, date: "2025-03-11 13:00:00" },
-            { type: "AB -", count: 74, date: "2025-03-11 13:00:00" },
-            { type: "A -", count: 58, date: "2025-03-11 13:00:00" },
-            { type: "B -", count: 47, date: "2025-03-11 13:00:00" },
-            { type: "O -", count: 88, date: "2025-03-11 13:00:00" },
+            { type: "AB+", displayType: "AB +" },
+            { type: "A+", displayType: "A +" },
+            { type: "B+", displayType: "B +" },
+            { type: "O+", displayType: "O +" },
+            { type: "AB-", displayType: "AB -" },
+            { type: "A-", displayType: "A -" },
+            { type: "B-", displayType: "B -" },
+            { type: "O-", displayType: "O -" },
           ].map((bloodType, index) => (
             <div key={index} className="blood-type-card">
               <div className="blood-type-icon">🩸</div>
-              <div className="blood-type-count">{bloodType.count}</div>
-              <div className="blood-type-label">Total Stored {bloodType.type}</div>
-              <div className="blood-type-date">{bloodType.date}</div>
+              <div className="blood-type-count">{loading ? '...' : bloodTypeCounts[bloodType.type]}</div>
+              <div className="blood-type-label">Total Stored {bloodType.displayType}</div>
+              <div className="blood-type-date">{new Date().toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', '')}</div>
             </div>
           ))}
         </div>
@@ -93,19 +165,19 @@ const DashboardContent = () => {
         {/* Components Available */}
         <div className="dashboard-card">
           <h3 className="card-title">Components Available</h3>
-          <p className="card-subtitle">Month of March 2025</p>
+          <p className="card-subtitle">{new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}</p>
           <div className="components-list">
             <div className="component-item">
               <span className="component-label">RED BLOOD CELL</span>
-              <span className="component-count">236</span>
+              <span className="component-count">{loading ? '...' : bloodCounts.redBloodCell}</span>
             </div>
             <div className="component-item">
               <span className="component-label">PLASMA</span>
-              <span className="component-count">205</span>
+              <span className="component-count">{loading ? '...' : bloodCounts.plasma}</span>
             </div>
             <div className="component-item">
               <span className="component-label">PLATELET</span>
-              <span className="component-count">187</span>
+              <span className="component-count">{loading ? '...' : bloodCounts.platelet}</span>
             </div>
           </div>
         </div>
@@ -704,6 +776,29 @@ const Dashboard = () => {
     }
   }, [navigate]);
 
+  // Listen for profile updates to refresh the user photo
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const userData = localStorage.getItem('currentUser');
+      if (userData) {
+        try {
+          setCurrentUser(JSON.parse(userData));
+        } catch (error) {
+          console.error('Error parsing updated user data:', error);
+        }
+      }
+    };
+
+    // Listen for storage events (from other tabs) and custom profile update events
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('profileUpdated', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('profileUpdated', handleStorageChange);
+    };
+  }, []);
+
   const toggleSidePanel = () => {
     setIsSidePanelOpen(!isSidePanelOpen);
   };
@@ -1009,7 +1104,20 @@ const Dashboard = () => {
                   className={`user-avatar cursor-pointer ${activeScreen === "profile" ? "user-avatar-active" : ""}`}
                   onClick={toggleProfileDropdown}
                 >
-                  <User className="w-4 h-4 text-gray-600" />
+                  {currentUser?.profilePhoto ? (
+                    <img
+                      src={currentUser.profilePhoto}
+                      alt="Profile"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        borderRadius: '50%'
+                      }}
+                    />
+                  ) : (
+                    <User className="w-4 h-4 text-gray-600" />
+                  )}
 
                   {isProfileDropdownOpen && (
                     <div className="dropdown-menu profile-dropdown">

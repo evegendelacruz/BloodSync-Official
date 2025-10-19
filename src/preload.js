@@ -424,11 +424,85 @@ getPlasmaStockBySerialId: async (serialId) => {
     }
   },
 
+  registerOrgUser: async (userData) => {
+    try {
+      return await ipcRenderer.invoke('db:registerOrgUser', userData);
+    } catch (error) {
+      console.error('Preload Error - registerOrgUser:', error);
+      throw error;
+    }
+  },
+
   loginUser: async (email, password) => {
     try {
       return await ipcRenderer.invoke('db:loginUser', email, password);
     } catch (error) {
       console.error('Preload Error - loginUser:', error);
+      throw error;
+    }
+  },
+
+  loginOrgUser: async (email, password) => {
+    try {
+      return await ipcRenderer.invoke('db:loginOrgUser', email, password);
+    } catch (error) {
+      console.error('Preload Error - loginOrgUser:', error);
+      throw error;
+    }
+  },
+
+  // ========== ORGANIZATION USER PROFILE METHODS ==========
+  getUserProfile: async (userId) => {
+    try {
+      return await ipcRenderer.invoke('db:getUserProfile', userId);
+    } catch (error) {
+      console.error('Preload Error - getUserProfile:', error);
+      throw error;
+    }
+  },
+
+  updateUserProfile: async (userId, profileData, userName) => {
+    try {
+      return await ipcRenderer.invoke('db:updateUserProfile', userId, profileData, userName);
+    } catch (error) {
+      console.error('Preload Error - updateUserProfile:', error);
+      throw error;
+    }
+  },
+
+  getUserActivities: async (userId, limit = 100, offset = 0) => {
+    try {
+      return await ipcRenderer.invoke('db:getUserActivities', userId, limit, offset);
+    } catch (error) {
+      console.error('Preload Error - getUserActivities:', error);
+      throw error;
+    }
+  },
+
+  // ========== RBC USER PROFILE METHODS ==========
+  getUserProfileRBC: async (userId) => {
+    try {
+      return await ipcRenderer.invoke('db:getUserProfileRBC', userId);
+    } catch (error) {
+      console.error('Preload Error - getUserProfileRBC:', error);
+      throw error;
+    }
+  },
+
+  updateUserProfileRBC: async (userId, profileData, userName) => {
+    try {
+      return await ipcRenderer.invoke('db:updateUserProfileRBC', userId, profileData, userName);
+    } catch (error) {
+      console.error('Preload Error - updateUserProfileRBC:', error);
+      throw error;
+    }
+  },
+
+  getUserActivitiesRBC: async (userId, limit = 100, offset = 0) => {
+    try {
+      return await ipcRenderer.invoke('db:getUserActivitiesRBC', userId, limit, offset);
+    } catch (error) {
+      console.error('Preload Error - getUserActivitiesRBC:', error);
       throw error;
     }
   },
@@ -451,11 +525,56 @@ getPlasmaStockBySerialId: async (serialId) => {
     }
   },
 
+  generatePasswordResetTokenOrg: async (email) => {
+    try {
+      return await ipcRenderer.invoke('db:generatePasswordResetToken', email);
+    } catch (error) {
+      console.error('Preload Error - generatePasswordResetTokenOrg:', error);
+      throw error;
+    }
+  },
+
+  resetPasswordOrg: async (email, resetToken, newPassword) => {
+    try {
+      return await ipcRenderer.invoke('db:resetPassword', email, resetToken, newPassword);
+    } catch (error) {
+      console.error('Preload Error - resetPasswordOrg:', error);
+      throw error;
+    }
+  },
+
   activateUserByToken: async (token) => {
     try {
       return await ipcRenderer.invoke('db:activateUserByToken', token);
     } catch (error) {
       console.error('Preload Error - activateUserByToken:', error);
+      throw error;
+    }
+  },
+
+  activateOrgUserByToken: async (token) => {
+    try {
+      return await ipcRenderer.invoke('db:activateOrgUserByToken', token);
+    } catch (error) {
+      console.error('Preload Error - activateOrgUserByToken:', error);
+      throw error;
+    }
+  },
+
+  getBloodStockCounts: async () => {
+    try {
+      return await ipcRenderer.invoke('db:getBloodStockCounts');
+    } catch (error) {
+      console.error('Preload Error - getBloodStockCounts:', error);
+      throw error;
+    }
+  },
+
+  getBloodStockCountsByType: async () => {
+    try {
+      return await ipcRenderer.invoke('db:getBloodStockCountsByType');
+    } catch (error) {
+      console.error('Preload Error - getBloodStockCountsByType:', error);
       throw error;
     }
   },

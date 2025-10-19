@@ -1,8 +1,78 @@
 // ProfileActivity.jsx
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { User } from "lucide-react";
 
 const ProfileActivity = () => {
+  const [activities, setActivities] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [userProfile, setUserProfile] = useState(null);
+  const itemsPerPage = 10;
+
+  useEffect(() => {
+    loadUserActivities();
+    loadUserProfile();
+  }, [currentPage]);
+
+  const loadUserProfile = async () => {
+    try {
+      const userStr = localStorage.getItem('currentUser');
+      if (!userStr) return;
+
+      const user = JSON.parse(userStr);
+
+      // Fetch user profile to get photo
+      const profile = await window.electronAPI.getUserProfileRBC(user.userId);
+      setUserProfile(profile);
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+    }
+  };
+
+  const loadUserActivities = async () => {
+    try {
+      setIsLoading(true);
+      const userStr = localStorage.getItem('currentUser');
+      if (!userStr) {
+        console.error('No user found in localStorage');
+        setIsLoading(false);
+        return;
+      }
+
+      const user = JSON.parse(userStr);
+      const offset = (currentPage - 1) * itemsPerPage;
+
+      // Use Electron API to get user activities
+      const activities = await window.electronAPI.getUserActivitiesRBC(user.userId, itemsPerPage, offset);
+
+      if (activities && activities.length > 0) {
+        setActivities(activities);
+        // Calculate total pages
+        setTotalPages(Math.max(1, Math.ceil(activities.length / itemsPerPage)));
+      } else {
+        setActivities([]);
+        setTotalPages(1);
+      }
+    } catch (error) {
+      console.error('Error loading user activities:', error);
+      setActivities([]);
+      setTotalPages(1);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const formatTimestamp = (timestamp) => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formatDate = (timestamp) => {
+    const date = new Date(timestamp);
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
   const styles = {
     container: {
       backgroundColor: "white",
@@ -44,6 +114,12 @@ const ProfileActivity = () => {
       alignItems: "center",
       justifyContent: "center",
       flexShrink: 0,
+      overflow: "hidden",
+    },
+    profileImage: {
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
     },
     activityContent: {
       flex: "1",
@@ -102,77 +178,101 @@ const ProfileActivity = () => {
     styles.pagination.justifyContent = "center";
   }
 
-  const activities = [
-    {
-      text: "Added 10 units of Type O+ Red Blood Cells to inventory",
-      time: "08:12 AM",
-    },
-    {
-      text: "Released 25 units of Type A- Plasma to Northern Mindanao Medical Center",
-      time: "09:45 AM",
-    },
-    {
-      text: "Approved donor information syncing from Barangay Carmen",
-      time: "10:30 AM",
-    },
-    {
-      text: "Modified blood stock details (Updated collection date for Type B+ Platelets)",
-      time: "02:20 PM",
-    },
-    {
-      text: "Released 10 unit of Type AB+ Red Blood Cells to Maria Reyna - Xavier University Hospital",
-      time: "03:55 PM",
-    },
-    { text: "Added 5 units of Type O- Plasma to inventory", time: "05:10 PM" },
-  ];
+  // Group activities by date
+  const groupedActivities = activities.reduce((groups, activity) => {
+    const date = formatDate(activity.created_at);
+    if (!groups[date]) {
+      groups[date] = [];
+    }
+    groups[date].push(activity);
+    return groups;
+  }, {});
 
   return (
     <div style={styles.container}>
-      <h2 style={styles.title}>Recent Activity</h2>
+      <h2 style={styles.title}>User Logs</h2>
 
-      <div style={styles.dateSection}>
-        <h3 style={styles.dateTitle}>March 11, 2025</h3>
+      {isLoading ? (
+        <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+          Loading activities...
+        </div>
+      ) : activities.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+          No activities found. Your actions will appear here.
+        </div>
+      ) : (
+        <>
+          {Object.entries(groupedActivities).map(([date, dateActivities]) => (
+            <div key={date} style={styles.dateSection}>
+              <h3 style={styles.dateTitle}>{date}</h3>
 
-        <div style={styles.activityList}>
-          {activities.map((activity, index) => (
-            <div key={index} style={styles.activityItem}>
-              <div style={styles.iconContainer}>
-                <User size={16} color="#6b7280" />
+              <div style={styles.activityList}>
+                {dateActivities.map((activity, index) => (
+                  <div key={activity.id || index} style={styles.activityItem}>
+                    <div style={styles.iconContainer}>
+                      {userProfile?.profile_photo ? (
+                        <img
+                          src={userProfile.profile_photo}
+                          alt="User"
+                          style={styles.profileImage}
+                        />
+                      ) : (
+                        <User size={16} color="#6b7280" />
+                      )}
+                    </div>
+                    <div style={styles.activityContent}>
+                      <p style={styles.activityText}>{activity.action_description}</p>
+                    </div>
+                    <span style={styles.activityTime}>{formatTimestamp(activity.created_at)}</span>
+                  </div>
+                ))}
               </div>
-              <div style={styles.activityContent}>
-                <p style={styles.activityText}>{activity.text}</p>
-              </div>
-              <span style={styles.activityTime}>{activity.time}</span>
             </div>
           ))}
-        </div>
-      </div>
 
-      <div style={styles.pagination}>
-        <button
-          style={styles.paginationButton}
-          onMouseEnter={(e) =>
-            (e.target.style.color = styles.paginationButtonHover.color)
-          }
-          onMouseLeave={(e) =>
-            (e.target.style.color = styles.paginationButton.color)
-          }
-        >
-          Previous
-        </button>
-        <span style={styles.paginationText}>Page 1 of 20</span>
-        <button
-          style={styles.paginationButton}
-          onMouseEnter={(e) =>
-            (e.target.style.color = styles.paginationButtonHover.color)
-          }
-          onMouseLeave={(e) =>
-            (e.target.style.color = styles.paginationButton.color)
-          }
-        >
-          Next
-        </button>
-      </div>
+          <div style={styles.pagination}>
+            <button
+              style={{
+                ...styles.paginationButton,
+                opacity: currentPage === 1 ? 0.5 : 1,
+                cursor: currentPage === 1 ? 'not-allowed' : 'pointer'
+              }}
+              onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)}
+              disabled={currentPage === 1}
+              onMouseEnter={(e) => {
+                if (currentPage > 1) {
+                  e.target.style.color = styles.paginationButtonHover.color;
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.color = styles.paginationButton.color;
+              }}
+            >
+              Previous
+            </button>
+            <span style={styles.paginationText}>Page {currentPage} of {totalPages}</span>
+            <button
+              style={{
+                ...styles.paginationButton,
+                opacity: currentPage === totalPages ? 0.5 : 1,
+                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer'
+              }}
+              onClick={() => currentPage < totalPages && setCurrentPage(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              onMouseEnter={(e) => {
+                if (currentPage < totalPages) {
+                  e.target.style.color = styles.paginationButtonHover.color;
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.color = styles.paginationButton.color;
+              }}
+            >
+              Next
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 };

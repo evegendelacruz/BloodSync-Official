@@ -500,9 +500,121 @@ ipcMain.handle("db:getPlasmaStockBySerialId", async (_event, serialId) => {
 
   ipcMain.handle("db:activateUserByToken", async (_event, token) => {
     try {
-      return await dbService.activateUserByToken(token);
+      // Try activating Regional Blood Center user first
+      let activated = await dbService.activateUserByToken(token);
+
+      // If not found in Regional Blood Center database, try Organization database
+      if (!activated) {
+        console.log('[IPC] User not found in Regional Blood Center DB, trying Organization DB...');
+        activated = await dbOrgService.activateOrgUserByToken(token);
+      }
+
+      return activated;
     } catch (error) {
       console.error("IPC Error - activateUserByToken:", error);
+      throw error;
+    }
+  });
+
+  // ========== ORGANIZATION USER REGISTRATION IPC HANDLERS ==========
+  ipcMain.handle("db:registerOrgUser", async (_event, userData) => {
+    try {
+      return await dbOrgService.registerOrgUser(userData);
+    } catch (error) {
+      console.error("IPC Error - registerOrgUser:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:activateOrgUserByToken", async (_event, token) => {
+    try {
+      return await dbOrgService.activateOrgUserByToken(token);
+    } catch (error) {
+      console.error("IPC Error - activateOrgUserByToken:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:loginOrgUser", async (_event, email, password) => {
+    try {
+      return await dbOrgService.loginOrgUser(email, password);
+    } catch (error) {
+      console.error("IPC Error - loginOrgUser:", error);
+      throw error;
+    }
+  });
+
+  // Organization Profile Handlers
+  // Organization user profile handlers
+  ipcMain.handle("db:getUserProfile", async (_event, userId) => {
+    try {
+      return await dbOrgService.getUserProfile(userId);
+    } catch (error) {
+      console.error("IPC Error - getUserProfile:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:updateUserProfile", async (_event, userId, profileData, userName) => {
+    try {
+      return await dbOrgService.updateUserProfile(userId, profileData, userName);
+    } catch (error) {
+      console.error("IPC Error - updateUserProfile:", error);
+      throw error;
+    }
+  });
+
+  // RBC user profile handlers
+  ipcMain.handle("db:getUserProfileRBC", async (_event, userId) => {
+    try {
+      return await dbService.getUserProfileRBC(userId);
+    } catch (error) {
+      console.error("IPC Error - getUserProfileRBC:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:updateUserProfileRBC", async (_event, userId, profileData, userName) => {
+    try {
+      return await dbService.updateUserProfileRBC(userId, profileData, userName);
+    } catch (error) {
+      console.error("IPC Error - updateUserProfileRBC:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getUserActivitiesRBC", async (_event, userId, limit, offset) => {
+    try {
+      return await dbService.getUserActivitiesRBC(userId, limit, offset);
+    } catch (error) {
+      console.error("IPC Error - getUserActivitiesRBC:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getUserActivities", async (_event, userId, limit = 100, offset = 0) => {
+    try {
+      return await dbOrgService.getUserActivities(userId, limit, offset);
+    } catch (error) {
+      console.error("IPC Error - getUserActivities:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getBloodStockCounts", async (_event) => {
+    try {
+      return await dbService.getBloodStockCounts();
+    } catch (error) {
+      console.error("IPC Error - getBloodStockCounts:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getBloodStockCountsByType", async (_event) => {
+    try {
+      return await dbService.getBloodStockCountsByType();
+    } catch (error) {
+      console.error("IPC Error - getBloodStockCountsByType:", error);
       throw error;
     }
   });

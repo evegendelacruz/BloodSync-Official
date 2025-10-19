@@ -43,12 +43,30 @@ const Login = () => {
       // Use IPC instead of fetch
       const user = await window.electronAPI.loginUser(email, password);
 
-      // Store user data in localStorage
-      localStorage.setItem('currentUser', JSON.stringify({
-        userId: user.userId,
-        email: user.email,
-        role: user.role
-      }));
+      // Fetch full profile data including photo
+      try {
+        const profile = await window.electronAPI.getUserProfileRBC(user.userId);
+
+        // Store user data with profile photo in localStorage
+        localStorage.setItem('currentUser', JSON.stringify({
+          userId: user.userId,
+          email: user.email,
+          role: user.role,
+          fullName: user.fullName,
+          profilePhoto: profile?.profile_photo || null
+        }));
+      } catch (profileError) {
+        console.error('Error fetching profile:', profileError);
+
+        // Store user data without profile photo if fetch fails
+        localStorage.setItem('currentUser', JSON.stringify({
+          userId: user.userId,
+          email: user.email,
+          role: user.role,
+          fullName: user.fullName,
+          profilePhoto: null
+        }));
+      }
 
       setModalInfo({
         show: true,
