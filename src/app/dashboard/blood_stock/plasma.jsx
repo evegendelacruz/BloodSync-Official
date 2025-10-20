@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import Spinner from "../../../components/Spinner";
 import Loader from "../../../components/Loader";
 
 const Plasma = () => {
@@ -99,6 +98,7 @@ const Plasma = () => {
   }, []);
 
   const loadPlasmaData = async () => {
+    const start = Date.now();
     try {
       setLoading(true);
       setError(null);
@@ -115,6 +115,11 @@ const Plasma = () => {
       console.error("Error loading plasma data:", err);
       setError(`Failed to load plasma data: ${err.message}`);
     } finally {
+      const elapsed = Date.now() - start;
+      const remaining = 1000 - elapsed;
+      if (remaining > 0) {
+        await new Promise((res) => setTimeout(res, remaining));
+      }
       setLoading(false);
     }
   };
@@ -122,6 +127,7 @@ const Plasma = () => {
   const handleSearch = async (e) => {
     const value = e.target.value;
     setSearchTerm(value);
+    const start = Date.now();
     setLoading(true);
 
     try {
@@ -140,6 +146,11 @@ const Plasma = () => {
       console.error("Error searching:", err);
       setError("Search failed");
     } finally {
+      const elapsed = Date.now() - start;
+      const remaining = 1000 - elapsed;
+      if (remaining > 0) {
+        await new Promise((res) => setTimeout(res, remaining));
+      }
       setLoading(false);
     }
   };

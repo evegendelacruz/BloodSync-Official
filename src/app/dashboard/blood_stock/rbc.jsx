@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import Loader from "../../../components/Loader";
-import Spinner from "../../../components/Spinner";
 
 const RedBloodCell = () => {
   const [bloodData, setBloodData] = useState([]);
@@ -99,6 +98,7 @@ const RedBloodCell = () => {
   }, []);
 
   const loadBloodData = async () => {
+    const start = Date.now();
     try {
       setLoading(true);
       setError(null);
@@ -115,6 +115,11 @@ const RedBloodCell = () => {
       console.error("Error loading blood data:", err);
       setError(`Failed to load blood data: ${err.message}`);
     } finally {
+      const elapsed = Date.now() - start;
+      const remaining = 1000 - elapsed;
+      if (remaining > 0) {
+        await new Promise((res) => setTimeout(res, remaining));
+      }
       setLoading(false);
     }
   };
@@ -122,6 +127,7 @@ const RedBloodCell = () => {
   const handleSearch = async (e) => {
     const value = e.target.value;
     setSearchTerm(value);
+    const start = Date.now();
     setLoading(true);
 
     try {
@@ -140,6 +146,11 @@ const RedBloodCell = () => {
       console.error("Error searching:", err);
       setError("Search failed");
     } finally {
+      const elapsed = Date.now() - start;
+      const remaining = 1000 - elapsed;
+      if (remaining > 0) {
+        await new Promise((res) => setTimeout(res, remaining));
+      }
       setLoading(false);
     }
   };

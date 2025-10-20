@@ -496,15 +496,6 @@ ipcMain.handle("db:deleteReleasedPlateletStock", async (_event, ids) => {
       throw error;
     }
   });
-  ipcMain.handle("db:releasePlasmaStock", async (_event, releaseData) => {
-    try {
-      const result = await dbService.releasePlasmaStock(releaseData);
-      return result;
-    } catch (error) {
-      console.error("IPC Error - releasePlasmaStock:", error);
-      throw error;
-    }
-  });
 
   ipcMain.handle("db:getReleasedPlasmaStock", async () => {
     try {
@@ -514,23 +505,14 @@ ipcMain.handle("db:deleteReleasedPlateletStock", async (_event, ids) => {
       throw error;
     }
   });
-  ipcMain.handle("db:getReleasedPlasmaStock", async () => {
-    try {
-      return await dbService.getReleasedPlasmaStock();
-    } catch (error) {
-      console.error("IPC Error - getReleasedPlasmaStock:", error);
-      throw error;
-    }
-  });
-
   ipcMain.handle("db:getPlasmaStockBySerialId", async (_event, serialId) => {
-    try {
-      return await dbService.getPlasmaStockBySerialId(serialId);
-    } catch (error) {
-      console.error("IPC Error - getPlasmaStockBySerialId:", error);
-    throw error;
+  try {
+  return await dbService.getPlasmaStockBySerialId(serialId);
+  } catch (error) {
+  console.error("IPC Error - getPlasmaStockBySerialId:", error);
+  throw error;
   }
-});
+  });
 
   // ========== USER AUTHENTICATION IPC HANDLERS ==========
   ipcMain.handle("db:registerUser", async (_event, userData) => {

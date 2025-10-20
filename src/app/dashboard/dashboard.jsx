@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Calendar, Mail, Bell, User } from "lucide-react";
 import SidePanel from "../../components/SidePanel";
-import Spinner from "../../components/Spinner";
+import Loader from "../../components/Loader";
 
 import MailComponent from "./(tabs)/mail";
 import CalendarComponent from "./(tabs)/calendar";
@@ -71,8 +71,7 @@ const DashboardContent = () => {
     return (
       <div className="dashboard-content">
         <div className="loading-wrapper">
-          <Spinner />
-          <div className="loading-text">Loading dashboard...</div>
+          <Loader />
         </div>
         <style jsx>{`
           .loading-wrapper {
@@ -337,11 +336,11 @@ const DashboardContent = () => {
       {/* Main Stats Section */}
       <div style={styles.mainStatsSection}>
         {/* Total Stored Blood - Large Card */}
-        <div className="main-stats-card">
-          <div className="blood-drop-icon">🩸</div>
-          <div className="main-stats-number">{loading ? '...' : totalStored}</div>
-          <div className="main-stats-title">Total Stored Blood</div>
-          <div className="main-stats-subtitle">Updated - {new Date().toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true })}</div>
+        <div style={styles.mainStatsCard}>
+          <div style={styles.bloodDropIcon}>🩸</div>
+          <div style={styles.mainStatsNumber}>{loading ? '...' : totalStored}</div>
+          <div style={styles.mainStatsTitle}>Total Stored Blood</div>
+          <div style={styles.mainStatsSubtitle}>Updated - {new Date().toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true })}</div>
         </div>
 
         {/* Blood Type Grid */}
@@ -356,11 +355,11 @@ const DashboardContent = () => {
             { type: "B-", displayType: "B -" },
             { type: "O-", displayType: "O -" },
           ].map((bloodType, index) => (
-            <div key={index} className="blood-type-card">
-              <div className="blood-type-icon">🩸</div>
-              <div className="blood-type-count">{loading ? '...' : bloodTypeCounts[bloodType.type]}</div>
-              <div className="blood-type-label">Total Stored {bloodType.displayType}</div>
-              <div className="blood-type-date">{new Date().toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', '')}</div>
+            <div key={index} style={styles.bloodTypeCard}>
+              <div style={styles.bloodTypeIcon}>🩸</div>
+              <div style={styles.bloodTypeCount}>{loading ? '...' : bloodTypeCounts[bloodType.type]}</div>
+              <div style={styles.bloodTypeLabel}>Total Stored {bloodType.displayType}</div>
+              <div style={styles.bloodTypeDate}>{new Date().toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', '')}</div>
             </div>
           ))}
         </div>
@@ -403,21 +402,21 @@ const DashboardContent = () => {
         </div>
 
         {/* Components Available */}
-        <div className="dashboard-card">
-          <h3 className="card-title">Components Available</h3>
-          <p className="card-subtitle">{new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}</p>
-          <div className="components-list">
-            <div className="component-item">
-              <span className="component-label">RED BLOOD CELL</span>
-              <span className="component-count">{loading ? '...' : bloodCounts.redBloodCell}</span>
+        <div style={styles.dashboardCard}>
+          <h3 style={styles.cardTitle}>Components Available</h3>
+          <p style={styles.cardSubtitle}>{new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}</p>
+          <div style={styles.componentsList}>
+            <div style={styles.componentItem}>
+              <span style={styles.componentLabel}>RED BLOOD CELL</span>
+              <span style={styles.componentCount}>{loading ? '...' : bloodCounts.redBloodCell}</span>
             </div>
-            <div className="component-item">
-              <span className="component-label">PLASMA</span>
-              <span className="component-count">{loading ? '...' : bloodCounts.plasma}</span>
+            <div style={styles.componentItem}>
+              <span style={styles.componentLabel}>PLASMA</span>
+              <span style={styles.componentCount}>{loading ? '...' : bloodCounts.plasma}</span>
             </div>
-            <div className="component-item">
-              <span className="component-label">PLATELET</span>
-              <span className="component-count">{loading ? '...' : bloodCounts.platelet}</span>
+            <div style={styles.componentItem}>
+              <span style={styles.componentLabel}>PLATELET</span>
+              <span style={styles.componentCount}>{loading ? '...' : bloodCounts.platelet}</span>
             </div>
           </div>
         </div>
@@ -481,15 +480,15 @@ const DashboardContent = () => {
           <div style={styles.releasedStats}>
             <div style={styles.releasedItem}>
               <span style={styles.releasedLabel}>RBC</span>
-              <span style={styles.releasedCount}>80</span>
+              <span style={styles.releasedCount}>0</span>
             </div>
             <div style={styles.releasedItem}>
               <span style={styles.releasedLabel}>Plasma</span>
-              <span style={styles.releasedCount}>80</span>
+              <span style={styles.releasedCount}>0</span>
             </div>
             <div style={styles.releasedItem}>
               <span style={styles.releasedLabel}>Platelet</span>
-              <span style={styles.releasedCount}>80</span>
+              <span style={styles.releasedCount}>0</span>
             </div>
           </div>
         </div>
@@ -1284,8 +1283,8 @@ const Dashboard = () => {
               </div>
 
               {/* User Profile Section with Dropdown */}
-              <div className="user-section relative">
-                <span className="user-name">{currentUser?.fullName || 'Loading...'}</span>
+              <div style={styles.userSection}>
+                <span style={styles.userName}>{currentUser?.fullName || 'Loading...'}</span>
                 <div
                   style={{
                     ...styles.userAvatar,
