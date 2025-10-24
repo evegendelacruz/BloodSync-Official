@@ -1,11 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Trash2, Plus } from "lucide-react";
-
-const Loader = () => (
-  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-    <div style={{ fontSize: '18px', color: '#6b7280' }}>Loading...</div>
-  </div>
-);
+import Loader from "../../../components/Loader";
 
 const RedBloodCellNC = () => {
   const [bloodData, setBloodData] = useState([]);
@@ -119,6 +114,8 @@ const RedBloodCellNC = () => {
   }, []);
 
   const loadNonConformingData = async () => {
+    const startTime = Date.now();
+
     try {
       setLoading(true);
       setError(null);
@@ -135,6 +132,10 @@ const RedBloodCellNC = () => {
       console.error("Error loading non-conforming data:", err);
       setError(`Failed to load non-conforming data: ${err.message}`);
     } finally {
+      // Ensure minimum 1 second loading time
+      const elapsedTime = Date.now() - startTime;
+      const remainingTime = Math.max(0, 1000 - elapsedTime);
+      await new Promise(resolve => setTimeout(resolve, remainingTime));
       setLoading(false);
     }
   };

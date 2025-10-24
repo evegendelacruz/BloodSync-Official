@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Plus, Filter, Search } from "lucide-react";
+import Loader from "../../components/Loader";
 
 const DonorRecord = () => {
   const [donorData, setDonorData] = useState([]);
@@ -73,6 +74,8 @@ const DonorRecord = () => {
   }, []);
 
   const loadDonorData = async () => {
+    const startTime = Date.now();
+
     try {
       setLoading(true);
       setError(null);
@@ -85,6 +88,10 @@ const DonorRecord = () => {
       console.error("Error loading donor data:", err);
       setError(`Failed to load donor data: ${err.message}`);
     } finally {
+      // Ensure minimum 1 second loading time
+      const elapsedTime = Date.now() - startTime;
+      const remainingTime = Math.max(0, 1000 - elapsedTime);
+      await new Promise(resolve => setTimeout(resolve, remainingTime));
       setLoading(false);
     }
   };
@@ -338,13 +345,7 @@ const DonorRecord = () => {
   const someSelected = displayData.some((item) => item.selected) && !allSelected;
 
   if (loading) {
-    return (
-      <div style={{ padding: "24px", backgroundColor: "#f9fafb", minHeight: "100vh", fontFamily: "Barlow" }}>
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: "40px", fontSize: "16px", color: "#6b7280" }}>
-          Loading donor records...
-        </div>
-      </div>
-    );
+    return <Loader />;
   }
 
   return (

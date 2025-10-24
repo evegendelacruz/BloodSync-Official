@@ -1,7 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Search } from "lucide-react";
+import Loader from "../../components/Loader";
 
 const Invoice = () => {
+  const [loading, setLoading] = useState(true);
   const [invoiceData, setInvoiceData] = useState([
     {
       id: "INV-0001-ON",
@@ -177,6 +179,15 @@ const Invoice = () => {
   ]);
 
   const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    // Simulate loading for 1 second
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   const filteredData = invoiceData.filter(
     (item) =>
@@ -466,6 +477,10 @@ const Invoice = () => {
   // Check if some rows are selected (for indeterminate state)
   const someSelected =
     filteredData.some((item) => item.selected) && !allSelected;
+
+  if (loading) {
+    return <Loader />;
+  }
 
   return (
     <div style={styles.container}>

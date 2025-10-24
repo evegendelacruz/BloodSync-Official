@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { ArchiveRestore } from "lucide-react";
+import Loader from "../../components/Loader";
 
 const ReleasedBlood = () => {
   const [bloodData, setBloodData] = useState([]);
@@ -64,6 +65,8 @@ const ReleasedBlood = () => {
   }, []);
 
   const loadReleasedBloodData = async () => {
+    const startTime = Date.now();
+
     try {
       setLoading(true);
       setError(null);
@@ -85,12 +88,16 @@ const ReleasedBlood = () => {
         const dateB = new Date(b.releasedAt);
         return dateB - dateA;
       });
-      
+
       setBloodData(combinedData);
     } catch (err) {
       console.error("Error loading released blood data:", err);
       setError(`Failed to load released blood data: ${err.message}`);
     } finally {
+      // Ensure minimum 1 second loading time
+      const elapsedTime = Date.now() - startTime;
+      const remainingTime = Math.max(0, 1000 - elapsedTime);
+      await new Promise(resolve => setTimeout(resolve, remainingTime));
       setLoading(false);
     }
   };
@@ -1211,11 +1218,7 @@ const ReleasedBlood = () => {
   const someSelected = displayData.some(item => item.selected) && !allSelected;
 
   if (loading) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.loadingContainer}>Loading released blood data...</div>
-      </div>
-    );
+    return <Loader />;
   }
 
   return (

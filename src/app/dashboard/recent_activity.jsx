@@ -1,8 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search } from 'lucide-react';
+import Loader from "../../components/Loader";
 
 const RecentActivity = () => {
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    // Simulate loading for 1 second
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   // Sample activity data matching the UI
   const activityData = [
@@ -322,6 +333,10 @@ const RecentActivity = () => {
       fontWeight: "500",
     },
   };
+
+  if (loading) {
+    return <Loader />;
+  }
 
   return (
     <div style={styles.container}>
