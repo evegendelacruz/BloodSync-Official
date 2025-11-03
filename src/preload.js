@@ -505,6 +505,18 @@ transferPlateletToNonConforming: async (serialIds) => {
      searchPlasmaNonConforming: (searchTerm) => ipcRenderer.invoke('db:searchPlasmaNonConforming', searchTerm),
      discardPlasmaNonConformingStock: (discardData) => ipcRenderer.invoke('db:discardPlasmaNonConformingStock', discardData),
      getPlasmaNonConformingBySerialIdForDiscard: (serialId) => ipcRenderer.invoke('db:getPlasmaNonConformingBySerialIdForDiscard', serialId),
+
+  // ========== INVOICE METHODS ==========
+  getAllReleasedBloodInvoices: () => ipcRenderer.invoke('get-all-invoices'),
+  searchReleasedBloodInvoices: (searchTerm) => ipcRenderer.invoke('search-invoices', searchTerm),
+  viewReleasedBloodInvoice: (invoiceId) => ipcRenderer.invoke('get-invoice-details', invoiceId),
+  deleteReleasedBloodInvoices: (invoiceIds) => ipcRenderer.invoke('delete-released-blood-invoices', invoiceIds),
+    
+  // ========== DISCARDED BLOOD INVOICE METHODS ==========
+  getAllDiscardedBloodInvoices: () => ipcRenderer.invoke('getAllDiscardedBloodInvoices'),
+  viewDiscardedBloodInvoice: (invoiceId) => ipcRenderer.invoke('viewDiscardedBloodInvoice', invoiceId),
+  searchDiscardedBloodInvoices: (searchTerm) => ipcRenderer.invoke('searchDiscardedBloodInvoices', searchTerm),
+  deleteDiscardedBloodInvoices: (invoiceIds) => ipcRenderer.invoke('deleteDiscardedBloodInvoices', invoiceIds),
   
 });
 
