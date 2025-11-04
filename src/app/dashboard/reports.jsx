@@ -304,7 +304,7 @@ const Reports = () => {
       {/* Header */}
       <div style={styles.header}>
         <h1 style={styles.title}>Reports</h1>
-        <p style={styles.subtitle}>Quarterly Reports</p>
+        <p style={styles.subtitle}>Blood Donation Documentation Report</p>
       </div>
 
       {/* Controls Bar */}
