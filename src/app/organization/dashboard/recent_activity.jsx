@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Search } from 'lucide-react';
 
-const RecentActivity = () => {
+const RecentActivityOrg = () => {
   const [searchTerm, setSearchTerm] = useState("");
 
   // Sample activity data matching the UI
@@ -461,4 +461,4 @@ const RecentActivity = () => {
   );
 };
 
-export default RecentActivity;
+export default RecentActivityOrg;

@@ -1,17 +1,32 @@
-import React from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const Signup = () => {
+const LoginOrg = () => {
   const navigate = useNavigate();
+  const [error, setError] = useState("");
 
-  const handleSignup = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    // Add your signup logic here
-    navigate("/login");
+    setError("");
+
+    const formData = new FormData(e.target);
+    const loginData = {
+      email: formData.get("email"),
+      password: formData.get("password"),
+    };
+
+    try {
+      // Simulate login API call
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      // Navigate to donor-record-org instead of dashboard
+      navigate("/donor-record-org");
+    } catch (err) {
+      setError("Login failed. Please check your credentials and try again.");
+    }
   };
 
   return (
-
     <>
       <style>{`
         * {
@@ -165,18 +180,7 @@ const Signup = () => {
           transition: border-color 0.2s;
         }
 
-        .form-group select {
-          width: 100%;
-          padding: 10px 16px;
-          border: 2px solid #e5e7eb;
-          font-size: 13px;
-          transition: border-color 0.2s;
-          background: white;
-          cursor: pointer;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus {
+        .form-group input:focus {
           outline: none;
           border-color: #15803d;
         }
@@ -279,90 +283,118 @@ const Signup = () => {
         }
       `}</style>
 
-    <div className="page-container">
-      <header className="bloodsync-header">
-        <div className="header-container">
-          <div className="left-section">
-            <img
-              src="/assets/Logo1.png"
-              alt="BloodSync Logo"
-              className="bloodsync-logo"
-            />
-          </div>
-          <div className="right-section">
-            <div className="doh-section">
+      <div className="page-container">
+        <header className="bloodsync-header">
+          <div className="header-container">
+            <div className="left-section">
               <img
-                src="/assets/DOH Logo.png"
-                alt="Department of Health"
-                className="doh-logo"
+                src="/assets/Logo1.png"
+                alt="BloodSync Logo"
+                className="bloodsync-logo"
               />
-              <div className="doh-text">
+            </div>
+            <div className="right-section">
+              <div className="doh-section">
                 <img
-                  src="/assets/Text Logo.png"
+                  src="/assets/DOH Logo.png"
                   alt="Department of Health"
-                  className="doh-text"
+                  className="doh-logo"
                 />
+                <div className="doh-text">
+                  <img
+                    src="/assets/Text Logo.png"
+                    alt="Department of Health"
+                    className="doh-text"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <div className="main-content">
+          <div className="login-container">
+            {/* Login Header */}
+            <div className="login-header">
+              <h1>Log In to your Account</h1>
+              <p>
+                Don&apos;t Have an Account?&nbsp;
+                <button
+                  type="button"
+                  onClick={() => navigate("/signup-org")}
+                  className="link"
+                >
+                  Click Here
+                </button>
+              </p>
+            </div>
+
+            {/* Login Form */}
+            <div className="content">
+              <form onSubmit={handleLogin}>
+                <div className="form-group">
+                  <label htmlFor="email">Email Address</label>
+                  <input type="email" id="email" name="email" required />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="password">Password</label>
+                  <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    required
+                  />
+                </div>
+
+                <button type="submit" className="btn">
+                  LOGIN
+                </button>
+
+                {error && <div className="error">{error}</div>}
+              </form>
+
+              <div
+                className="remember-me"
+                style={{ display: "flex", alignItems: "center" }}
+              >
+                <input
+                  type="checkbox"
+                  id="remember"
+                  name="remember"
+                  style={{ marginRight: "8px" }}
+                />
+                <label
+                  htmlFor="remember"
+                  style={{ fontSize: "13px", color: "white" }}
+                >
+                  Remember Me
+                </label>
+              </div>
+
+              <div className="text-center">
+                <p style={{ fontSize: "13px", marginTop: "10px" }}>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/forgot-password-org")}
+                    className="link"
+                  >
+                    Forgot Password?
+                  </button>
+                </p>
               </div>
             </div>
           </div>
         </div>
-      </header>
 
-      <div className="main-content">
-        <div className="login-container">
-          <div className="login-header">
-            <h1>Create an Account</h1>
-            <p>
-              Have an Account?&nbsp;
-              <button
-                type="button"
-                onClick={() => navigate("/login")}
-                className="link"
-              >
-                Click Here
-              </button>
-            </p>
-          </div>
-          <div className="content">
-            <form onSubmit={handleSignup}>
-              <div className="form-group">
-                <label htmlFor="name">Full Name:</label>
-                <input type="text" id="name" name="name" required />
-              </div>
-              <div className="form-group">
-                <label htmlFor="role">Role:</label>
-                <select id="role" name="role" required>
-                  <option value="">Select a role...</option>
-                  <option value="admin">Admin</option>
-                  <option value="doctor">Doctor</option>
-                  <option value="medical-technologist">Medical Technologist</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label htmlFor="email">Email:</label>
-                <input type="email" id="email" name="email" required />
-              </div>
-              <div className="form-group">
-                <label htmlFor="password">Password:</label>
-                <input type="password" id="password" name="password" required />
-              </div>
-              <div className="form-group">
-                <label htmlFor="password">Confirm Password:</label>
-                <input type="password" id="password" name="password" required />
-              </div>
-              <button type="submit" className="btn" style={{ marginBottom: "30px" }}>
-                REGISTER
-              </button>
-            </form>
-          </div>
-        </div>
+        {/* Footer */}
+        <footer className="footer">
+          <p>2025 © Copyright Code Red Corporation ver. 1.0</p>
+        </footer>
       </div>
-      <footer className="footer">
-        <p>2025 © Copyright Code Red Corporation ver. 1.0</p>
-      </footer>
-    </div>
     </>
   );
 };
 
-export default Signup;
+export default LoginOrg;

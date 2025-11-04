@@ -1,7 +1,5 @@
 import React, { useState } from "react";
 import {
-  Home,
-  Droplets,
   Users,
   FileText,
   TrendingUp,
@@ -10,88 +8,34 @@ import {
   ChevronRight,
   ChevronLeft,
   Package2,
+  Calendar,
+  CalendarCheck,
 } from "lucide-react";
 
 import { BeakerIcon } from "@primer/octicons-react";
 
-const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
+const SidePanelOrg = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
   const [expandedMenus, setExpandedMenus] = useState({});
   const [hoveredItem, setHoveredItem] = useState(null);
 
   const menuItems = [
     {
-      id: "dashboard",
-      label: "Dashboard",
-      icon: Home,
-      screen: "dashboard",
-    },
-    {
-      id: "blood-stock",
-      label: "Blood Stock",
-      icon: Droplets,
-      hasSubmenu: true,
-      submenu: [
-        {
-          id: "red-blood-cell",
-          label: "Red Blood Cell",
-          screen: "red-blood-cell",
-        },
-        { id: "plasma", label: "Plasma", screen: "plasma" },
-        { id: "platelet", label: "Platelet", screen: "platelet" },
-      ],
-    },
-    {
-      id: "released-blood",
-      label: "Released Blood",
-      icon: Package2,
-      screen: "released-blood",
-    },
-    {
-      id: "non-conforming",
-      label: "Non-Conforming",
-      icon: BeakerIcon,
-      hasSubmenu: true,
-      submenu: [
-        {
-          id: "red-blood-cell-nc",
-          label: "Red Blood Cell",
-          screen: "red-blood-cell-nc",
-        },
-        { id: "plasma-nc", label: "Plasma", screen: "plasma-nc" },
-        { id: "platelet-nc", label: "Platelet", screen: "platelet-nc" },
-      ],
-    },
-    {
-      id: "donor-record",
+      id: "donor-record-org",
       label: "Donor Record",
       icon: Users,
-      screen: "donor-record",
+      screen: "donor-record-org",
     },
     {
-      id: "invoice",
-      label: "Invoice",
-      icon: FileText,
-      hasSubmenu: true,
-      submenu: [
-        {
-          id: "released-invoice",
-          label: "Released Blood",
-          screen: "released-invoice",
-        },
-        { id: "discard-invoice-nc", label: "Discarded Blood", screen: "discard-invoice-nc" },
-      ],
+      id: "appointment-org",
+      label: "Appointment",
+      icon: CalendarCheck,
+      screen: "appointment-org",
     },
     {
-      id: "reports",
-      label: "Reports",
-      icon: TrendingUp,
-      screen: "reports",
-    },
-    {
-      id: "recent-activity",
+      id: "recent-activity-org",
       label: "Recent Activity",
       icon: Clock,
-      screen: "recent-activity",
+      screen: "recent-activity-org",
     },
   ];
 
@@ -566,4 +510,4 @@ const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
   );
 };
 
-export default SidePanel;
+export default SidePanelOrg;

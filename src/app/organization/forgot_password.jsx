@@ -1,17 +1,91 @@
-import React from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const Signup = () => {
+const ForgotPasswordOrg = () => {
   const navigate = useNavigate();
+  const [step, setStep] = useState(1);
+  const [formData, setFormData] = useState({
+    email: "",
+    recoveryCode: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  const handleSignup = (e) => {
+  const handleInputChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSendCode = (e) => {
     e.preventDefault();
-    // Add your signup logic here
-    navigate("/login");
+    setError("");
+    setSuccess("");
+
+    if (!formData.email) {
+      setError("Please enter your email address");
+      return;
+    }
+
+    setLoading(true);
+    setTimeout(() => {
+      setLoading(false);
+      setSuccess("Recovery code sent to your email!");
+      setTimeout(() => {
+        setStep(2);
+        setSuccess("");
+      }, 1500);
+    }, 1500);
+  };
+
+  const handleResetPassword = (e) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+  
+    if (!formData.recoveryCode) {
+      setError("Please enter the recovery code");
+      return;
+    }
+  
+    if (!formData.newPassword) {
+      setError("Please enter a new password");
+      return;
+    }
+  
+    if (formData.newPassword.length < 6) {
+      setError("Password must be at least 6 characters long");
+      return;
+    }
+  
+    if (formData.newPassword !== formData.confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+  
+    setLoading(true);
+    setTimeout(() => {
+      setLoading(false);
+      setSuccess("Password reset successfully! Redirecting to login...");
+      // Redirect after short delay so user sees the message
+      setTimeout(() => {
+        navigate("/login");
+      }, 1500);
+    }, 1500);
+  };
+  
+  const handleBack = () => {
+    if (step === 2) {
+      setStep(1);
+      setError("");
+      setSuccess("");
+    } else {
+      navigate("/login");
+    }
   };
 
   return (
-
     <>
       <style>{`
         * {
@@ -165,18 +239,7 @@ const Signup = () => {
           transition: border-color 0.2s;
         }
 
-        .form-group select {
-          width: 100%;
-          padding: 10px 16px;
-          border: 2px solid #e5e7eb;
-          font-size: 13px;
-          transition: border-color 0.2s;
-          background: white;
-          cursor: pointer;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus {
+        .form-group input:focus {
           outline: none;
           border-color: #15803d;
         }
@@ -278,7 +341,6 @@ const Signup = () => {
           padding: 0;
         }
       `}</style>
-
     <div className="page-container">
       <header className="bloodsync-header">
         <div className="header-container">
@@ -309,52 +371,93 @@ const Signup = () => {
       </header>
 
       <div className="main-content">
-        <div className="login-container">
+        <div className="reset-container">
           <div className="login-header">
-            <h1>Create an Account</h1>
+            <h1>Reset Password</h1>
             <p>
-              Have an Account?&nbsp;
-              <button
-                type="button"
-                onClick={() => navigate("/login")}
-                className="link"
-              >
-                Click Here
-              </button>
+              {step === 1
+                ? "Enter email to send your recovery code."
+                : "Enter the code and your new password."}
             </p>
           </div>
-          <div className="content">
-            <form onSubmit={handleSignup}>
+
+          <form
+            onSubmit={step === 1 ? handleSendCode : handleResetPassword}
+            className={`content ${loading ? "loading" : ""}`}
+            >
+          
+            {step === 1 && (
               <div className="form-group">
-                <label htmlFor="name">Full Name:</label>
-                <input type="text" id="name" name="name" required />
+                <label htmlFor="email">Email</label>
+                <input
+                  type="email"
+                  id="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  required
+                />
               </div>
-              <div className="form-group">
-                <label htmlFor="role">Role:</label>
-                <select id="role" name="role" required>
-                  <option value="">Select a role...</option>
-                  <option value="admin">Admin</option>
-                  <option value="doctor">Doctor</option>
-                  <option value="medical-technologist">Medical Technologist</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label htmlFor="email">Email:</label>
-                <input type="email" id="email" name="email" required />
-              </div>
-              <div className="form-group">
-                <label htmlFor="password">Password:</label>
-                <input type="password" id="password" name="password" required />
-              </div>
-              <div className="form-group">
-                <label htmlFor="password">Confirm Password:</label>
-                <input type="password" id="password" name="password" required />
-              </div>
-              <button type="submit" className="btn" style={{ marginBottom: "30px" }}>
-                REGISTER
-              </button>
-            </form>
-          </div>
+            )}
+
+            {step === 2 && (
+              <>
+                <div className="form-group">
+                  <label htmlFor="recoveryCode">Recovery Code</label>
+                  <input
+                    type="text"
+                    id="recoveryCode"
+                    name="recoveryCode"
+                    value={formData.recoveryCode}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="newPassword">New Password</label>
+                  <input
+                    type="password"
+                    id="newPassword"
+                    name="newPassword"
+                    value={formData.newPassword}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="confirmPassword">Confirm Password</label>
+                  <input
+                    type="password"
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </div>
+              </>
+            )}
+
+            {error && <p style={{ margin: "20px 0", color: "yellow" }}>{error}</p>}
+
+            <button type="submit" className="btn">
+              {step === 1 ? "SEND CODE" : "RESET PASSWORD"}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleBack}
+              className="link"
+              style={{
+                display: "block",
+                margin: "10px auto", // centers it horizontally with some spacing
+              }}
+            >
+              Back
+            </button>
+          </form>
         </div>
       </div>
       <footer className="footer">
@@ -365,4 +468,4 @@ const Signup = () => {
   );
 };
 
-export default Signup;
+export default ForgotPasswordOrg;
