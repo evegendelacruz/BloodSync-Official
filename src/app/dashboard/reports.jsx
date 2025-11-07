@@ -1,7 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Search } from "lucide-react";
+import Loader from "../../components/Loader";
 
 const Reports = () => {
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [reportData, setReportData] = useState([
     { id: 1, docId: "DOC-2025-001", quarter: "1st Quarter", year: "2025", dateCreated: "01/15/2025", createdBy: "Admin User", selected: false },
@@ -9,6 +11,15 @@ const Reports = () => {
     { id: 3, docId: "DOC-2025-003", quarter: "3rd Quarter", year: "2025", dateCreated: "07/15/2025", createdBy: "Admin User", selected: false },
     { id: 4, docId: "DOC-2025-004", quarter: "4th Quarter", year: "2025", dateCreated: "10/15/2025", createdBy: "Admin User", selected: false },
   ]);
+
+  useEffect(() => {
+    // Simulate loading for 1 second
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   const filteredReports = reportData.filter(report =>
     report.quarter.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -298,6 +309,10 @@ const Reports = () => {
   // Check if some rows are selected (for indeterminate state)
   const someSelected =
     filteredReports.some((item) => item.selected) && !allSelected;
+
+  if (loading) {
+    return <Loader />;
+  }
 
   return (
     <div style={styles.container}>

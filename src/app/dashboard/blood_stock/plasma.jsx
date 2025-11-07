@@ -98,6 +98,7 @@ const Plasma = () => {
   }, []);
 
   const loadPlasmaData = async () => {
+    const start = Date.now();
     try {
       setLoading(true);
       setError(null);
@@ -114,6 +115,11 @@ const Plasma = () => {
       console.error("Error loading plasma data:", err);
       setError(`Failed to load plasma data: ${err.message}`);
     } finally {
+      const elapsed = Date.now() - start;
+      const remaining = 1000 - elapsed;
+      if (remaining > 0) {
+        await new Promise((res) => setTimeout(res, remaining));
+      }
       setLoading(false);
     }
   };
@@ -121,6 +127,8 @@ const Plasma = () => {
   const handleSearch = async (e) => {
     const value = e.target.value;
     setSearchTerm(value);
+    const start = Date.now();
+    setLoading(true);
 
     try {
       if (!window.electronAPI) {
@@ -137,6 +145,13 @@ const Plasma = () => {
     } catch (err) {
       console.error("Error searching:", err);
       setError("Search failed");
+    } finally {
+      const elapsed = Date.now() - start;
+      const remaining = 1000 - elapsed;
+      if (remaining > 0) {
+        await new Promise((res) => setTimeout(res, remaining));
+      }
+      setLoading(false);
     }
   };
 
@@ -237,6 +252,10 @@ const Plasma = () => {
         }
       }
 
+      // Get current user
+      const user = JSON.parse(localStorage.getItem('currentUser'));
+      const userName = user?.fullName || 'Unknown User';
+
       for (const item of stockItems) {
         const stockData = {
           serial_id: item.serial_id,
@@ -247,7 +266,27 @@ const Plasma = () => {
           expiration: item.expiration,
           status: item.status,
         };
-        await window.electronAPI.addPlasmaStock(stockData);
+        const response = await window.electronAPI.addPlasmaStock(stockData);
+
+        // Log activity
+        try {
+          await window.electronAPI.logActivityRBC({
+            user_name: userName,
+            action_type: 'add',
+            entity_type: 'blood_stock_plasma',
+            entity_id: response.serial_number || item.serial_id,
+            action_description: `${userName} stored 1 unit of ${item.type}${item.rhFactor} Plasma in the Blood Stock`,
+            details: {
+              serialNumber: response.serial_number || item.serial_id,
+              bloodType: item.type,
+              rhFactor: item.rhFactor,
+              quantity: item.volume,
+              collectionDate: item.collection
+            }
+          });
+        } catch (logError) {
+          console.error('Error logging activity:', logError);
+        }
       }
 
       setShowAddModal(false);
@@ -329,6 +368,27 @@ const Plasma = () => {
       };
 
       await window.electronAPI.updatePlasmaStock(editingItem.id, stockData);
+
+      // Log activity
+      try {
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const userName = user?.fullName || 'Unknown User';
+
+        await window.electronAPI.logActivity({
+          user_name: userName,
+          action_type: 'update',
+          entity_type: 'blood_stock_plasma',
+          entity_id: editingItem.serial_id,
+          action_description: `${userName} updated blood stock details for Serial Number ${editingItem.serial_id}`,
+          details: {
+            serialNumber: editingItem.serial_id,
+            changes: stockData
+          }
+        });
+      } catch (logError) {
+        console.error('Error logging activity:', logError);
+      }
+
       setShowEditModal(false);
       setEditingItem(null);
       await loadPlasmaData();
@@ -349,9 +409,10 @@ const Plasma = () => {
         return;
       }
 
-      const selectedIds = plasmaData
-        .filter((item) => item.selected)
-        .map((item) => item.id);
+      const selectedItems = plasmaData.filter((item) => item.selected);
+      const selectedIds = selectedItems.map((item) => item.id);
+      const serialNumbers = selectedItems.map((item) => item.serial_id);
+
       if (selectedIds.length === 0) return;
 
       const confirmed = window.confirm(
@@ -360,6 +421,27 @@ const Plasma = () => {
       if (!confirmed) return;
 
       await window.electronAPI.deletePlasmaStock(selectedIds);
+
+      // Log activity
+      try {
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const userName = user?.fullName || 'Unknown User';
+
+        await window.electronAPI.logActivity({
+          user_name: userName,
+          action_type: 'delete',
+          entity_type: 'blood_stock_plasma',
+          entity_id: serialNumbers.join(','),
+          action_description: `${userName} removed ${selectedIds.length} unit(s) from Blood Stock (Serial Numbers: ${serialNumbers.slice(0, 3).join(', ')}${selectedIds.length > 3 ? '...' : ''})`,
+          details: {
+            serialNumbers: serialNumbers,
+            count: selectedIds.length
+          }
+        });
+      } catch (logError) {
+        console.error('Error logging activity:', logError);
+      }
+
       await loadPlasmaData();
       clearAllSelection();
       setError(null);
@@ -539,30 +621,6 @@ const Plasma = () => {
     }
   };
 
-  // Add this useEffect near the other useEffect hooks
-  const generateNextReferenceNumber = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    
-    return `REF-PLS-${year}${month}${day}-${hours}${minutes}${seconds}-${random}`;
-  };
-
-  // Modified useEffect for release modal initialization
-  useEffect(() => {
-    if (showReleaseDetailsModal) {
-      setReleaseData((prev) => ({
-        ...prev,
-        requestReference: generateNextReferenceNumber(),
-      }));
-    }
-  }, [showReleaseDetailsModal]);
-
   const addReleaseItem = () => {
     setSelectedItems((prev) => [
       ...prev,
@@ -614,29 +672,51 @@ const Plasma = () => {
         setError("Electron API not available");
         return;
       }
-  
+
       const validItems = selectedItems.filter(
         (item) => item.found && item.serialId
       );
-  
+
       if (validItems.length === 0) {
         setError("No valid items to release");
         setReleasing(false);
         return;
       }
-  
+
       const serialIds = validItems.map((item) => item.serialId);
       const releasePayload = {
         ...releaseData,
         serialIds: serialIds,
       };
-  
+
       const result = await window.electronAPI.releasePlasmaStock(releasePayload);
-  
+
       if (result.success) {
+        // Log activity
+        try {
+          const user = JSON.parse(localStorage.getItem('currentUser'));
+          const userName = user?.fullName || 'Unknown User';
+
+          await window.electronAPI.logActivityRBC({
+            user_name: userName,
+            action_type: 'release',
+            entity_type: 'blood_stock_plasma',
+            entity_id: serialIds.join(','),
+            action_description: `${userName} released ${serialIds.length} unit(s) of Plasma from Blood Stock`,
+            details: {
+              serialNumbers: serialIds,
+              count: serialIds.length,
+              releasedTo: releaseData.receivingFacility,
+              releaseDate: releaseData.dateOfRelease
+            }
+          });
+        } catch (logError) {
+          console.error('Error logging activity:', logError);
+        }
+
         setShowReleaseDetailsModal(false);
         setShowReleaseModal(false);
-  
+
         setSelectedItems([
           {
             serialId: "",
@@ -649,7 +729,7 @@ const Plasma = () => {
             found: false,
           },
         ]);
-  
+
         setReleaseData({
           receivingFacility: "",
           address: "",
@@ -662,10 +742,10 @@ const Plasma = () => {
           requestReference: "",
           releasedBy: "",
         });
-  
+
         await loadPlasmaData();
         setError(null);
-  
+
         setSuccessMessage({
           title: "Stock Released Successfully!",
           description:
@@ -2568,82 +2648,82 @@ const Plasma = () => {
             </div>
 
             <div style={styles.modalContent}>
-            <div
-              style={{
-                backgroundColor: "#f0f9ff",
-                border: "1px solid #0ea5e9",
-                borderRadius: "8px",
-                padding: "16px",
-                marginBottom: "24px",
-              }}
-            >
-              <h4
-                style={{
-                  fontSize: "16px",
-                  fontWeight: "600",
-                  color: "#1e40af",
-                  margin: "0 0 12px 0",
-                }}
-              >
-                Items to Release (
-                {selectedItems.filter((item) => item.found).length})
-              </h4>
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "2fr 1fr 1fr 1fr",
-                  gap: "12px",
-                  fontSize: "12px",
-                  fontWeight: "500",
-                  color: "#374151",
-                  marginBottom: "8px",
+                  backgroundColor: "#f0f9ff",
+                  border: "1px solid #0ea5e9",
+                  borderRadius: "8px",
+                  padding: "16px",
+                  marginBottom: "24px",
                 }}
               >
-                <div>Serial ID</div>
-                <div>Blood Type</div>
-                <div>RH Factor</div>
-                <div>Volume (mL)</div>
-              </div>
-              {selectedItems
-                .filter((item) => item.found)
-                .map((item, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "2fr 1fr 1fr 1fr",
-                      gap: "12px",
-                      fontSize: "12px",
-                      color: "#6b7280",
-                      padding: "8px 0",
-                      borderTop: index > 0 ? "1px solid #e5e7eb" : "none",
-                    }}
-                  >
-                    <div style={{ fontWeight: "500", color: "#374151" }}>
-                      {item.serialId}
-                    </div>
-                    <div>{item.bloodType}</div>
-                    <div>{item.rhFactor}</div>
-                    <div>{item.volume}</div>
-                  </div>
-                ))}
-              <div
-                style={{
-                  marginTop: "12px",
-                  paddingTop: "12px",
-                  borderTop: "1px solid #0ea5e9",
-                  fontSize: "14px",
-                  fontWeight: "600",
-                  color: "#1e40af",
-                }}
-              >
-                Total Volume:{" "}
+                <h4
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: "600",
+                    color: "#1e40af",
+                    margin: "0 0 12px 0",
+                  }}
+                >
+                  Items to Release (
+                  {selectedItems.filter((item) => item.found).length})
+                </h4>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "2fr 1fr 1fr 1fr",
+                    gap: "12px",
+                    fontSize: "12px",
+                    fontWeight: "500",
+                    color: "#374151",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <div>Serial ID</div>
+                  <div>Blood Type</div>
+                  <div>RH Factor</div>
+                  <div>Volume (mL)</div>
+                </div>
                 {selectedItems
                   .filter((item) => item.found)
-                  .reduce((sum, item) => sum + parseInt(item.volume || 0), 0)}{" "}
-                mL
+                  .map((item, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "2fr 1fr 1fr 1fr",
+                        gap: "12px",
+                        fontSize: "12px",
+                        color: "#6b7280",
+                        padding: "8px 0",
+                        borderTop: index > 0 ? "1px solid #e5e7eb" : "none",
+                      }}
+                    >
+                      <div style={{ fontWeight: "500", color: "#374151" }}>
+                        {item.serialId}
+                      </div>
+                      <div>{item.bloodType}</div>
+                      <div>{item.rhFactor}</div>
+                      <div>{item.volume}</div>
+                    </div>
+                  ))}
+                <div
+                  style={{
+                    marginTop: "12px",
+                    paddingTop: "12px",
+                    borderTop: "1px solid #0ea5e9",
+                    fontSize: "14px",
+                    fontWeight: "600",
+                    color: "#1e40af",
+                  }}
+                >
+                  Total Volume:{" "}
+                  {selectedItems
+                    .filter((item) => item.found)
+                    .reduce((sum, item) => sum + item.volume, 0)}{" "}
+                  mL
+                </div>
               </div>
-            </div>
 
               <div style={styles.filterContainer}>
                 <div style={styles.formGroup}>
@@ -2706,20 +2786,16 @@ const Plasma = () => {
               </div>
 
               <div style={styles.filterContainer}>
-              <div style={styles.formGroup}>
+                <div style={styles.formGroup}>
                   <label style={styles.label}>Contact Number</label>
                   <input
                     type="tel"
                     style={styles.fieldInput}
                     value={releaseData.contactNumber}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      const numberPart = value.replace('+63', '').replace(/\D/g, '');
-                      const limitedNumber = numberPart.slice(0, 10);
-                      handleReleaseDataChange("contactNumber", limitedNumber ? `+63${limitedNumber}` : '+63');
-                    }}
-                    placeholder="+63"
-                    maxLength={13}
+                    onChange={(e) =>
+                      handleReleaseDataChange("contactNumber", e.target.value)
+                    }
+                    placeholder="+ 63"
                   />
                 </div>
                 <div style={styles.formGroup}>
@@ -2773,16 +2849,20 @@ const Plasma = () => {
               </div>
 
               <div style={styles.filterContainer}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Request Reference Number</label>
-                <input
-                  type="text"
-                  style={{...styles.fieldInput, backgroundColor: '#f9fafb', cursor: 'not-allowed'}}
-                  value={releaseData.requestReference}
-                  readOnly
-                  disabled
-                />
-              </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Request Reference Number</label>
+                  <input
+                    type="text"
+                    style={styles.fieldInput}
+                    value={releaseData.requestReference}
+                    onChange={(e) =>
+                      handleReleaseDataChange(
+                        "requestReference",
+                        e.target.value
+                      )
+                    }
+                  />
+                </div>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Released by</label>
                   <input

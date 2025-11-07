@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { ArchiveRestore } from "lucide-react";
+import Loader from "../../components/Loader";
 
 const ReleasedBlood = () => {
   const [bloodData, setBloodData] = useState([]);
@@ -64,6 +65,8 @@ const ReleasedBlood = () => {
   }, []);
 
   const loadReleasedBloodData = async () => {
+    const startTime = Date.now();
+
     try {
       setLoading(true);
       setError(null);
@@ -85,12 +88,16 @@ const ReleasedBlood = () => {
         const dateB = new Date(b.releasedAt);
         return dateB - dateA;
       });
-      
+
       setBloodData(combinedData);
     } catch (err) {
       console.error("Error loading released blood data:", err);
       setError(`Failed to load released blood data: ${err.message}`);
     } finally {
+      // Ensure minimum 1 second loading time
+      const elapsedTime = Date.now() - startTime;
+      const remainingTime = Math.max(0, 1000 - elapsedTime);
+      await new Promise(resolve => setTimeout(resolve, remainingTime));
       setLoading(false);
     }
   };
@@ -305,6 +312,38 @@ const ReleasedBlood = () => {
         await window.electronAPI.updateReleasedPlateletStock(editingItem.id, stockData);
       }
 
+      // Log activity for update operation
+      try {
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const userName = user?.fullName || 'Unknown User';
+
+        const entityTypeMap = {
+          'Red Blood Cell': 'released_blood_rbc',
+          'Plasma': 'released_blood_plasma',
+          'Platelet': 'released_blood_platelet'
+        };
+
+        await window.electronAPI.logActivity({
+          user_name: userName,
+          action_type: 'update',
+          entity_type: entityTypeMap[editingItem.category] || 'released_blood_rbc',
+          entity_id: editingItem.serial_id,
+          action_description: `${userName} updated released blood details for Serial Number ${editingItem.serial_id}`,
+          details: {
+            serialNumber: editingItem.serial_id,
+            category: editingItem.category,
+            bloodType: editingItem.type,
+            rhFactor: editingItem.rhFactor,
+            volume: editingItem.volume,
+            collection: editingItem.collection,
+            expiration: editingItem.expiration
+          }
+        });
+      } catch (logErr) {
+        console.error("Error logging update activity:", logErr);
+        // Don't fail the operation if logging fails
+      }
+
       setShowEditModal(false);
       setEditingItem(null);
       await loadReleasedBloodData();
@@ -333,10 +372,9 @@ const ReleasedBlood = () => {
         return;
       }
 
-      const selectedIds = bloodData
-        .filter((item) => item.selected)
-        .map((item) => ({ id: item.id, category: item.category }));
-      
+      const selectedItems = bloodData.filter((item) => item.selected);
+      const selectedIds = selectedItems.map((item) => ({ id: item.id, category: item.category, serial_id: item.serial_id }));
+
       if (selectedIds.length === 0) return;
 
       // Group by category
@@ -361,6 +399,75 @@ const ReleasedBlood = () => {
       }
       if (itemsByCategory['Platelet'].length > 0) {
         await window.electronAPI.deleteReleasedPlateletStock(itemsByCategory['Platelet']);
+      }
+
+      // Log activity for delete operation by category
+      try {
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const userName = user?.fullName || 'Unknown User';
+
+        // Log for RBC deletions
+        if (itemsByCategory['Red Blood Cell'].length > 0) {
+          const rbcSerials = selectedItems
+            .filter(item => item.category === 'Red Blood Cell')
+            .map(item => item.serial_id);
+
+          await window.electronAPI.logActivity({
+            user_name: userName,
+            action_type: 'delete',
+            entity_type: 'released_blood_rbc',
+            entity_id: rbcSerials.join(','),
+            action_description: `${userName} removed ${rbcSerials.length} unit(s) of Red Blood Cells from Released Blood (Serial Numbers: ${rbcSerials.slice(0, 3).join(', ')}${rbcSerials.length > 3 ? '...' : ''})`,
+            details: {
+              serialNumbers: rbcSerials,
+              count: rbcSerials.length,
+              category: 'Red Blood Cell'
+            }
+          });
+        }
+
+        // Log for Plasma deletions
+        if (itemsByCategory['Plasma'].length > 0) {
+          const plasmaSerials = selectedItems
+            .filter(item => item.category === 'Plasma')
+            .map(item => item.serial_id);
+
+          await window.electronAPI.logActivity({
+            user_name: userName,
+            action_type: 'delete',
+            entity_type: 'released_blood_plasma',
+            entity_id: plasmaSerials.join(','),
+            action_description: `${userName} removed ${plasmaSerials.length} unit(s) of Plasma from Released Blood (Serial Numbers: ${plasmaSerials.slice(0, 3).join(', ')}${plasmaSerials.length > 3 ? '...' : ''})`,
+            details: {
+              serialNumbers: plasmaSerials,
+              count: plasmaSerials.length,
+              category: 'Plasma'
+            }
+          });
+        }
+
+        // Log for Platelet deletions
+        if (itemsByCategory['Platelet'].length > 0) {
+          const plateletSerials = selectedItems
+            .filter(item => item.category === 'Platelet')
+            .map(item => item.serial_id);
+
+          await window.electronAPI.logActivity({
+            user_name: userName,
+            action_type: 'delete',
+            entity_type: 'released_blood_platelet',
+            entity_id: plateletSerials.join(','),
+            action_description: `${userName} removed ${plateletSerials.length} unit(s) of Platelets from Released Blood (Serial Numbers: ${plateletSerials.slice(0, 3).join(', ')}${plateletSerials.length > 3 ? '...' : ''})`,
+            details: {
+              serialNumbers: plateletSerials,
+              count: plateletSerials.length,
+              category: 'Platelet'
+            }
+          });
+        }
+      } catch (logErr) {
+        console.error("Error logging delete activity:", logErr);
+        // Don't fail the operation if logging fails
       }
 
       setShowConfirmDeleteModal(false);
@@ -542,64 +649,140 @@ const ReleasedBlood = () => {
         setError("Electron API not available");
         return;
       }
-  
+
       const validItems = selectedItems.filter(
         (item) => item.found && item.serialId
       );
-  
+
       if (validItems.length === 0) {
         setError("No valid items to restore");
         return;
       }
-  
+
       const itemsByCategory = {
         'Red Blood Cell': [],
         'Plasma': [],
         'Platelet': []
       };
-  
+
       validItems.forEach(item => {
         if (itemsByCategory[item.category]) {
           itemsByCategory[item.category].push(item.serialId);
         }
       });
-  
+
       let totalRestored = 0;
       const results = [];
-  
+
+      // Get user information for activity logging
+      const user = JSON.parse(localStorage.getItem('currentUser'));
+      const userName = user?.fullName || 'Unknown User';
+
       if (itemsByCategory['Red Blood Cell'].length > 0) {
         try {
           const result = await window.electronAPI.restoreBloodStock(itemsByCategory['Red Blood Cell']);
           totalRestored += result.restoredCount;
           results.push(`RBC: ${result.restoredCount}`);
+
+          // Log activity for RBC restore to Blood Stock
+          try {
+            const rbcItems = validItems.filter(item => item.category === 'Red Blood Cell');
+            const rbcSerials = rbcItems.map(item => item.serialId);
+            const rbcBloodTypes = [...new Set(rbcItems.map(item => `${item.bloodType}${item.rhFactor}`))];
+
+            await window.electronAPI.logActivity({
+              user_name: userName,
+              action_type: 'restore',
+              entity_type: 'released_blood_rbc',
+              entity_id: rbcSerials.join(','),
+              action_description: `${userName} restored ${result.restoredCount} unit(s) of ${rbcBloodTypes.join(', ')} Red Blood Cells back to the Blood Stock from Released Blood`,
+              details: {
+                serialNumbers: rbcSerials,
+                count: result.restoredCount,
+                restoredTo: 'blood_stock',
+                category: 'Red Blood Cell',
+                bloodTypes: rbcBloodTypes
+              }
+            });
+          } catch (logErr) {
+            console.error("Error logging RBC restore activity:", logErr);
+          }
         } catch (err) {
           console.error("Error restoring RBC:", err);
           setError(`Failed to restore Red Blood Cell items: ${err.message}`);
         }
       }
-  
+
       if (itemsByCategory['Plasma'].length > 0) {
         try {
           const result = await window.electronAPI.restorePlasmaStock(itemsByCategory['Plasma']);
           totalRestored += result.restoredCount;
           results.push(`Plasma: ${result.restoredCount}`);
+
+          // Log activity for Plasma restore to Blood Stock
+          try {
+            const plasmaItems = validItems.filter(item => item.category === 'Plasma');
+            const plasmaSerials = plasmaItems.map(item => item.serialId);
+            const plasmaBloodTypes = [...new Set(plasmaItems.map(item => `${item.bloodType}${item.rhFactor}`))];
+
+            await window.electronAPI.logActivity({
+              user_name: userName,
+              action_type: 'restore',
+              entity_type: 'released_blood_plasma',
+              entity_id: plasmaSerials.join(','),
+              action_description: `${userName} restored ${result.restoredCount} unit(s) of ${plasmaBloodTypes.join(', ')} Plasma back to the Blood Stock from Released Blood`,
+              details: {
+                serialNumbers: plasmaSerials,
+                count: result.restoredCount,
+                restoredTo: 'blood_stock',
+                category: 'Plasma',
+                bloodTypes: plasmaBloodTypes
+              }
+            });
+          } catch (logErr) {
+            console.error("Error logging Plasma restore activity:", logErr);
+          }
         } catch (err) {
           console.error("Error restoring Plasma:", err);
           setError(`Failed to restore Plasma items: ${err.message}`);
         }
       }
-  
+
       if (itemsByCategory['Platelet'].length > 0) {
         try {
           const result = await window.electronAPI.restorePlateletStock(itemsByCategory['Platelet']);
           totalRestored += result.restoredCount;
           results.push(`Platelet: ${result.restoredCount}`);
+
+          // Log activity for Platelet restore to Blood Stock
+          try {
+            const plateletItems = validItems.filter(item => item.category === 'Platelet');
+            const plateletSerials = plateletItems.map(item => item.serialId);
+            const plateletBloodTypes = [...new Set(plateletItems.map(item => `${item.bloodType}${item.rhFactor}`))];
+
+            await window.electronAPI.logActivity({
+              user_name: userName,
+              action_type: 'restore',
+              entity_type: 'released_blood_platelet',
+              entity_id: plateletSerials.join(','),
+              action_description: `${userName} restored ${result.restoredCount} unit(s) of ${plateletBloodTypes.join(', ')} Platelets back to the Blood Stock from Released Blood`,
+              details: {
+                serialNumbers: plateletSerials,
+                count: result.restoredCount,
+                restoredTo: 'blood_stock',
+                category: 'Platelet',
+                bloodTypes: plateletBloodTypes
+              }
+            });
+          } catch (logErr) {
+            console.error("Error logging Platelet restore activity:", logErr);
+          }
         } catch (err) {
           console.error("Error restoring Platelet:", err);
           setError(`Failed to restore Platelet items: ${err.message}`);
         }
       }
-  
+
       setShowConfirmRestoreModal(false);
       setSelectedItems([
         {
@@ -614,9 +797,9 @@ const ReleasedBlood = () => {
           found: false,
         },
       ]);
-  
+
       await loadReleasedBloodData();
-      
+
       if (totalRestored > 0) {
         setError(null);
         setSuccessMessage({
@@ -1211,11 +1394,7 @@ const ReleasedBlood = () => {
   const someSelected = displayData.some(item => item.selected) && !allSelected;
 
   if (loading) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.loadingContainer}>Loading released blood data...</div>
-      </div>
-    );
+    return <Loader />;
   }
 
   return (

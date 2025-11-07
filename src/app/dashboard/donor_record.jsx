@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Plus, Filter, Search } from "lucide-react";
+import Loader from "../../components/Loader";
+import SyncConfirmModal from "../../components/SyncConfirmModal";
+import SyncSuccessModal from "../../components/SyncSuccessModal";
 
 const DonorRecord = () => {
   const [donorData, setDonorData] = useState([]);
@@ -16,6 +19,12 @@ const DonorRecord = () => {
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState({ title: "", description: "" });
+  const [pendingSyncRequests, setPendingSyncRequests] = useState([]);
+  const [isApprovingSync, setIsApprovingSync] = useState(false);
+  const [showApproveSyncConfirmModal, setShowApproveSyncConfirmModal] = useState(false);
+  const [showApproveSyncSuccessModal, setShowApproveSyncSuccessModal] = useState(false);
+  const [showApproveLoader, setShowApproveLoader] = useState(false);
+  const [approvedDonorCount, setApprovedDonorCount] = useState(0);
   const sortDropdownRef = useRef(null);
   const filterDropdownRef = useRef(null);
   const [formData, setFormData] = useState({
@@ -73,18 +82,30 @@ const DonorRecord = () => {
   }, []);
 
   const loadDonorData = async () => {
+    const startTime = Date.now();
+
     try {
       setLoading(true);
       setError(null);
       if (!window.electronAPI) {
         throw new Error("Electron API not available. Make sure you are running this in an Electron environment.");
       }
-      const data = await window.electronAPI.getAllDonorRecords();
+
+      // Load from main donor_records table
+      const data = await window.electronAPI.getAllDonorRecordsMain();
       setDonorData(data);
+
+      // Load pending sync requests
+      const pendingRequests = await window.electronAPI.getPendingSyncRequests();
+      setPendingSyncRequests(pendingRequests);
     } catch (err) {
       console.error("Error loading donor data:", err);
       setError(`Failed to load donor data: ${err.message}`);
     } finally {
+      // Ensure minimum 1 second loading time
+      const elapsedTime = Date.now() - startTime;
+      const remainingTime = Math.max(0, 1000 - elapsedTime);
+      await new Promise(resolve => setTimeout(resolve, remainingTime));
       setLoading(false);
     }
   };
@@ -198,7 +219,33 @@ const DonorRecord = () => {
       if (selectedIds.length === 0) return;
       const confirmed = window.confirm(`Are you sure you want to delete ${selectedIds.length} donor(s)?`);
       if (!confirmed) return;
+
+      // Get donor information before deletion for activity log
+      const selectedDonors = donorData.filter((item) => item.selected);
+      const donorIdsList = selectedDonors.map((donor) => donor.donorId);
+
       await window.electronAPI.deleteDonorRecords(selectedIds);
+
+      // Log activity after successful deletion
+      try {
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const userName = user?.fullName || 'Unknown User';
+
+        await window.electronAPI.logActivityRBC({
+          user_name: userName,
+          action_type: 'delete',
+          entity_type: 'donor',
+          entity_id: donorIdsList.join(','),
+          action_description: `${userName} removed ${donorIdsList.length} donor(s) from Donor Records (IDs: ${donorIdsList.slice(0, 3).join(', ')}${donorIdsList.length > 3 ? '...' : ''})`,
+          details: {
+            donorIds: donorIdsList,
+            count: donorIdsList.length
+          }
+        });
+      } catch (logErr) {
+        console.error("Error logging delete activity:", logErr);
+      }
+
       await loadDonorData();
       setError(null);
     } catch (err) {
@@ -247,9 +294,9 @@ const DonorRecord = () => {
         setError("Electron API not available");
         return;
       }
-      
+
       console.log("Form Data before validation:", formData);
-      
+
       if (!formData.firstName?.trim()) {
         setError("First Name is required");
         return;
@@ -289,9 +336,36 @@ const DonorRecord = () => {
       }
 
       console.log("Validation passed, saving donor:", formData);
-      
+
+      const savedDonorId = formData.donorId;
+      const donorFullName = `${formData.firstName} ${formData.lastName}`;
+
       await window.electronAPI.addDonorRecord(formData);
-      
+
+      // Log activity after successful addition
+      try {
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const userName = user?.fullName || 'Unknown User';
+
+        await window.electronAPI.logActivityRBC({
+          user_name: userName,
+          action_type: 'add',
+          entity_type: 'donor',
+          entity_id: savedDonorId,
+          action_description: `${userName} added 1 new donor in Donor Records (ID: ${savedDonorId})`,
+          details: {
+            donorId: savedDonorId,
+            donorName: donorFullName,
+            bloodType: formData.bloodType,
+            rhFactor: formData.rhFactor,
+            gender: formData.gender,
+            age: formData.age
+          }
+        });
+      } catch (logErr) {
+        console.error("Error logging add donor activity:", logErr);
+      }
+
       setFormData({
         donorId: "", firstName: "", middleName: "", lastName: "", gender: "", birthdate: "",
         age: "", bloodType: "", rhFactor: "", contactNumber: "", address: "",
@@ -333,18 +407,95 @@ const DonorRecord = () => {
     await generateDonorId();
   };
 
+  const handleApproveSyncClick = () => {
+    if (pendingSyncRequests.length === 0) {
+      setError("No pending sync requests to approve.");
+      return;
+    }
+
+    setShowApproveSyncConfirmModal(true);
+  };
+
+  const handleApproveSync = async () => {
+    try {
+      setIsApprovingSync(true);
+      setError(null);
+
+      // Close confirm modal and show loader
+      setShowApproveSyncConfirmModal(false);
+      setShowApproveLoader(true);
+
+      // Get current user info
+      const currentUserData = localStorage.getItem('currentUser');
+      let approvedBy = 'System Admin';
+
+      if (currentUserData) {
+        try {
+          const userData = JSON.parse(currentUserData);
+          approvedBy = userData.fullName || 'System Admin';
+        } catch (e) {
+          console.error('Error parsing user data:', e);
+        }
+      }
+
+      // Get unique organization names from pending requests
+      const organizations = [...new Set(pendingSyncRequests.map(r => r.source_user_name))];
+
+      // Approve sync
+      const result = await window.electronAPI.approveDonorSync(approvedBy);
+
+      // Wait 1 second for loader animation
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Store approved count
+      setApprovedDonorCount(result.totalProcessed);
+
+      // Log activity after successful sync approval
+      try {
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const userName = user?.fullName || 'Unknown User';
+
+        await window.electronAPI.logActivityRBC({
+          user_name: userName,
+          action_type: 'approve',
+          entity_type: 'donor_sync',
+          entity_id: `sync_${Date.now()}`,
+          action_description: `${userName} approved donor information syncing from ${organizations.join(', ')}`,
+          details: {
+            organizations: organizations,
+            donorCount: result.totalProcessed,
+            newRecords: result.newRecords.length,
+            mergedRecords: result.mergedRecords.length
+          }
+        });
+      } catch (logErr) {
+        console.error("Error logging sync approval activity:", logErr);
+      }
+
+      // Reload data
+      await loadDonorData();
+
+      // Hide loader and show success modal
+      setShowApproveLoader(false);
+      setShowApproveSyncSuccessModal(true);
+    } catch (err) {
+      console.error("Error approving sync:", err);
+      setError(`Failed to approve sync: ${err.message}`);
+      setShowApproveLoader(false);
+    } finally {
+      setIsApprovingSync(false);
+    }
+  };
+
   const selectedCount = displayData.filter((item) => item.selected).length;
   const allSelected = displayData.length > 0 && displayData.every((item) => item.selected);
   const someSelected = displayData.some((item) => item.selected) && !allSelected;
 
+  // Get unique organization names from pending requests
+  const pendingOrganizations = [...new Set(pendingSyncRequests.map(r => r.source_user_name))];
+
   if (loading) {
-    return (
-      <div style={{ padding: "24px", backgroundColor: "#f9fafb", minHeight: "100vh", fontFamily: "Barlow" }}>
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: "40px", fontSize: "16px", color: "#6b7280" }}>
-          Loading donor records...
-        </div>
-      </div>
-    );
+    return <Loader />;
   }
 
   return (
@@ -367,6 +518,36 @@ const DonorRecord = () => {
           <button style={{ backgroundColor: "#059669", color: "white", border: "none", padding: "4px 8px", borderRadius: "4px", cursor: "pointer", fontSize: "12px" }} onClick={() => setError(null)}>
             Dismiss
           </button>
+        </div>
+      )}
+
+      {/* Incoming Donor Records Alert Box */}
+      {pendingSyncRequests.length > 0 && (
+        <div style={{
+          backgroundColor: "#d1fae5",
+          color: "#065f46",
+          padding: "16px 20px",
+          borderRadius: "8px",
+          marginBottom: "20px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          border: "1px solid #059669",
+          animation: "fadeIn 0.3s ease-in-out"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+            <div>
+              <div style={{ fontWeight: "600", fontSize: "14px" }}>
+                Incoming Donor Records from {pendingOrganizations.join(', ')}
+              </div>
+              <div style={{ fontSize: "13px", marginTop: "4px" }}>
+                {pendingSyncRequests.length} pending donor record{pendingSyncRequests.length > 1 ? 's' : ''}. Click Approve Sync above to confirm.
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -516,11 +697,29 @@ const DonorRecord = () => {
             )}
           </div>
 
-          <button style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", backgroundColor: "#2C58DC", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "14px" }}>
+          <button
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              padding: "8px 16px",
+              backgroundColor: pendingSyncRequests.length > 0 ? "#059669" : "#d1d5db",
+              color: "white",
+              border: "none",
+              borderRadius: "6px",
+              cursor: pendingSyncRequests.length > 0 ? "pointer" : "not-allowed",
+              fontSize: "14px",
+              opacity: isApprovingSync ? 0.6 : 1,
+              fontFamily: "Barlow"
+            }}
+            onClick={handleApproveSyncClick}
+            disabled={pendingSyncRequests.length === 0 || isApprovingSync}
+            title={pendingSyncRequests.length === 0 ? "No pending sync requests" : `Approve ${pendingSyncRequests.length} pending request(s)`}
+          >
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            <span>Approve Sync</span>
+            <span>{isApprovingSync ? 'Approving...' : 'Approve Sync'}</span>
           </button>
           <button style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", backgroundColor: "#FFC200", color: "black", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "14px" }} onClick={openAddModal}>
             <Plus size={16} />
@@ -547,12 +746,14 @@ const DonorRecord = () => {
               <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", fontWeight: "500", color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #e5e7eb" }}>RH FACTOR</th>
               <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", fontWeight: "500", color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #e5e7eb" }}>CONTACT NUMBER</th>
               <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", fontWeight: "500", color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #e5e7eb" }}>ADDRESS</th>
+              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", fontWeight: "500", color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #e5e7eb" }}>TIMES DONATED</th>
+              <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "11px", fontWeight: "500", color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #e5e7eb" }}>DATE DONATED</th>
             </tr>
           </thead>
           <tbody style={{ backgroundColor: "white" }}>
             {displayData.length === 0 ? (
               <tr>
-                <td colSpan="12" style={{ padding: "40px", fontSize: "11px", fontFamily: "Arial", color: "#111827", textAlign: "center" }}>
+                <td colSpan="14" style={{ padding: "40px", fontSize: "11px", fontFamily: "Arial", color: "#111827", textAlign: "center" }}>
                   {searchTerm || filterConfig.value ? "No donor records found matching your criteria" : "No donor records found"}
                 </td>
               </tr>
@@ -573,6 +774,60 @@ const DonorRecord = () => {
                   <td style={{ padding: "12px 16px", fontSize: "11px", fontFamily: "Arial", color: "#111827", borderBottom: "1px solid rgba(163, 163, 163, 0.2)" }}>{item.rhFactor}</td>
                   <td style={{ padding: "12px 16px", fontSize: "11px", fontFamily: "Arial", color: "#111827", borderBottom: "1px solid rgba(163, 163, 163, 0.2)" }}>{item.contactNumber}</td>
                   <td style={{ padding: "12px 16px", fontSize: "11px", fontFamily: "Arial", color: "#111827", borderBottom: "1px solid rgba(163, 163, 163, 0.2)" }}>{item.address}</td>
+                  <td style={{ padding: "12px 16px", fontSize: "11px", fontFamily: "Arial", color: "#111827", borderBottom: "1px solid rgba(163, 163, 163, 0.2)", fontWeight: "600" }}>{item.times_donated || 1}</td>
+                  <td
+                    style={{
+                      padding: "12px 16px",
+                      fontSize: "11px",
+                      fontFamily: "Arial",
+                      color: "#111827",
+                      borderBottom: "1px solid rgba(163, 163, 163, 0.2)",
+                      position: "relative",
+                      cursor: item.donation_dates && item.donation_dates.length > 1 ? "pointer" : "default"
+                    }}
+                    title={item.donation_dates && item.donation_dates.length > 1 ? "Hover to see all donation dates" : ""}
+                    onMouseEnter={(e) => {
+                      if (item.donation_dates && item.donation_dates.length > 1) {
+                        const tooltip = document.createElement('div');
+                        tooltip.id = `tooltip-${item.id}`;
+                        tooltip.style.cssText = `
+                          position: fixed;
+                          background: rgba(0, 0, 0, 0.9);
+                          color: white;
+                          padding: 12px 16px;
+                          border-radius: 8px;
+                          font-size: 12px;
+                          z-index: 9999;
+                          max-width: 300px;
+                          animation: fadeIn 0.2s ease-in-out;
+                          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                        `;
+                        tooltip.innerHTML = `
+                          <div style="font-weight: 600; margin-bottom: 8px; color: #10b981;">Donation History</div>
+                          ${item.donation_dates.map((d, i) => `
+                            <div style="padding: 4px 0; border-bottom: ${i < item.donation_dates.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none'};">
+                              ${i + 1}. ${new Date(d.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                            </div>
+                          `).join('')}
+                        `;
+                        const rect = e.target.getBoundingClientRect();
+                        tooltip.style.left = `${rect.left}px`;
+                        tooltip.style.top = `${rect.bottom + 5}px`;
+                        document.body.appendChild(tooltip);
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      const tooltip = document.getElementById(`tooltip-${item.id}`);
+                      if (tooltip) {
+                        tooltip.style.animation = 'fadeOut 0.2s ease-in-out';
+                        setTimeout(() => tooltip.remove(), 200);
+                      }
+                    }}
+                  >
+                    {item.last_donation_date
+                      ? new Date(item.last_donation_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+                      : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                  </td>
                 </tr>
               ))
             )}
@@ -746,6 +1001,21 @@ const DonorRecord = () => {
           </div>
         </div>
       )}
+
+      <SyncConfirmModal
+        isOpen={showApproveSyncConfirmModal}
+        onCancel={() => setShowApproveSyncConfirmModal(false)}
+        onConfirm={handleApproveSync}
+        donorCount={pendingSyncRequests.length}
+      />
+
+      <SyncSuccessModal
+        isOpen={showApproveSyncSuccessModal}
+        onClose={() => setShowApproveSyncSuccessModal(false)}
+        donorCount={approvedDonorCount}
+      />
+
+      {showApproveLoader && <Loader />}
     </div>
   );
 };

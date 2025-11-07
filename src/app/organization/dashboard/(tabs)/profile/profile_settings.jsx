@@ -96,20 +96,13 @@ const ProfileSettingsOrg = ({ profileData, handleInputChange, handleSaveChanges,
       
       <div style={styles.formGrid2}>
         <div style={styles.formGroup}>
-          <label style={styles.label}>User ID</label>
+          <label style={styles.label}>DOH ID</label>
           <input
             type="text"
-            value={profileData.userId}
-            onChange={(e) => handleInputChange('userId', e.target.value)}
-            style={styles.input}
-            onFocus={(e) => {
-              e.target.style.borderColor = styles.inputFocus.borderColor;
-              e.target.style.boxShadow = styles.inputFocus.boxShadow;
-            }}
-            onBlur={(e) => {
-              e.target.style.borderColor = styles.input.borderColor;
-              e.target.style.boxShadow = 'none';
-            }}
+            value={profileData.dohId || 'Generating...'}
+            readOnly
+            disabled
+            style={{...styles.input, backgroundColor: '#f3f4f6', cursor: 'not-allowed'}}
           />
         </div>
         <div style={styles.formGroup}>
@@ -117,16 +110,9 @@ const ProfileSettingsOrg = ({ profileData, handleInputChange, handleSaveChanges,
           <input
             type="email"
             value={profileData.email}
-            onChange={(e) => handleInputChange('email', e.target.value)}
-            style={styles.input}
-            onFocus={(e) => {
-              e.target.style.borderColor = styles.inputFocus.borderColor;
-              e.target.style.boxShadow = styles.inputFocus.boxShadow;
-            }}
-            onBlur={(e) => {
-              e.target.style.borderColor = styles.input.borderColor;
-              e.target.style.boxShadow = 'none';
-            }}
+            readOnly
+            disabled
+            style={{...styles.input, backgroundColor: '#f3f4f6', cursor: 'not-allowed'}}
           />
         </div>
       </div>

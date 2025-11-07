@@ -1,4 +1,8 @@
 const { Pool } = require('pg');
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 // Database connection configuration
 const pool = new Pool({
@@ -10,6 +14,19 @@ const pool = new Pool({
   connectionTimeoutMillis: 5000,
   idleTimeoutMillis: 30000,
   max: 20,
+});
+
+// Email transporter setup (configure SMTP via environment variables)
+// For Gmail, set SMTP_USER to your Gmail address and SMTP_PASS to an App Password
+// https://support.google.com/accounts/answer/185833
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465,
+  secure: true,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
 });
 
 // Test database connection
@@ -34,13 +51,780 @@ const testConnection = async () => {
   }
 };
 
-// Call test connection
-testConnection();
+// Ensure user_doh table exists on startup
+const ensureUserTable = async () => {
+  try {
+    const query = `
+      CREATE TABLE IF NOT EXISTS user_doh (
+        user_id SERIAL PRIMARY KEY,
+        full_name TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('Admin','Doctor','Medical Technologist','Scheduler')),
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        is_active BOOLEAN DEFAULT FALSE,
+        activation_token UUID,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+    await pool.query(query);
+    console.log('User table ensured successfully');
+    return true;
+  } catch (error) {
+    console.error('Error ensuring user_doh table:', error);
+    throw error;
+  }
+};
 
-// Database service functions
+// Ensure password reset tokens table exists
+const ensurePasswordResetTable = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES user_doh(user_id) ON DELETE CASCADE,
+        email TEXT NOT NULL,
+        reset_token TEXT NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        used BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    console.log('Password reset table ensured successfully');
+    return true;
+  } catch (error) {
+    console.error('Error ensuring password_reset_tokens table:', error);
+    throw error;
+  }
+};
+
+// Ensure released_blood table exists
+const ensureReleasedBloodTable = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS released_blood (
+        rb_id SERIAL PRIMARY KEY,
+        rb_serial_id VARCHAR(50) NOT NULL,
+        rb_blood_type VARCHAR(5) NOT NULL,
+        rb_rh_factor VARCHAR(10) NOT NULL,
+        rb_volume INTEGER NOT NULL,
+        rb_timestamp TIMESTAMP NOT NULL,
+        rb_expiration_date TIMESTAMP NOT NULL,
+        rb_status VARCHAR(20) NOT NULL DEFAULT 'Released',
+        rb_created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        rb_modified_at TIMESTAMP,
+        rb_released_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        rb_category VARCHAR(50) NOT NULL,
+        rb_original_id INTEGER,
+        rb_receiving_facility VARCHAR(255),
+        rb_address TEXT,
+        rb_contact_number VARCHAR(50),
+        rb_classification VARCHAR(100),
+        rb_authorized_recipient VARCHAR(255),
+        rb_recipient_designation VARCHAR(100),
+        rb_date_of_release TIMESTAMP,
+        rb_condition_upon_release VARCHAR(100),
+        rb_request_reference VARCHAR(100),
+        rb_released_by VARCHAR(255)
+      )
+    `);
+
+    // Create indexes for better query performance
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_released_blood_serial_id ON released_blood(rb_serial_id);
+      CREATE INDEX IF NOT EXISTS idx_released_blood_category ON released_blood(rb_category);
+      CREATE INDEX IF NOT EXISTS idx_released_blood_status ON released_blood(rb_status);
+      CREATE INDEX IF NOT EXISTS idx_released_blood_released_at ON released_blood(rb_released_at);
+    `);
+
+    console.log('Released blood table ensured successfully');
+    return true;
+  } catch (error) {
+    console.error('Error ensuring released_blood table:', error);
+    throw error;
+  }
+};
+
+// Ensure combined blood type column exists and stays updated
+const ensureBloodStockResultColumn = async () => {
+  try {
+    // Add column if not exists
+    await pool.query(`
+      ALTER TABLE blood_stock
+      ADD COLUMN IF NOT EXISTS bs_result_bloodtype VARCHAR(3)
+    `);
+
+    // Create or replace trigger function to keep bs_result_bloodtype in sync
+    await pool.query(`
+      CREATE OR REPLACE FUNCTION set_bs_result_bloodtype()
+      RETURNS TRIGGER AS $func$
+      BEGIN
+        IF NEW.bs_blood_type IS NOT NULL AND NEW.bs_rh_factor IS NOT NULL THEN
+          NEW.bs_result_bloodtype := NEW.bs_blood_type ||
+            CASE
+              WHEN LOWER(NEW.bs_rh_factor) IN ('positive', 'pos', '+', 'plus') THEN '+'
+              WHEN LOWER(NEW.bs_rh_factor) IN ('negative', 'neg', '-', 'minus') THEN '-'
+              ELSE
+                CASE
+                  WHEN NEW.bs_rh_factor LIKE '%+%' THEN '+'
+                  WHEN NEW.bs_rh_factor LIKE '%-%' THEN '-'
+                  ELSE NULL
+                END
+            END;
+        END IF;
+        RETURN NEW;
+      END;
+      $func$ LANGUAGE plpgsql;
+    `);
+
+    // Create trigger if it does not exist yet
+    const trigCheck = await pool.query(`SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_bs_result_bloodtype'`);
+    if (trigCheck.rowCount === 0) {
+      await pool.query(`
+        CREATE TRIGGER trg_set_bs_result_bloodtype
+        BEFORE INSERT OR UPDATE OF bs_blood_type, bs_rh_factor ON blood_stock
+        FOR EACH ROW
+        EXECUTE FUNCTION set_bs_result_bloodtype();
+      `);
+    }
+
+    // Backfill existing rows where possible
+    await pool.query(`
+      UPDATE blood_stock
+      SET bs_result_bloodtype = bs_blood_type ||
+        CASE
+          WHEN LOWER(bs_rh_factor) IN ('positive', 'pos', '+', 'plus') THEN '+'
+          WHEN LOWER(bs_rh_factor) IN ('negative', 'neg', '-', 'minus') THEN '-'
+          ELSE
+            CASE
+              WHEN bs_rh_factor LIKE '%+%' THEN '+'
+              WHEN bs_rh_factor LIKE '%-%' THEN '-'
+              ELSE NULL
+            END
+        END
+      WHERE (bs_result_bloodtype IS NULL OR bs_result_bloodtype = '')
+        AND bs_blood_type IS NOT NULL AND bs_rh_factor IS NOT NULL;
+    `);
+
+    console.log('✓ bs_result_bloodtype ensured and populated in blood_stock');
+    return true;
+  } catch (error) {
+    console.error('Error ensuring bs_result_bloodtype column:', error);
+    throw error;
+  }
+};
+
+// Ensure donor_records table exists (Main System - Regional Blood Center)
+const ensureDonorRecordsTable = async () => {
+  try {
+    // Add new columns to existing donor_records table if they don't exist
+    // Note: The donor_records table already exists with dr_ prefixed columns
+
+    await pool.query(`
+      ALTER TABLE donor_records
+      ADD COLUMN IF NOT EXISTS dr_times_donated INTEGER DEFAULT 1
+    `);
+
+    await pool.query(`
+      ALTER TABLE donor_records
+      ADD COLUMN IF NOT EXISTS dr_donation_dates JSONB DEFAULT '[]'::jsonb
+    `);
+
+    await pool.query(`
+      ALTER TABLE donor_records
+      ADD COLUMN IF NOT EXISTS dr_last_donation_date TIMESTAMP
+    `);
+
+    await pool.query(`
+      ALTER TABLE donor_records
+      ADD COLUMN IF NOT EXISTS dr_source_organization VARCHAR(255)
+    `);
+
+    // Create indexes for new columns
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_donor_records_times_donated ON donor_records(dr_times_donated)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_donor_records_last_donation_date ON donor_records(dr_last_donation_date)`);
+
+    // Create update trigger for dr_modified_at (if your table uses this column)
+    await pool.query(`
+      CREATE OR REPLACE FUNCTION update_donor_records_modified_at()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        NEW.dr_modified_at = CURRENT_TIMESTAMP;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+
+    const trigCheck = await pool.query(`SELECT 1 FROM pg_trigger WHERE tgname = 'trigger_update_donor_records_modified_at'`);
+    if (trigCheck.rowCount === 0) {
+      await pool.query(`
+        CREATE TRIGGER trigger_update_donor_records_modified_at
+        BEFORE UPDATE ON donor_records
+        FOR EACH ROW
+        EXECUTE FUNCTION update_donor_records_modified_at();
+      `);
+    }
+
+    console.log('Donor records table columns ensured successfully');
+    return true;
+  } catch (error) {
+    console.error('Error ensuring donor_records table:', error);
+    throw error;
+  }
+};
+
+// Ensure temp_donor_records table exists (for sync requests)
+const ensureTempDonorRecordsTable = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS temp_donor_records (
+        tdr_id SERIAL PRIMARY KEY,
+        tdr_donor_id VARCHAR(50) NOT NULL,
+        tdr_first_name VARCHAR(100) NOT NULL,
+        tdr_middle_name VARCHAR(100),
+        tdr_last_name VARCHAR(100) NOT NULL,
+        tdr_gender VARCHAR(10) NOT NULL CHECK (tdr_gender IN ('Male', 'Female')),
+        tdr_birthdate DATE NOT NULL,
+        tdr_age INTEGER NOT NULL,
+        tdr_blood_type VARCHAR(3) NOT NULL CHECK (tdr_blood_type IN ('A', 'B', 'AB', 'O')),
+        tdr_rh_factor VARCHAR(1) NOT NULL CHECK (tdr_rh_factor IN ('+', '-')),
+        tdr_contact_number VARCHAR(20) NOT NULL,
+        tdr_address TEXT NOT NULL,
+        tdr_source_organization VARCHAR(255) NOT NULL,
+        tdr_source_user_id INTEGER NOT NULL,
+        tdr_source_user_name VARCHAR(255) NOT NULL,
+        tdr_sync_status VARCHAR(20) DEFAULT 'pending' CHECK (tdr_sync_status IN ('pending', 'approved', 'rejected')),
+        tdr_sync_requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        tdr_sync_approved_at TIMESTAMP,
+        tdr_sync_approved_by VARCHAR(255),
+        tdr_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        tdr_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create indexes one by one to avoid issues
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_temp_donor_records_donor_id ON temp_donor_records(tdr_donor_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_temp_donor_records_sync_status ON temp_donor_records(tdr_sync_status)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_temp_donor_records_source_org ON temp_donor_records(tdr_source_organization)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_temp_donor_records_requested_at ON temp_donor_records(tdr_sync_requested_at)`);
+
+    // Create update trigger
+    await pool.query(`
+      CREATE OR REPLACE FUNCTION update_temp_donor_records_updated_at()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        NEW.tdr_updated_at = CURRENT_TIMESTAMP;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+
+    const trigCheck = await pool.query(`SELECT 1 FROM pg_trigger WHERE tgname = 'trigger_update_temp_donor_records_updated_at'`);
+    if (trigCheck.rowCount === 0) {
+      await pool.query(`
+        CREATE TRIGGER trigger_update_temp_donor_records_updated_at
+        BEFORE UPDATE ON temp_donor_records
+        FOR EACH ROW
+        EXECUTE FUNCTION update_temp_donor_records_updated_at();
+      `);
+    }
+
+    console.log('Temp donor records table ensured successfully');
+    return true;
+  } catch (error) {
+    console.error('Error ensuring temp_donor_records table:', error);
+    throw error;
+  }
+};
+
+// Ensure notifications table exists
+const ensureNotificationsTable = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        user_name VARCHAR(255),
+        notification_type VARCHAR(50) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT NOT NULL,
+        related_entity_type VARCHAR(50),
+        related_entity_id VARCHAR(255),
+        link_to VARCHAR(255),
+        is_read BOOLEAN DEFAULT FALSE,
+        status VARCHAR(20) DEFAULT 'unread' CHECK (status IN ('unread', 'read', 'archived')),
+        priority VARCHAR(20) DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        read_at TIMESTAMP,
+        archived_at TIMESTAMP
+      )
+    `);
+
+    // Migrate related_entity_id from INTEGER to VARCHAR if needed
+    try {
+      await pool.query(`
+        ALTER TABLE notifications
+        ALTER COLUMN related_entity_id TYPE VARCHAR(255) USING related_entity_id::VARCHAR
+      `);
+      console.log('✓ related_entity_id migrated to VARCHAR');
+    } catch (alterError) {
+      // Column might already be VARCHAR, which is fine
+      if (!alterError.message.includes('already')) {
+        console.log('related_entity_id column type check:', alterError.message);
+      }
+    }
+
+    // Create indexes one by one to avoid issues
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_status ON notifications(status)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(notification_type)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_related_entity ON notifications(related_entity_type, related_entity_id)`);
+
+    console.log('Notifications table ensured successfully');
+    return true;
+  } catch (error) {
+    console.error('Error ensuring notifications table:', error);
+    throw error;
+  }
+};
+
+// Ensure partnership_requests table exists
+const ensurePartnershipRequestsTable = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS partnership_requests (
+        id SERIAL PRIMARY KEY,
+        appointment_id BIGINT NOT NULL,
+        organization_name VARCHAR(255) NOT NULL,
+        organization_barangay VARCHAR(255) NOT NULL,
+        contact_name VARCHAR(255) NOT NULL,
+        contact_email VARCHAR(255) NOT NULL,
+        contact_phone VARCHAR(50) NOT NULL,
+        event_date DATE NOT NULL,
+        event_time TIME NOT NULL,
+        event_address TEXT,
+        status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'declined')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        approved_by VARCHAR(255),
+        approved_at TIMESTAMP
+      )
+    `);
+
+    // Create indexes one by one to avoid issues
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_partnership_requests_status ON partnership_requests(status)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_partnership_requests_created_at ON partnership_requests(created_at DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_partnership_requests_org ON partnership_requests(organization_name)`);
+
+    console.log('Partnership requests table ensured successfully');
+    return true;
+  } catch (error) {
+    console.error('Error ensuring partnership_requests table:', error);
+    throw error;
+  }
+};
+
+// Email sending functions
+const sendSuperAdminApprovalEmail = async (fullName, role, email, activationLink) => {
+  try {
+    console.log('Preparing to send approval email...');
+    console.log('SMTP_USER:', process.env.SMTP_USER);
+    console.log('SMTP_PASS:', process.env.SMTP_PASS ? '***hidden***' : 'NOT SET');
+
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      console.warn('SMTP credentials (SMTP_USER/SMTP_PASS) not set. Skipping email sending.');
+      return;
+    }
+
+    const to = 'bloodsync.doh@gmail.com';
+    const subject = 'New Regional Blood Center User Account Registration';
+
+    // Extract token from activationLink
+    const token = activationLink.split('token=')[1]?.split('\n')[0] || '';
+    const activationUrl = `http://localhost:5173/activate?token=${token}`;
+
+    const text = `New Regional Blood Center User Account Registration
+
+A new Regional Blood Center user has registered and requires activation approval:
+
+Full Name: ${fullName}
+Role: ${role}
+Email: ${email}
+
+To activate this user, click the link below or paste the activation token in the BloodSync application:
+${activationUrl}
+
+Activation Token: ${token}
+
+If this is not a verified user, please ignore this message.`;
+
+    console.log('Sending email to:', to);
+    console.log('Email subject:', subject);
+    
+    await transporter.sendMail({
+      from: process.env.SMTP_USER,
+      to,
+      subject,
+      text,
+    });
+    
+    console.log('Email sent successfully.');
+  } catch (error) {
+    console.error('Error sending Super Admin approval email:', error);
+  }
+};
+
+const sendPasswordResetEmail = async (email, resetToken, userName) => {
+  try {
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      console.warn('SMTP not configured. Reset code:', resetToken);
+      console.log(`[EMAIL NOT CONFIGURED] Would send to ${email}: Your reset code is ${resetToken}`);
+      return Promise.resolve(); // Explicitly return resolved promise
+    }
+
+    const subject = 'BloodSync - Password Reset Code';
+    const text = `Hello ${userName},
+
+Your password reset code is: ${resetToken}
+
+This code expires in 15 minutes.
+
+If you did not request this password reset, please ignore this email.`;
+
+    await transporter.sendMail({
+      from: process.env.SMTP_USER,
+      to: email,
+      subject,
+      text
+    });
+
+    console.log('Reset email sent to:', email);
+  } catch (error) {
+    console.error('Email sending error:', error);
+  }
+};
+
+// Database service object
 const dbService = {
+  // Initialize database tables
+  async initializeTables() {
+    try {
+      await ensureUserTable();
+      await ensurePasswordResetTable();
+      await ensureReleasedBloodTable();
+      await ensureBloodStockResultColumn();
+      await ensureDonorRecordsTable();
+      await ensureTempDonorRecordsTable();
+      await ensureNotificationsTable();
+      await ensurePartnershipRequestsTable();
+      console.log('All database tables initialized successfully');
+      return true;
+    } catch (error) {
+      console.error('Error initializing database tables:', error);
+      throw error;
+    }
+  },
+
+  // User management methods
+  async ensureUserTable() {
+    return await ensureUserTable();
+  },
+
+  async registerUser(user) {
+    try {
+      const full_name = (user.full_name || user.name || '').trim();
+      const role = (user.role || '').trim();
+      const email = (user.email || '').trim();
+      const password = user.password || '';
+
+      const allowedRoles = ['Admin', 'Doctor', 'Medical Technologist', 'Scheduler'];
+
+      if (!full_name || !email || !password) {
+        throw new Error('Missing required fields');
+      }
+      if (!allowedRoles.includes(role)) {
+        throw new Error('Invalid role');
+      }
+
+      // Check if email already exists
+      const exists = await pool.query('SELECT 1 FROM user_doh WHERE email = $1', [email]);
+      if (exists.rowCount > 0) {
+        throw new Error('Email is already registered');
+      }
+
+      const password_hash = await bcrypt.hash(password, 10);
+      const activation_token = crypto.randomUUID();
+
+      const insert = await pool.query(
+        `INSERT INTO user_doh (full_name, role, email, password_hash, is_active, activation_token, created_at)
+         VALUES ($1, $2, $3, $4, FALSE, $5, NOW()) RETURNING user_id`,
+        [full_name, role, email, password_hash, activation_token]
+      );
+
+      // For Electron app, just send the token - user will need to paste it or we can use a custom protocol
+      const activationLink = `Activation Token: ${activation_token}\n\nTo activate this user, paste this token in the BloodSync application activation page, or click: http://localhost:5173/activate?token=${activation_token}`;
+      await sendSuperAdminApprovalEmail(full_name, role, email, activationLink);
+
+      return { userId: insert.rows[0].user_id, activationToken: activation_token };
+    } catch (error) {
+      console.error('Error registering user:', error);
+      throw error;
+    }
+  },
+
+  async loginUser(emailOrDohId, password) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Ensure last_login column exists
+      await client.query(`
+        ALTER TABLE user_doh
+        ADD COLUMN IF NOT EXISTS last_login TIMESTAMP
+      `);
+
+      // Check if input looks like an email (contains @) or DOH ID
+      const isEmail = emailOrDohId.includes('@');
+
+      let result;
+      if (isEmail) {
+        // Login with email
+        result = await client.query(
+          `SELECT user_id, email, doh_id, password_hash, role, is_active, full_name, last_login FROM user_doh WHERE email = $1`,
+          [emailOrDohId]
+        );
+      } else {
+        // Login with DOH ID
+        result = await client.query(
+          `SELECT user_id, email, doh_id, password_hash, role, is_active, full_name, last_login FROM user_doh WHERE doh_id = $1`,
+          [emailOrDohId]
+        );
+      }
+
+      if (result.rowCount === 0) {
+        await client.query('ROLLBACK');
+        throw new Error('Invalid credentials');
+      }
+
+      const user = result.rows[0];
+
+      if (!user.is_active) {
+        await client.query('ROLLBACK');
+        throw new Error('Account not activated');
+      }
+
+      const isMatch = await bcrypt.compare(password, user.password_hash);
+
+      if (!isMatch) {
+        await client.query('ROLLBACK');
+        throw new Error('Invalid credentials');
+      }
+
+      // Update last_login timestamp
+      await client.query(
+        `UPDATE user_doh SET last_login = CURRENT_TIMESTAMP WHERE user_id = $1`,
+        [user.user_id]
+      );
+
+      await client.query('COMMIT');
+
+      return {
+        userId: user.user_id,
+        email: user.email,
+        dohId: user.doh_id,
+        role: user.role,
+        fullName: user.full_name,
+        lastLogin: user.last_login
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error logging in user:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  async activateUserByToken(token) {
+    try {
+      // First, check if user exists and get current status
+      const checkUser = await pool.query(
+        `SELECT user_id, is_active FROM user_doh WHERE activation_token = $1`,
+        [token]
+      );
+
+      console.log('[DB] User check result:', checkUser.rows[0]);
+
+      if (checkUser.rowCount === 0) {
+        console.log('[DB] No user found with token:', token);
+        return false;
+      }
+
+      if (checkUser.rows[0].is_active) {
+        console.log('[DB] User already active');
+        return true;
+      }
+
+      // Proceed with activation
+      const result = await pool.query(
+        `UPDATE user_doh SET is_active = TRUE WHERE activation_token = $1 AND is_active = FALSE RETURNING user_id, is_active`,
+        [token]
+      );
+
+      console.log('[DB] Activation update result:', result.rows[0]);
+
+      // Verify the update
+      if (result.rowCount > 0) {
+        const verify = await pool.query(
+          `SELECT is_active FROM user_doh WHERE activation_token = $1`,
+          [token]
+        );
+        console.log('[DB] Verification result:', verify.rows[0]);
+        return verify.rows[0].is_active === true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error('[DB] Error activating user:', error);
+      throw error;
+    }
+  },
+
+  async declineUserByToken(token) {
+    try {
+      const result = await pool.query(
+        `DELETE FROM user_doh WHERE activation_token = $1 RETURNING user_id`,
+        [token]
+      );
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error('Error declining user:', error);
+      throw error;
+    }
+  },
+
+  // Password reset methods
+  async generatePasswordResetToken(emailOrDohId) {
+    try {
+      // Check if input is DOH ID (format: DOH-XXXXXXXXX) or email
+      const isDohId = /^DOH-\d+$/i.test(emailOrDohId.trim());
+
+      let userCheck;
+      if (isDohId) {
+        // Query by DOH ID
+        userCheck = await pool.query(
+          'SELECT user_id, email, full_name, is_active FROM user_doh WHERE doh_id = $1',
+          [emailOrDohId.trim()]
+        );
+      } else {
+        // Query by email
+        userCheck = await pool.query(
+          'SELECT user_id, email, full_name, is_active FROM user_doh WHERE email = $1',
+          [emailOrDohId.trim()]
+        );
+      }
+
+      if (userCheck.rowCount === 0) {
+        throw new Error(isDohId ? 'DOH ID not found' : 'Email not found');
+      }
+
+      const user = userCheck.rows[0];
+      const email = user.email; // Use the email from database
+
+      if (!user.is_active) {
+        throw new Error('Account not activated');
+      }
+
+      // Generate 6-digit code
+      const resetToken = Math.floor(100000 + Math.random() * 900000).toString();
+      const tokenExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+      // Delete old tokens for this email
+      await pool.query('DELETE FROM password_reset_tokens WHERE email = $1', [email]);
+
+      // Save new token
+      await pool.query(
+        `INSERT INTO password_reset_tokens (user_id, email, reset_token, expires_at)
+         VALUES ($1, $2, $3, $4)`,
+        [user.user_id, email, resetToken, tokenExpiry]
+      );
+
+      // Send reset email
+      await sendPasswordResetEmail(email, resetToken, user.full_name);
+
+      return {
+        success: true,
+        resetToken,
+        userName: user.full_name
+      };
+    } catch (error) {
+      console.error('Error generating password reset token:', error);
+      throw error;
+    }
+  },
+
+  async resetPassword(email, resetToken, newPassword) {
+    try {
+      // Check if code is valid
+      const tokenCheck = await pool.query(
+        `SELECT prt.id, prt.user_id, prt.used, prt.expires_at
+         FROM password_reset_tokens prt
+         WHERE prt.email = $1 AND prt.reset_token = $2`,
+        [email, resetToken]
+      );
+
+      if (tokenCheck.rowCount === 0) {
+        throw new Error('Invalid reset code');
+      }
+
+      const token = tokenCheck.rows[0];
+
+      if (token.used) {
+        throw new Error('Reset code has already been used');
+      }
+
+      if (new Date() > new Date(token.expires_at)) {
+        throw new Error('Reset code has expired');
+      }
+
+      // Hash new password
+      const password_hash = await bcrypt.hash(newPassword, 10);
+
+      // Update password
+      await pool.query(
+        'UPDATE user_doh SET password_hash = $1 WHERE user_id = $2',
+        [password_hash, token.user_id]
+      );
+
+      // Mark token as used
+      await pool.query(
+        'UPDATE password_reset_tokens SET used = TRUE WHERE id = $1',
+        [token.id]
+      );
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error resetting password:', error);
+      throw error;
+    }
+  },
+
+  async cleanupExpiredTokens() {
+    try {
+      const result = await pool.query(
+        'DELETE FROM password_reset_tokens WHERE expires_at < NOW() OR used = TRUE'
+      );
+      console.log(`Cleaned up ${result.rowCount} expired/used tokens`);
+      return result.rowCount;
+    } catch (error) {
+      console.error('Error cleaning up expired tokens:', error);
+      throw error;
+    }
+  },
+
   // ========== RED BLOOD CELL METHODS ==========
-  
+
   // Get all red blood cell stock records (only Stored status)
   async getAllBloodStock() {
     try {
@@ -82,7 +866,7 @@ const dbService = {
     try {
       // First try exact match
       let query = `
-        SELECT 
+        SELECT
           bs_id as id,
           bs_serial_id as serial_id,
           bs_blood_type as type,
@@ -92,27 +876,27 @@ const dbService = {
           TO_CHAR(bs_expiration_date, 'YYYY-MM-DD') as expiration,
           bs_status as status,
           TO_CHAR(bs_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
-          CASE 
-            WHEN bs_modified_at IS NOT NULL 
+          CASE
+            WHEN bs_modified_at IS NOT NULL
             THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
             ELSE '-'
           END as modified,
           bs_category as category
-        FROM blood_stock 
+        FROM blood_stock
         WHERE bs_serial_id = $1 AND bs_category = 'Red Blood Cell' AND bs_status = 'Stored'
       `;
-      
+
       let result = await pool.query(query, [serialId]);
-      
+
       // If exact match found, return the first record
       if (result.rows.length > 0) {
         return result.rows[0];
       }
-      
+
       // If exact match not found, try partial match
       if (serialId.length > 0) {
         query = `
-          SELECT 
+          SELECT
             bs_id as id,
             bs_serial_id as serial_id,
             bs_blood_type as type,
@@ -122,22 +906,22 @@ const dbService = {
             TO_CHAR(bs_expiration_date, 'YYYY-MM-DD') as expiration,
             bs_status as status,
             TO_CHAR(bs_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
-            CASE 
-              WHEN bs_modified_at IS NOT NULL 
+            CASE
+              WHEN bs_modified_at IS NOT NULL
               THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
               ELSE '-'
             END as modified,
             bs_category as category
-          FROM blood_stock 
+          FROM blood_stock
           WHERE bs_serial_id ILIKE $1 AND bs_category = 'Red Blood Cell' AND bs_status = 'Stored'
           ORDER BY bs_serial_id
           LIMIT 5
         `;
-        
+
         result = await pool.query(query, [`%${serialId}%`]);
         return result.rows;
       }
-      
+
       return null;
     } catch (error) {
       console.error('Error fetching blood stock by serial ID:', error);
@@ -212,7 +996,9 @@ const dbService = {
     }
   },
 
+
   // Delete red blood cell stock records
+
   async deleteBloodStock(ids) {
     try {
       const query = 'DELETE FROM blood_stock WHERE bs_id = ANY($1) AND bs_category = \'Red Blood Cell\'';
@@ -266,97 +1052,89 @@ const dbService = {
     }
   },
 
+
   // ========== RELEASE STOCK METHODS ==========
-  
-  // In releaseBloodStock method, modify to return the released blood IDs
-async releaseBloodStock(releaseData) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
 
-    const getStockQuery = `
-      SELECT * FROM blood_stock 
-      WHERE bs_serial_id = ANY($1) AND bs_category = 'Red Blood Cell' AND bs_status = 'Stored'
-    `;
-    const stockResult = await client.query(getStockQuery, [releaseData.serialIds]);
-    
-    if (stockResult.rows.length === 0) {
-      throw new Error('No valid blood stock records found for release');
-    }
+  // Release red blood cell stock - moves records from blood_stock to released_blood
+  async releaseBloodStock(releaseData) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    const releasedBloodIds = []; // Track the inserted IDs
-
-    for (const stockRecord of stockResult.rows) {
-      const insertQuery = `
-        INSERT INTO released_blood (
-          rb_serial_id, rb_blood_type, rb_rh_factor, rb_volume,
-          rb_timestamp, rb_expiration_date, rb_status, rb_created_at, 
-          rb_released_at, rb_category, rb_original_id,
-          rb_receiving_facility, rb_address, rb_contact_number,
-          rb_classification, rb_authorized_recipient, rb_recipient_designation,
-          rb_date_of_release, rb_condition_upon_release, rb_request_reference,
-          rb_released_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
-        RETURNING rb_id
+      // Get the blood stock records to be released
+      const getStockQuery = `
+        SELECT * FROM blood_stock
+        WHERE bs_serial_id = ANY($1) AND bs_category = 'Red Blood Cell' AND bs_status = 'Stored'
       `;
-      
-      const values = [
-        stockRecord.bs_serial_id,
-        stockRecord.bs_blood_type,
-        stockRecord.bs_rh_factor,
-        stockRecord.bs_volume,
-        stockRecord.bs_timestamp,
-        stockRecord.bs_expiration_date,
-        'Released',
-        stockRecord.bs_created_at,
-        'Red Blood Cell',
-        stockRecord.bs_id,
-        releaseData.receivingFacility || '',
-        releaseData.address || '',
-        releaseData.contactNumber || '',
-        releaseData.classification || '',
-        releaseData.authorizedRecipient || '',
-        releaseData.recipientDesignation || '',
-        releaseData.dateOfRelease ? new Date(releaseData.dateOfRelease) : new Date(),
-        releaseData.conditionUponRelease || '',
-        releaseData.requestReference || '',
-        releaseData.releasedBy || ''
-      ];
-      
-      const insertResult = await client.query(insertQuery, values);
-      releasedBloodIds.push(insertResult.rows[0].rb_id); // Store the ID
+      const stockResult = await client.query(getStockQuery, [releaseData.serialIds]);
+
+      if (stockResult.rows.length === 0) {
+        throw new Error('No valid blood stock records found for release');
+      }
+
+      // Insert records into released_blood table with status 'Released'
+      for (const stockRecord of stockResult.rows) {
+        const insertQuery = `
+          INSERT INTO released_blood (
+            rb_serial_id, rb_blood_type, rb_rh_factor, rb_volume,
+            rb_timestamp, rb_expiration_date, rb_status, rb_created_at,
+            rb_released_at, rb_category, rb_original_id,
+            rb_receiving_facility, rb_address, rb_contact_number,
+            rb_classification, rb_authorized_recipient, rb_recipient_designation,
+            rb_date_of_release, rb_condition_upon_release, rb_request_reference,
+            rb_released_by
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+        `;
+
+        const values = [
+          stockRecord.bs_serial_id,
+          stockRecord.bs_blood_type,
+          stockRecord.bs_rh_factor,
+          stockRecord.bs_volume,
+          stockRecord.bs_timestamp,
+          stockRecord.bs_expiration_date,
+          'Released', // Status in released_blood table
+          stockRecord.bs_created_at,
+          'Red Blood Cell',
+          stockRecord.bs_id,
+          releaseData.receivingFacility || '',
+          releaseData.address || '',
+          releaseData.contactNumber || '',
+          releaseData.classification || '',
+          releaseData.authorizedRecipient || '',
+          releaseData.recipientDesignation || '',
+          releaseData.dateOfRelease ? new Date(releaseData.dateOfRelease) : new Date(),
+          releaseData.conditionUponRelease || '',
+          releaseData.requestReference || '',
+          releaseData.releasedBy || ''
+        ];
+
+        await client.query(insertQuery, values);
+      }
+
+      // DELETE records from blood_stock table (don't update status, just remove completely)
+      const deleteQuery = `
+        DELETE FROM blood_stock
+        WHERE bs_serial_id = ANY($1) AND bs_category = 'Red Blood Cell' AND bs_status = 'Stored'
+      `;
+      await client.query(deleteQuery, [releaseData.serialIds]);
+
+      await client.query('COMMIT');
+      return { success: true, releasedCount: stockResult.rows.length };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error releasing blood stock:', error);
+      throw error;
+    } finally {
+      client.release();
     }
-
-    const deleteQuery = `
-      DELETE FROM blood_stock 
-      WHERE bs_serial_id = ANY($1) AND bs_category = 'Red Blood Cell' AND bs_status = 'Stored'
-    `;
-    await client.query(deleteQuery, [releaseData.serialIds]);
-
-    // Generate invoice with the released blood IDs using the transaction client
-    const invoiceResult = await this.generateInvoiceWithClient(client, releaseData, releasedBloodIds);
-
-    await client.query('COMMIT');
-    return { 
-      success: true, 
-      releasedCount: stockResult.rows.length,
-      invoiceId: invoiceResult.invoiceId,
-      invoiceDbId: invoiceResult.invoiceDbId
-    };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error releasing blood stock:', error);
-    throw error;
-  } finally {
-    client.release();
-  }
-},
+  },
 
   // Get all released blood records
   async getReleasedBloodStock() {
     try {
       const query = `
-        SELECT 
+        SELECT
           rb_id as id,
           rb_serial_id as serial_id,
           rb_blood_type as type,
@@ -366,8 +1144,8 @@ async releaseBloodStock(releaseData) {
           TO_CHAR(rb_expiration_date, 'MM/DD/YYYY') as expiration,
           rb_status as status,
           TO_CHAR(rb_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
-          CASE 
-            WHEN rb_modified_at IS NOT NULL 
+          CASE
+            WHEN rb_modified_at IS NOT NULL
             THEN TO_CHAR(rb_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
             ELSE '-'
           END as modified,
@@ -383,11 +1161,11 @@ async releaseBloodStock(releaseData) {
           rb_condition_upon_release as conditionUponRelease,
           rb_request_reference as requestReference,
           rb_released_by as releasedBy
-        FROM released_blood 
+        FROM released_blood
         WHERE rb_category = 'Red Blood Cell'
         ORDER BY rb_released_at DESC
       `;
-      
+
       const result = await pool.query(query);
       return result.rows.map(row => ({
         ...row,
@@ -399,95 +1177,13 @@ async releaseBloodStock(releaseData) {
     }
   },
 
-  // Release plasma stock - moves records from blood_stock to released_blood
-  async releasePlasmaStock(releaseData) {
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-  
-      const getStockQuery = `
-        SELECT * FROM blood_stock 
-        WHERE bs_serial_id = ANY($1) AND bs_category = 'Plasma' AND bs_status = 'Stored'
-      `;
-      const stockResult = await client.query(getStockQuery, [releaseData.serialIds]);
-      
-      if (stockResult.rows.length === 0) {
-        throw new Error('No valid plasma stock records found for release');
-      }
-  
-      const releasedBloodIds = [];
-  
-      for (const stockRecord of stockResult.rows) {
-        const insertQuery = `
-          INSERT INTO released_blood (
-            rb_serial_id, rb_blood_type, rb_rh_factor, rb_volume,
-            rb_timestamp, rb_expiration_date, rb_status, rb_created_at, 
-            rb_released_at, rb_category, rb_original_id,
-            rb_receiving_facility, rb_address, rb_contact_number,
-            rb_classification, rb_authorized_recipient, rb_recipient_designation,
-            rb_date_of_release, rb_condition_upon_release, rb_request_reference,
-            rb_released_by
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
-          RETURNING rb_id
-        `;
-        
-        const values = [
-          stockRecord.bs_serial_id,
-          stockRecord.bs_blood_type,
-          stockRecord.bs_rh_factor,
-          stockRecord.bs_volume,
-          stockRecord.bs_timestamp,
-          stockRecord.bs_expiration_date,
-          'Released',
-          stockRecord.bs_created_at,
-          'Plasma',
-          stockRecord.bs_id,
-          releaseData.receivingFacility || '',
-          releaseData.address || '',
-          releaseData.contactNumber || '',
-          releaseData.classification || '',
-          releaseData.authorizedRecipient || '',
-          releaseData.recipientDesignation || '',
-          releaseData.dateOfRelease ? new Date(releaseData.dateOfRelease) : new Date(),
-          releaseData.conditionUponRelease || '',
-          releaseData.requestReference || '',
-          releaseData.releasedBy || ''
-        ];
-        
-        const insertResult = await client.query(insertQuery, values);
-        releasedBloodIds.push(insertResult.rows[0].rb_id);
-      }
-  
-      const deleteQuery = `
-        DELETE FROM blood_stock 
-        WHERE bs_serial_id = ANY($1) AND bs_category = 'Plasma' AND bs_status = 'Stored'
-      `;
-      await client.query(deleteQuery, [releaseData.serialIds]);
-  
-      const invoiceResult = await this.generateInvoiceWithClient(client, releaseData, releasedBloodIds);
-  
-      await client.query('COMMIT');
-      return { 
-        success: true, 
-        releasedCount: stockResult.rows.length,
-        invoiceId: invoiceResult.invoiceId,
-        invoiceDbId: invoiceResult.invoiceDbId
-      };
-    } catch (error) {
-      await client.query('ROLLBACK');
-      console.error('Error releasing plasma stock:', error);
-      throw error;
-    } finally {
-      client.release();
-    }
-  },
   // ========== PLATELET METHODS ==========
-  
+
   // Get all platelet stock records
   async getPlateletStock() {
     try {
       const query = `
-        SELECT 
+        SELECT
           bs_id as id,
           bs_serial_id as serial_id,
           bs_blood_type as type,
@@ -497,17 +1193,17 @@ async releaseBloodStock(releaseData) {
           TO_CHAR(bs_expiration_date, 'MM/DD/YYYY') as expiration,
           bs_status as status,
           TO_CHAR(bs_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
-          CASE 
-            WHEN bs_modified_at IS NOT NULL 
+          CASE
+            WHEN bs_modified_at IS NOT NULL
             THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
             ELSE '-'
           END as modified,
           bs_category as category
-        FROM blood_stock 
+        FROM blood_stock
         WHERE bs_category = 'Platelet'
         ORDER BY bs_created_at DESC
       `;
-      
+
       const result = await pool.query(query);
       return result.rows.map(row => ({
         ...row,
@@ -519,35 +1215,35 @@ async releaseBloodStock(releaseData) {
     }
   },
 
-    // Add new platelet stock record
-    async addPlateletStock(plateletData) {
-      try {
-        const query = `
-          INSERT INTO blood_stock (
-            bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
-            bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
-          RETURNING bs_id
-        `;
-        
-        const values = [
-          plateletData.serial_id,
-          plateletData.type,
-          plateletData.rhFactor,
-          parseInt(plateletData.volume),
-          new Date(plateletData.collection),
-          new Date(plateletData.expiration),
-          plateletData.status || 'Stored',
-          'Platelet'
-        ];
-      
-        const result = await pool.query(query, values);
-        return result.rows[0];
-      } catch (error) {
-        console.error('Error adding platelet stock:', error);
-        throw error;
-      }
-    },
+  // Add new platelet stock record
+  async addPlateletStock(plateletData) {
+    try {
+      const query = `
+        INSERT INTO blood_stock (
+          bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
+          bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
+        RETURNING bs_id
+      `;
+
+      const values = [
+        plateletData.serial_id,
+        plateletData.type,
+        plateletData.rhFactor,
+        parseInt(plateletData.volume),
+        new Date(plateletData.collection),
+        new Date(plateletData.expiration),
+        plateletData.status || 'Stored',
+        'Platelet'
+      ];
+
+      const result = await pool.query(query, values);
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error adding platelet stock:', error);
+      throw error;
+    }
+  },
 
   // Update platelet stock record
   async updatePlateletStock(id, plateletData) {
@@ -565,7 +1261,7 @@ async releaseBloodStock(releaseData) {
           bs_category = $9
         WHERE bs_id = $1
       `;
-      
+
       const values = [
         id,
         plateletData.serial_id,
@@ -577,7 +1273,7 @@ async releaseBloodStock(releaseData) {
         plateletData.status || 'Stored',
         'Platelet'
       ];
-      
+
       await pool.query(query, values);
       return true;
     } catch (error) {
@@ -602,7 +1298,7 @@ async releaseBloodStock(releaseData) {
   async searchPlateletStock(searchTerm) {
     try {
       const query = `
-        SELECT 
+        SELECT
           bs_id as id,
           bs_serial_id as serial_id,
           bs_blood_type as type,
@@ -612,23 +1308,23 @@ async releaseBloodStock(releaseData) {
           TO_CHAR(bs_expiration_date, 'MM/DD/YYYY') as expiration,
           bs_status as status,
           TO_CHAR(bs_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
-          CASE 
-            WHEN bs_modified_at IS NOT NULL 
+          CASE
+            WHEN bs_modified_at IS NOT NULL
             THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
             ELSE '-'
           END as modified,
           bs_category as category
-        FROM blood_stock 
-        WHERE 
+        FROM blood_stock
+        WHERE
           bs_category = 'Platelet' AND (
-            bs_serial_id ILIKE $1 OR 
-            bs_blood_type ILIKE $1 OR 
+            bs_serial_id ILIKE $1 OR
+            bs_blood_type ILIKE $1 OR
             bs_status ILIKE $1 OR
             bs_rh_factor ILIKE $1
           )
         ORDER BY bs_created_at DESC
       `;
-      
+
       const result = await pool.query(query, [`%${searchTerm}%`]);
       return result.rows.map(row => ({
         ...row,
@@ -642,42 +1338,12 @@ async releaseBloodStock(releaseData) {
 
   // ========== PLATELET RELEASE METHODS ==========
 
-// Get platelet stock by serial ID for release with search functionality
-async getPlateletStockBySerialId(serialId) {
-  try {
-    // First try exact match
-    let query = `
-      SELECT 
-        bs_id as id,
-        bs_serial_id as serial_id,
-        bs_blood_type as type,
-        bs_rh_factor as "rhFactor",
-        bs_volume as volume,
-        TO_CHAR(bs_timestamp, 'YYYY-MM-DD') as collection,
-        TO_CHAR(bs_expiration_date, 'YYYY-MM-DD') as expiration,
-        bs_status as status,
-        TO_CHAR(bs_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
-        CASE 
-          WHEN bs_modified_at IS NOT NULL 
-          THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
-          ELSE '-'
-        END as modified,
-        bs_category as category
-      FROM blood_stock 
-      WHERE bs_serial_id = $1 AND bs_category = 'Platelet' AND bs_status = 'Stored'
-    `;
-    
-    let result = await pool.query(query, [serialId]);
-    
-    // If exact match found, return the first record
-    if (result.rows.length > 0) {
-      return result.rows[0];
-    }
-    
-    // If exact match not found, try partial match
-    if (serialId.length > 0) {
-      query = `
-        SELECT 
+  // Get platelet stock by serial ID for release with search functionality
+  async getPlateletStockBySerialId(serialId) {
+    try {
+      // First try exact match
+      let query = `
+        SELECT
           bs_id as id,
           bs_serial_id as serial_id,
           bs_blood_type as type,
@@ -687,518 +1353,530 @@ async getPlateletStockBySerialId(serialId) {
           TO_CHAR(bs_expiration_date, 'YYYY-MM-DD') as expiration,
           bs_status as status,
           TO_CHAR(bs_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
-          CASE 
-            WHEN bs_modified_at IS NOT NULL 
+          CASE
+            WHEN bs_modified_at IS NOT NULL
             THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
             ELSE '-'
           END as modified,
           bs_category as category
-        FROM blood_stock 
-        WHERE bs_serial_id ILIKE $1 AND bs_category = 'Platelet' AND bs_status = 'Stored'
-        ORDER BY bs_serial_id
-        LIMIT 5
+        FROM blood_stock
+        WHERE bs_serial_id = $1 AND bs_category = 'Platelet' AND bs_status = 'Stored'
       `;
-      
-      result = await pool.query(query, [`%${serialId}%`]);
-      return result.rows;
-    }
-    
-    return null;
-  } catch (error) {
-    console.error('Error fetching platelet stock by serial ID:', error);
-    throw error;
-  }
-},
 
-// Release platelet stock - moves records from blood_stock to released_blood
-async releasePlateletStock(releaseData) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+      let result = await pool.query(query, [serialId]);
 
-    const getStockQuery = `
-      SELECT * FROM blood_stock 
-      WHERE bs_serial_id = ANY($1) AND bs_category = 'Platelet' AND bs_status = 'Stored'
-    `;
-    const stockResult = await client.query(getStockQuery, [releaseData.serialIds]);
-    
-    if (stockResult.rows.length === 0) {
-      throw new Error('No valid platelet stock records found for release');
-    }
-
-    const releasedBloodIds = [];
-
-    for (const stockRecord of stockResult.rows) {
-      const insertQuery = `
-        INSERT INTO released_blood (
-          rb_serial_id, rb_blood_type, rb_rh_factor, rb_volume,
-          rb_timestamp, rb_expiration_date, rb_status, rb_created_at, 
-          rb_released_at, rb_category, rb_original_id,
-          rb_receiving_facility, rb_address, rb_contact_number,
-          rb_classification, rb_authorized_recipient, rb_recipient_designation,
-          rb_date_of_release, rb_condition_upon_release, rb_request_reference,
-          rb_released_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
-        RETURNING rb_id
-      `;
-      
-      const values = [
-        stockRecord.bs_serial_id,
-        stockRecord.bs_blood_type,
-        stockRecord.bs_rh_factor,
-        stockRecord.bs_volume,
-        stockRecord.bs_timestamp,
-        stockRecord.bs_expiration_date,
-        'Released',
-        stockRecord.bs_created_at,
-        'Platelet',
-        stockRecord.bs_id,
-        releaseData.receivingFacility || '',
-        releaseData.address || '',
-        releaseData.contactNumber || '',
-        releaseData.classification || '',
-        releaseData.authorizedRecipient || '',
-        releaseData.recipientDesignation || '',
-        releaseData.dateOfRelease ? new Date(releaseData.dateOfRelease) : new Date(),
-        releaseData.conditionUponRelease || '',
-        releaseData.requestReference || '',
-        releaseData.releasedBy || ''
-      ];
-      
-      const insertResult = await client.query(insertQuery, values);
-      releasedBloodIds.push(insertResult.rows[0].rb_id);
-    }
-
-    const deleteQuery = `
-      DELETE FROM blood_stock 
-      WHERE bs_serial_id = ANY($1) AND bs_category = 'Platelet' AND bs_status = 'Stored'
-    `;
-    await client.query(deleteQuery, [releaseData.serialIds]);
-
-    // Generate invoice with the released blood IDs using the transaction client
-    const invoiceResult = await this.generateInvoiceWithClient(client, releaseData, releasedBloodIds);
-
-    await client.query('COMMIT');
-    return { 
-      success: true, 
-      releasedCount: stockResult.rows.length,
-      invoiceId: invoiceResult.invoiceId,
-      invoiceDbId: invoiceResult.invoiceDbId
-    };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error releasing platelet stock:', error);
-    throw error;
-  } finally {
-    client.release();
-  }
-},
-
-// Get all released platelet records
-async getReleasedPlateletStock() {
-  try {
-    const query = `
-      SELECT 
-        rb_id as id,
-        rb_serial_id as serial_id,
-        rb_blood_type as type,
-        rb_rh_factor as "rhFactor",
-        rb_volume as volume,
-        TO_CHAR(rb_timestamp, 'MM/DD/YYYY') as collection,
-        TO_CHAR(rb_expiration_date, 'MM/DD/YYYY') as expiration,
-        rb_status as status,
-        TO_CHAR(rb_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
-        CASE 
-          WHEN rb_modified_at IS NOT NULL 
-          THEN TO_CHAR(rb_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
-          ELSE '-'
-        END as modified,
-        TO_CHAR(rb_released_at, 'MM/DD/YYYY-HH24:MI:SS') as releasedAt,
-        rb_category as category,
-        rb_receiving_facility as receivingFacility,
-        rb_address as address,
-        rb_contact_number as contactNumber,
-        rb_classification as classification,
-        rb_authorized_recipient as authorizedRecipient,
-        rb_recipient_designation as recipientDesignation,
-        TO_CHAR(rb_date_of_release, 'MM/DD/YYYY') as dateOfRelease,
-        rb_condition_upon_release as conditionUponRelease,
-        rb_request_reference as requestReference,
-        rb_released_by as releasedBy
-      FROM released_blood 
-      WHERE rb_category = 'Platelet'
-      ORDER BY rb_released_at DESC
-    `;
-    
-    const result = await pool.query(query);
-    return result.rows.map(row => ({
-      ...row,
-      selected: false // Add selection state for UI
-    }));
-  } catch (error) {
-    console.error('Error fetching released platelet stock:', error);
-    throw error;
-  }
-},
-
-// ========== PLASMA METHODS ==========
-
-// Get all plasma stock records (only Stored status)
-async getPlasmaStock() {
-  try {
-    const query = `
-      SELECT 
-        bs_id as id,
-        bs_serial_id as serial_id,
-        bs_blood_type as type,
-        bs_rh_factor as "rhFactor",
-        bs_volume as volume,
-        TO_CHAR(bs_timestamp, 'MM/DD/YYYY') as collection,
-        TO_CHAR(bs_expiration_date, 'MM/DD/YYYY') as expiration,
-        bs_status as status,
-        TO_CHAR(bs_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
-        CASE 
-          WHEN bs_modified_at IS NOT NULL 
-          THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
-          ELSE '-'
-        END as modified,
-        bs_category as category
-      FROM blood_stock 
-      WHERE bs_category = 'Plasma' AND bs_status = 'Stored'
-      ORDER BY bs_created_at DESC
-    `;
-    
-    const result = await pool.query(query);
-    return result.rows.map(row => ({
-      ...row,
-      selected: false // Add selection state for UI
-    }));
-  } catch (error) {
-    console.error('Error fetching plasma stock:', error);
-    throw error;
-  }
-},
-
-// Get plasma stock by serial ID for release with search functionality
-async getPlasmaStockBySerialId(serialId) {
-  try {
-    // First try exact match
-    let query = `
-      SELECT 
-        bs_id as id,
-        bs_serial_id as serial_id,
-        bs_blood_type as type,
-        bs_rh_factor as "rhFactor",
-        bs_volume as volume,
-        TO_CHAR(bs_timestamp, 'YYYY-MM-DD') as collection,
-        TO_CHAR(bs_expiration_date, 'YYYY-MM-DD') as expiration,
-        bs_status as status,
-        TO_CHAR(bs_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
-        CASE 
-          WHEN bs_modified_at IS NOT NULL 
-          THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
-          ELSE '-'
-        END as modified,
-        bs_category as category
-      FROM blood_stock 
-      WHERE bs_serial_id = $1 AND bs_category = 'Plasma' AND bs_status = 'Stored'
-    `;
-    
-    let result = await pool.query(query, [serialId]);
-    
-    // If exact match found, return the first record
-    if (result.rows.length > 0) {
-      return result.rows[0];
-    }
-    
-    // If exact match not found, try partial match
-    if (serialId.length > 0) {
-      query = `
-        SELECT 
-          bs_id as id,
-          bs_serial_id as serial_id,
-          bs_blood_type as type,
-          bs_rh_factor as "rhFactor",
-          bs_volume as volume,
-          TO_CHAR(bs_timestamp, 'YYYY-MM-DD') as collection,
-          TO_CHAR(bs_expiration_date, 'YYYY-MM-DD') as expiration,
-          bs_status as status,
-          TO_CHAR(bs_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
-          CASE 
-            WHEN bs_modified_at IS NOT NULL 
-            THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
-            ELSE '-'
-          END as modified,
-          bs_category as category
-        FROM blood_stock 
-        WHERE bs_serial_id ILIKE $1 AND bs_category = 'Plasma' AND bs_status = 'Stored'
-        ORDER BY bs_serial_id
-        LIMIT 5
-      `;
-      
-      result = await pool.query(query, [`%${serialId}%`]);
-      return result.rows;
-    }
-    
-    return null;
-  } catch (error) {
-    console.error('Error fetching plasma stock by serial ID:', error);
-    throw error;
-  }
-},
-
-    // Add new plasma stock record
-    async addPlasmaStock(plasmaData) {
-      try {
-        const query = `
-          INSERT INTO blood_stock (
-            bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
-            bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
-          RETURNING bs_id
-        `;
-        
-        const values = [
-          plasmaData.serial_id,
-          plasmaData.type,
-          plasmaData.rhFactor,
-          parseInt(plasmaData.volume),
-          new Date(plasmaData.collection),
-          new Date(plasmaData.expiration),
-          plasmaData.status || 'Stored',
-          'Plasma'
-        ];
-        
-        const result = await pool.query(query, values);
+      // If exact match found, return the first record
+      if (result.rows.length > 0) {
         return result.rows[0];
-      } catch (error) {
-        console.error('Error adding plasma stock:', error);
-        throw error;
       }
-    },
 
-// Update plasma stock record
-async updatePlasmaStock(id, plasmaData) {
-  try {
-    const query = `
-      UPDATE blood_stock SET
-        bs_serial_id = $2,
-        bs_blood_type = $3,
-        bs_rh_factor = $4,
-        bs_volume = $5,
-        bs_timestamp = $6,
-        bs_expiration_date = $7,
-        bs_status = $8,
-        bs_modified_at = NOW(),
-        bs_category = $9
-      WHERE bs_id = $1
-    `;
-    
-    const values = [
-      id,
-      plasmaData.serial_id,
-      plasmaData.type,
-      plasmaData.rhFactor,
-      parseInt(plasmaData.volume),
-      new Date(plasmaData.collection),
-      new Date(plasmaData.expiration),
-      plasmaData.status || 'Stored',
-      'Plasma'
-    ];
-    
-    await pool.query(query, values);
-    return true;
-  } catch (error) {
-    console.error('Error updating plasma stock:', error);
-    throw error;
-  }
-},
+      // If exact match not found, try partial match
+      if (serialId.length > 0) {
+        query = `
+          SELECT
+            bs_id as id,
+            bs_serial_id as serial_id,
+            bs_blood_type as type,
+            bs_rh_factor as "rhFactor",
+            bs_volume as volume,
+            TO_CHAR(bs_timestamp, 'YYYY-MM-DD') as collection,
+            TO_CHAR(bs_expiration_date, 'YYYY-MM-DD') as expiration,
+            bs_status as status,
+            TO_CHAR(bs_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
+            CASE
+              WHEN bs_modified_at IS NOT NULL
+              THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
+              ELSE '-'
+            END as modified,
+            bs_category as category
+          FROM blood_stock
+          WHERE bs_serial_id ILIKE $1 AND bs_category = 'Platelet' AND bs_status = 'Stored'
+          ORDER BY bs_serial_id
+          LIMIT 5
+        `;
 
-// Delete plasma stock records
-async deletePlasmaStock(ids) {
-  try {
-    const query = 'DELETE FROM blood_stock WHERE bs_id = ANY($1) AND bs_category = \'Plasma\'';
-    await pool.query(query, [ids]);
-    return true;
-  } catch (error) {
-    console.error('Error deleting plasma stock:', error);
-    throw error;
-  }
-},
+        result = await pool.query(query, [`%${serialId}%`]);
+        return result.rows;
+      }
 
-// Search plasma stock (only Stored status)
-async searchPlasmaStock(searchTerm) {
-  try {
-    const query = `
-      SELECT 
-        bs_id as id,
-        bs_serial_id as serial_id,
-        bs_blood_type as type,
-        bs_rh_factor as "rhFactor",
-        bs_volume as volume,
-        TO_CHAR(bs_timestamp, 'MM/DD/YYYY') as collection,
-        TO_CHAR(bs_expiration_date, 'MM/DD/YYYY') as expiration,
-        bs_status as status,
-        TO_CHAR(bs_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
-        CASE 
-          WHEN bs_modified_at IS NOT NULL 
-          THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
-          ELSE '-'
-        END as modified,
-        bs_category as category
-      FROM blood_stock 
-      WHERE 
-        bs_category = 'Plasma' AND bs_status = 'Stored' AND (
-          bs_serial_id ILIKE $1 OR 
-          bs_blood_type ILIKE $1 OR 
-          bs_status ILIKE $1 OR
-          bs_rh_factor ILIKE $1
-        )
-      ORDER BY bs_created_at DESC
-    `;
-    
-    const result = await pool.query(query, [`%${searchTerm}%`]);
-    return result.rows.map(row => ({
-      ...row,
-      selected: false
-    }));
-  } catch (error) {
-    console.error('Error searching plasma stock:', error);
-    throw error;
-  }
-},
-
-// ========== RELEASE PLASMA STOCK METHODS ==========
-
-// Release plasma stock - moves records from blood_stock to released_blood
-async releasePlasmaStock(releaseData) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const getStockQuery = `
-      SELECT * FROM blood_stock 
-      WHERE bs_serial_id = ANY($1) AND bs_category = 'Plasma' AND bs_status = 'Stored'
-    `;
-    const stockResult = await client.query(getStockQuery, [releaseData.serialIds]);
-    
-    if (stockResult.rows.length === 0) {
-      throw new Error('No valid plasma stock records found for release');
+      return null;
+    } catch (error) {
+      console.error('Error fetching platelet stock by serial ID:', error);
+      throw error;
     }
+  },
 
-    const releasedBloodIds = [];
+  // Release platelet stock - moves records from blood_stock to released_blood
+  async releasePlateletStock(releaseData) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    for (const stockRecord of stockResult.rows) {
-      const insertQuery = `
-        INSERT INTO released_blood (
-          rb_serial_id, rb_blood_type, rb_rh_factor, rb_volume,
-          rb_timestamp, rb_expiration_date, rb_status, rb_created_at, 
-          rb_released_at, rb_category, rb_original_id,
-          rb_receiving_facility, rb_address, rb_contact_number,
-          rb_classification, rb_authorized_recipient, rb_recipient_designation,
-          rb_date_of_release, rb_condition_upon_release, rb_request_reference,
-          rb_released_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
-        RETURNING rb_id
+      // Get the platelet stock records to be released
+      const getStockQuery = `
+        SELECT * FROM blood_stock
+        WHERE bs_serial_id = ANY($1) AND bs_category = 'Platelet' AND bs_status = 'Stored'
       `;
-      
-      const values = [
-        stockRecord.bs_serial_id,
-        stockRecord.bs_blood_type,
-        stockRecord.bs_rh_factor,
-        stockRecord.bs_volume,
-        stockRecord.bs_timestamp,
-        stockRecord.bs_expiration_date,
-        'Released',
-        stockRecord.bs_created_at,
-        'Plasma',
-        stockRecord.bs_id,
-        releaseData.receivingFacility || '',
-        releaseData.address || '',
-        releaseData.contactNumber || '',
-        releaseData.classification || '',
-        releaseData.authorizedRecipient || '',
-        releaseData.recipientDesignation || '',
-        releaseData.dateOfRelease ? new Date(releaseData.dateOfRelease) : new Date(),
-        releaseData.conditionUponRelease || '',
-        releaseData.requestReference || '',
-        releaseData.releasedBy || ''
-      ];
-      
-      const insertResult = await client.query(insertQuery, values);
-      releasedBloodIds.push(insertResult.rows[0].rb_id);
+      const stockResult = await client.query(getStockQuery, [releaseData.serialIds]);
+
+      if (stockResult.rows.length === 0) {
+        throw new Error('No valid platelet stock records found for release');
+      }
+
+      // Insert records into released_blood table with status 'Released'
+      for (const stockRecord of stockResult.rows) {
+        const insertQuery = `
+          INSERT INTO released_blood (
+            rb_serial_id, rb_blood_type, rb_rh_factor, rb_volume,
+            rb_timestamp, rb_expiration_date, rb_status, rb_created_at,
+            rb_released_at, rb_category, rb_original_id,
+            rb_receiving_facility, rb_address, rb_contact_number,
+            rb_classification, rb_authorized_recipient, rb_recipient_designation,
+            rb_date_of_release, rb_condition_upon_release, rb_request_reference,
+            rb_released_by
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+        `;
+
+        const values = [
+          stockRecord.bs_serial_id,
+          stockRecord.bs_blood_type,
+          stockRecord.bs_rh_factor,
+          stockRecord.bs_volume,
+          stockRecord.bs_timestamp,
+          stockRecord.bs_expiration_date,
+          'Released', // Status in released_blood table
+          stockRecord.bs_created_at,
+          'Platelet',
+          stockRecord.bs_id,
+          releaseData.receivingFacility || '',
+          releaseData.address || '',
+          releaseData.contactNumber || '',
+          releaseData.classification || '',
+          releaseData.authorizedRecipient || '',
+          releaseData.recipientDesignation || '',
+          releaseData.dateOfRelease ? new Date(releaseData.dateOfRelease) : new Date(),
+          releaseData.conditionUponRelease || '',
+          releaseData.requestReference || '',
+          releaseData.releasedBy || ''
+        ];
+
+        await client.query(insertQuery, values);
+      }
+
+      // DELETE records from blood_stock table (don't update status, just remove completely)
+      const deleteQuery = `
+        DELETE FROM blood_stock
+        WHERE bs_serial_id = ANY($1) AND bs_category = 'Platelet' AND bs_status = 'Stored'
+      `;
+      await client.query(deleteQuery, [releaseData.serialIds]);
+
+      await client.query('COMMIT');
+      return { success: true, releasedCount: stockResult.rows.length };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error releasing platelet stock:', error);
+      throw error;
+    } finally {
+      client.release();
     }
+  },
 
-    const deleteQuery = `
-      DELETE FROM blood_stock 
-      WHERE bs_serial_id = ANY($1) AND bs_category = 'Plasma' AND bs_status = 'Stored'
-    `;
-    await client.query(deleteQuery, [releaseData.serialIds]);
+  // Get all released platelet records
+  async getReleasedPlateletStock() {
+    try {
+      const query = `
+        SELECT
+          rb_id as id,
+          rb_serial_id as serial_id,
+          rb_blood_type as type,
+          rb_rh_factor as "rhFactor",
+          rb_volume as volume,
+          TO_CHAR(rb_timestamp, 'MM/DD/YYYY') as collection,
+          TO_CHAR(rb_expiration_date, 'MM/DD/YYYY') as expiration,
+          rb_status as status,
+          TO_CHAR(rb_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
+          CASE
+            WHEN rb_modified_at IS NOT NULL
+            THEN TO_CHAR(rb_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
+            ELSE '-'
+          END as modified,
+          TO_CHAR(rb_released_at, 'MM/DD/YYYY-HH24:MI:SS') as releasedAt,
+          rb_category as category,
+          rb_receiving_facility as receivingFacility,
+          rb_address as address,
+          rb_contact_number as contactNumber,
+          rb_classification as classification,
+          rb_authorized_recipient as authorizedRecipient,
+          rb_recipient_designation as recipientDesignation,
+          TO_CHAR(rb_date_of_release, 'MM/DD/YYYY') as dateOfRelease,
+          rb_condition_upon_release as conditionUponRelease,
+          rb_request_reference as requestReference,
+          rb_released_by as releasedBy
+        FROM released_blood
+        WHERE rb_category = 'Platelet'
+        ORDER BY rb_released_at DESC
+      `;
 
-    // Generate invoice with the released blood IDs using the transaction client
-    const invoiceResult = await this.generateInvoiceWithClient(client, releaseData, releasedBloodIds);
+      const result = await pool.query(query);
+      return result.rows.map(row => ({
+        ...row,
+        selected: false // Add selection state for UI
+      }));
+    } catch (error) {
+      console.error('Error fetching released platelet stock:', error);
+      throw error;
+    }
+  },
 
-    await client.query('COMMIT');
-    return { 
-      success: true, 
-      releasedCount: stockResult.rows.length,
-      invoiceId: invoiceResult.invoiceId,
-      invoiceDbId: invoiceResult.invoiceDbId
-    };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error releasing plasma stock:', error);
-    throw error;
-  } finally {
-    client.release();
-  }
-},
+  // ========== PLASMA METHODS ==========
 
-// Get all released plasma records
-async getReleasedPlasmaStock() {
-  try {
-    const query = `
-      SELECT 
-        rb_id as id,
-        rb_serial_id as serial_id,
-        rb_blood_type as type,
-        rb_rh_factor as "rhFactor",
-        rb_volume as volume,
-        TO_CHAR(rb_timestamp, 'MM/DD/YYYY') as collection,
-        TO_CHAR(rb_expiration_date, 'MM/DD/YYYY') as expiration,
-        rb_status as status,
-        TO_CHAR(rb_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
-        CASE 
-          WHEN rb_modified_at IS NOT NULL 
-          THEN TO_CHAR(rb_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
-          ELSE '-'
-        END as modified,
-        TO_CHAR(rb_released_at, 'MM/DD/YYYY-HH24:MI:SS') as releasedAt,
-        rb_category as category,
-        rb_receiving_facility as receivingFacility,
-        rb_address as address,
-        rb_contact_number as contactNumber,
-        rb_classification as classification,
-        rb_authorized_recipient as authorizedRecipient,
-        rb_recipient_designation as recipientDesignation,
-        TO_CHAR(rb_date_of_release, 'MM/DD/YYYY') as dateOfRelease,
-        rb_condition_upon_release as conditionUponRelease,
-        rb_request_reference as requestReference,
-        rb_released_by as releasedBy
-      FROM released_blood 
-      WHERE rb_category = 'Plasma'
-      ORDER BY rb_released_at DESC
-    `;
-    
-    const result = await pool.query(query);
-    return result.rows.map(row => ({
-      ...row,
-      selected: false // Add selection state for UI
-    }));
-  } catch (error) {
-    console.error('Error fetching released plasma stock:', error);
-    throw error;
-  }
+  // Get all plasma stock records (only Stored status)
+  async getPlasmaStock() {
+    try {
+      const query = `
+        SELECT
+          bs_id as id,
+          bs_serial_id as serial_id,
+          bs_blood_type as type,
+          bs_rh_factor as "rhFactor",
+          bs_volume as volume,
+          TO_CHAR(bs_timestamp, 'MM/DD/YYYY') as collection,
+          TO_CHAR(bs_expiration_date, 'MM/DD/YYYY') as expiration,
+          bs_status as status,
+          TO_CHAR(bs_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
+          CASE
+            WHEN bs_modified_at IS NOT NULL
+            THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
+            ELSE '-'
+          END as modified,
+          bs_category as category
+        FROM blood_stock
+        WHERE bs_category = 'Plasma' AND bs_status = 'Stored'
+        ORDER BY bs_created_at DESC
+      `;
+
+      const result = await pool.query(query);
+      return result.rows.map(row => ({
+        ...row,
+        selected: false // Add selection state for UI
+      }));
+    } catch (error) {
+      console.error('Error fetching plasma stock:', error);
+      throw error;
+    }
+  },
+
+  // Get plasma stock by serial ID for release with search functionality
+  async getPlasmaStockBySerialId(serialId) {
+    try {
+      // First try exact match
+      let query = `
+        SELECT
+          bs_id as id,
+          bs_serial_id as serial_id,
+          bs_blood_type as type,
+          bs_rh_factor as "rhFactor",
+          bs_volume as volume,
+          TO_CHAR(bs_timestamp, 'YYYY-MM-DD') as collection,
+          TO_CHAR(bs_expiration_date, 'YYYY-MM-DD') as expiration,
+          bs_status as status,
+          TO_CHAR(bs_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
+          CASE
+            WHEN bs_modified_at IS NOT NULL
+            THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
+            ELSE '-'
+          END as modified,
+          bs_category as category
+        FROM blood_stock
+        WHERE bs_serial_id = $1 AND bs_category = 'Plasma' AND bs_status = 'Stored'
+      `;
+
+      let result = await pool.query(query, [serialId]);
+
+      // If exact match found, return the first record
+      if (result.rows.length > 0) {
+        return result.rows[0];
+      }
+
+      // If exact match not found, try partial match
+      if (serialId.length > 0) {
+        query = `
+          SELECT
+            bs_id as id,
+            bs_serial_id as serial_id,
+            bs_blood_type as type,
+            bs_rh_factor as "rhFactor",
+            bs_volume as volume,
+            TO_CHAR(bs_timestamp, 'YYYY-MM-DD') as collection,
+            TO_CHAR(bs_expiration_date, 'YYYY-MM-DD') as expiration,
+            bs_status as status,
+            TO_CHAR(bs_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
+            CASE
+              WHEN bs_modified_at IS NOT NULL
+              THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
+              ELSE '-'
+            END as modified,
+            bs_category as category
+          FROM blood_stock
+          WHERE bs_serial_id ILIKE $1 AND bs_category = 'Plasma' AND bs_status = 'Stored'
+          ORDER BY bs_serial_id
+          LIMIT 5
+        `;
+
+        result = await pool.query(query, [`%${serialId}%`]);
+        return result.rows;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error fetching plasma stock by serial ID:', error);
+      throw error;
+    }
+  },
+
+  // Add new plasma stock record
+  async addPlasmaStock(plasmaData) {
+    try {
+      const query = `
+        INSERT INTO blood_stock (
+          bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
+          bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
+        RETURNING bs_id
+      `;
+
+      const values = [
+        plasmaData.serial_id,
+        plasmaData.type,
+        plasmaData.rhFactor,
+        parseInt(plasmaData.volume),
+        new Date(plasmaData.collection),
+        new Date(plasmaData.expiration),
+        plasmaData.status || 'Stored',
+        'Plasma'
+      ];
+
+      const result = await pool.query(query, values);
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error adding plasma stock:', error);
+      throw error;
+    }
+  },
+
+  // Update plasma stock record
+  async updatePlasmaStock(id, plasmaData) {
+    try {
+      const query = `
+        UPDATE blood_stock SET
+          bs_serial_id = $2,
+          bs_blood_type = $3,
+          bs_rh_factor = $4,
+          bs_volume = $5,
+          bs_timestamp = $6,
+          bs_expiration_date = $7,
+          bs_status = $8,
+          bs_modified_at = NOW(),
+          bs_category = $9
+        WHERE bs_id = $1
+      `;
+
+      const values = [
+        id,
+        plasmaData.serial_id,
+        plasmaData.type,
+        plasmaData.rhFactor,
+        parseInt(plasmaData.volume),
+        new Date(plasmaData.collection),
+        new Date(plasmaData.expiration),
+        plasmaData.status || 'Stored',
+        'Plasma'
+      ];
+
+      await pool.query(query, values);
+      return true;
+    } catch (error) {
+      console.error('Error updating plasma stock:', error);
+      throw error;
+    }
+  },
+
+  // Delete plasma stock records
+  async deletePlasmaStock(ids) {
+    try {
+      const query = 'DELETE FROM blood_stock WHERE bs_id = ANY($1) AND bs_category = \'Plasma\'';
+      await pool.query(query, [ids]);
+      return true;
+    } catch (error) {
+      console.error('Error deleting plasma stock:', error);
+      throw error;
+    }
+  },
+
+  // Search plasma stock (only Stored status)
+  async searchPlasmaStock(searchTerm) {
+    try {
+      const query = `
+        SELECT
+          bs_id as id,
+          bs_serial_id as serial_id,
+          bs_blood_type as type,
+          bs_rh_factor as "rhFactor",
+          bs_volume as volume,
+          TO_CHAR(bs_timestamp, 'MM/DD/YYYY') as collection,
+          TO_CHAR(bs_expiration_date, 'MM/DD/YYYY') as expiration,
+          bs_status as status,
+          TO_CHAR(bs_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
+          CASE
+            WHEN bs_modified_at IS NOT NULL
+            THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
+            ELSE '-'
+          END as modified,
+          bs_category as category
+        FROM blood_stock
+        WHERE
+          bs_category = 'Plasma' AND bs_status = 'Stored' AND (
+            bs_serial_id ILIKE $1 OR
+            bs_blood_type ILIKE $1 OR
+            bs_status ILIKE $1 OR
+            bs_rh_factor ILIKE $1
+          )
+        ORDER BY bs_created_at DESC
+      `;
+
+      const result = await pool.query(query, [`%${searchTerm}%`]);
+      return result.rows.map(row => ({
+        ...row,
+        selected: false
+      }));
+    } catch (error) {
+      console.error('Error searching plasma stock:', error);
+      throw error;
+    }
+  },
+
+  // ========== RELEASE PLASMA STOCK METHODS ==========
+
+  // Release plasma stock - moves records from blood_stock to released_blood
+  async releasePlasmaStock(releaseData) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Get the plasma stock records to be released
+      const getStockQuery = `
+        SELECT * FROM blood_stock
+        WHERE bs_serial_id = ANY($1) AND bs_category = 'Plasma' AND bs_status = 'Stored'
+      `;
+      const stockResult = await client.query(getStockQuery, [releaseData.serialIds]);
+
+      if (stockResult.rows.length === 0) {
+        throw new Error('No valid plasma stock records found for release');
+      }
+
+      // Insert records into released_blood table with status 'Released'
+      for (const stockRecord of stockResult.rows) {
+        const insertQuery = `
+          INSERT INTO released_blood (
+            rb_serial_id, rb_blood_type, rb_rh_factor, rb_volume,
+            rb_timestamp, rb_expiration_date, rb_status, rb_created_at,
+            rb_released_at, rb_category, rb_original_id,
+            rb_receiving_facility, rb_address, rb_contact_number,
+            rb_classification, rb_authorized_recipient, rb_recipient_designation,
+            rb_date_of_release, rb_condition_upon_release, rb_request_reference,
+            rb_released_by
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+        `;
+
+        const values = [
+          stockRecord.bs_serial_id,
+          stockRecord.bs_blood_type,
+          stockRecord.bs_rh_factor,
+          stockRecord.bs_volume,
+          stockRecord.bs_timestamp,
+          stockRecord.bs_expiration_date,
+          'Released', // Status in released_blood table
+          stockRecord.bs_created_at,
+          'Plasma',
+          stockRecord.bs_id,
+          releaseData.receivingFacility || '',
+          releaseData.address || '',
+          releaseData.contactNumber || '',
+          releaseData.classification || '',
+          releaseData.authorizedRecipient || '',
+          releaseData.recipientDesignation || '',
+          releaseData.dateOfRelease ? new Date(releaseData.dateOfRelease) : new Date(),
+          releaseData.conditionUponRelease || '',
+          releaseData.requestReference || '',
+          releaseData.releasedBy || ''
+        ];
+
+        await client.query(insertQuery, values);
+      }
+
+      // DELETE records from blood_stock table (don't update status, just remove completely)
+      const deleteQuery = `
+        DELETE FROM blood_stock
+        WHERE bs_serial_id = ANY($1) AND bs_category = 'Plasma' AND bs_status = 'Stored'
+      `;
+      await client.query(deleteQuery, [releaseData.serialIds]);
+
+      await client.query('COMMIT');
+      return { success: true, releasedCount: stockResult.rows.length };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error releasing plasma stock:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  // Get all released plasma records
+  async getReleasedPlasmaStock() {
+    try {
+      const query = `
+        SELECT
+          rb_id as id,
+          rb_serial_id as serial_id,
+          rb_blood_type as type,
+          rb_rh_factor as "rhFactor",
+          rb_volume as volume,
+          TO_CHAR(rb_timestamp, 'MM/DD/YYYY') as collection,
+          TO_CHAR(rb_expiration_date, 'MM/DD/YYYY') as expiration,
+          rb_status as status,
+          TO_CHAR(rb_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
+          CASE
+            WHEN rb_modified_at IS NOT NULL
+            THEN TO_CHAR(rb_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
+            ELSE '-'
+          END as modified,
+          TO_CHAR(rb_released_at, 'MM/DD/YYYY-HH24:MI:SS') as releasedAt,
+          rb_category as category,
+          rb_receiving_facility as receivingFacility,
+          rb_address as address,
+          rb_contact_number as contactNumber,
+          rb_classification as classification,
+          rb_authorized_recipient as authorizedRecipient,
+          rb_recipient_designation as recipientDesignation,
+          TO_CHAR(rb_date_of_release, 'MM/DD/YYYY') as dateOfRelease,
+          rb_condition_upon_release as conditionUponRelease,
+          rb_request_reference as requestReference,
+          rb_released_by as releasedBy
+        FROM released_blood
+        WHERE rb_category = 'Plasma'
+        ORDER BY rb_released_at DESC
+      `;
+
+      const result = await pool.query(query);
+      return result.rows.map(row => ({
+        ...row,
+        selected: false // Add selection state for UI
+      }));
+    } catch (error) {
+      console.error('Error fetching released plasma stock:', error);
+      throw error;
+    }
   },
 
   // ========== DONOR RECORD METHODS ==========
@@ -2062,98 +2740,91 @@ async restorePlateletStock(serialIds) {
 
     // Discard non-conforming stock (RED BLOOD CELL ONLY)
   async discardNonConformingStock(discardData) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    const getNonConformingQuery = `
-      SELECT * FROM non_conforming 
-      WHERE nc_serial_id = ANY($1) AND nc_category = 'Red Blood Cell'
-    `;
-    const ncResult = await client.query(getNonConformingQuery, [discardData.serialIds]);
-    
-    if (ncResult.rows.length === 0) {
-      throw new Error('No valid non-conforming Red Blood Cell records found for discard');
-    }
-
-    let discardedCount = 0;
-    const serialIdsToDelete = [];
-    const discardedBloodIds = []; // Track discarded blood IDs
-
-    for (const ncRecord of ncResult.rows) {
-      const checkExistingQuery = `
-        SELECT db_id FROM discarded_blood WHERE db_serial_id = $1
-      `;
-      const existingResult = await client.query(checkExistingQuery, [ncRecord.nc_serial_id]);
-      
-      if (existingResult.rows.length > 0) {
-        console.warn(`Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood, skipping`);
-        continue;
-      }
-
-      const insertQuery = `
-        INSERT INTO discarded_blood (
-          db_serial_id, db_blood_type, db_rh_factor, db_volume,
-          db_timestamp, db_expiration_date, db_status, db_created_at, 
-          db_discarded_at, db_category, db_original_id,
-          db_responsible_personnel, db_reason_for_discarding, db_authorized_by,
-          db_date_of_discard, db_time_of_discard, db_method_of_disposal, db_remarks
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
-        RETURNING db_id
-      `;
-      
-      const values = [
-        ncRecord.nc_serial_id,
-        ncRecord.nc_blood_type,
-        ncRecord.nc_rh_factor,
-        ncRecord.nc_volume,
-        ncRecord.nc_timestamp,
-        ncRecord.nc_expiration_date,
-        'Discarded',
-        ncRecord.nc_created_at,
-        'Red Blood Cell',
-        ncRecord.nc_id,
-        discardData.responsiblePersonnel,
-        discardData.reasonForDiscarding,
-        discardData.authorizedBy,
-        new Date(discardData.dateOfDiscard),
-        discardData.timeOfDiscard,
-        discardData.methodOfDisposal,
-        discardData.remarks || ''
-      ];
-      
-      const insertResult = await client.query(insertQuery, values);
-      discardedBloodIds.push(insertResult.rows[0].db_id); // Store the ID
-      discardedCount++;
-      serialIdsToDelete.push(ncRecord.nc_serial_id);
-    }
-
-    if (serialIdsToDelete.length > 0) {
-      const deleteQuery = `
-        DELETE FROM non_conforming 
+      // Get the non-conforming records to be discarded
+      const getNonConformingQuery = `
+        SELECT * FROM non_conforming 
         WHERE nc_serial_id = ANY($1) AND nc_category = 'Red Blood Cell'
       `;
-      await client.query(deleteQuery, [serialIdsToDelete]);
+      const ncResult = await client.query(getNonConformingQuery, [discardData.serialIds]);
+      
+      if (ncResult.rows.length === 0) {
+        throw new Error('No valid non-conforming Red Blood Cell records found for discard');
+      }
+
+      let discardedCount = 0;
+      const serialIdsToDelete = [];
+
+      // Insert records into discarded_blood table
+      for (const ncRecord of ncResult.rows) {
+        // Check if serial ID already exists in discarded_blood
+        const checkExistingQuery = `
+          SELECT db_id FROM discarded_blood WHERE db_serial_id = $1
+        `;
+        const existingResult = await client.query(checkExistingQuery, [ncRecord.nc_serial_id]);
+        
+        if (existingResult.rows.length > 0) {
+          console.warn(`Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood, skipping`);
+          continue;
+        }
+
+        const insertQuery = `
+          INSERT INTO discarded_blood (
+            db_serial_id, db_blood_type, db_rh_factor, db_volume,
+            db_timestamp, db_expiration_date, db_status, db_created_at, 
+            db_discarded_at, db_category, db_original_id,
+            db_responsible_personnel, db_reason_for_discarding, db_authorized_by,
+            db_date_of_discard, db_time_of_discard, db_method_of_disposal, db_remarks
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        `;
+        
+        const values = [
+          ncRecord.nc_serial_id,
+          ncRecord.nc_blood_type,
+          ncRecord.nc_rh_factor,
+          ncRecord.nc_volume,
+          ncRecord.nc_timestamp,
+          ncRecord.nc_expiration_date,
+          'Discarded',
+          ncRecord.nc_created_at,
+          'Red Blood Cell',
+          ncRecord.nc_id,
+          discardData.responsiblePersonnel,
+          discardData.reasonForDiscarding,
+          discardData.authorizedBy,
+          new Date(discardData.dateOfDiscard),
+          discardData.timeOfDiscard,
+          discardData.methodOfDisposal,
+          discardData.remarks || ''
+        ];
+        
+        await client.query(insertQuery, values);
+        discardedCount++;
+        serialIdsToDelete.push(ncRecord.nc_serial_id);
+      }
+
+      // DELETE records from non_conforming table
+      if (serialIdsToDelete.length > 0) {
+        const deleteQuery = `
+          DELETE FROM non_conforming 
+          WHERE nc_serial_id = ANY($1) AND nc_category = 'Red Blood Cell'
+        `;
+        await client.query(deleteQuery, [serialIdsToDelete]);
+      }
+
+      await client.query('COMMIT');
+      return { success: true, discardedCount: discardedCount };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error discarding non-conforming stock:', error);
+      throw error;
+    } finally {
+      client.release();
     }
-
-    // Generate invoice with the discarded blood IDs
-    const invoiceResult = await this.generateDiscardedInvoiceWithClient(client, discardData, discardedBloodIds);
-
-    await client.query('COMMIT');
-    return { 
-      success: true, 
-      discardedCount: discardedCount,
-      invoiceId: invoiceResult.invoiceId,
-      invoiceDbId: invoiceResult.invoiceDbId
-    };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error discarding non-conforming stock:', error);
-    throw error;
-  } finally {
-    client.release();
-  }
-},
+  },
 
   // Get non-conforming stock by serial ID for discard (RED BLOOD CELL ONLY)
   async getNonConformingBySerialIdForDiscard(serialId) {
@@ -2225,194 +2896,7 @@ async restorePlateletStock(serialIds) {
   }
 },
 
-async discardPlateletNonConformingStock(discardData) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const getNonConformingQuery = `
-      SELECT * FROM non_conforming 
-      WHERE nc_serial_id = ANY($1) AND nc_category = 'Platelet'
-    `;
-    const ncResult = await client.query(getNonConformingQuery, [discardData.serialIds]);
-    
-    if (ncResult.rows.length === 0) {
-      throw new Error('No valid platelet non-conforming records found for discard');
-    }
-
-    let discardedCount = 0;
-    const serialIdsToDelete = [];
-    const discardedBloodIds = []; // Track discarded blood IDs
-
-    for (const ncRecord of ncResult.rows) {
-      const checkExistingQuery = `
-        SELECT db_id FROM discarded_blood WHERE db_serial_id = $1
-      `;
-      const existingResult = await client.query(checkExistingQuery, [ncRecord.nc_serial_id]);
-      
-      if (existingResult.rows.length > 0) {
-        console.warn(`Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood, skipping`);
-        continue;
-      }
-
-      const insertQuery = `
-        INSERT INTO discarded_blood (
-          db_serial_id, db_blood_type, db_rh_factor, db_volume,
-          db_timestamp, db_expiration_date, db_status, db_created_at, 
-          db_discarded_at, db_category, db_original_id,
-          db_responsible_personnel, db_reason_for_discarding, db_authorized_by,
-          db_date_of_discard, db_time_of_discard, db_method_of_disposal, db_remarks
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
-        RETURNING db_id
-      `;
-      
-      const values = [
-        ncRecord.nc_serial_id,
-        ncRecord.nc_blood_type,
-        ncRecord.nc_rh_factor,
-        ncRecord.nc_volume,
-        ncRecord.nc_timestamp,
-        ncRecord.nc_expiration_date,
-        'Discarded',
-        ncRecord.nc_created_at,
-        'Platelet',
-        ncRecord.nc_id,
-        discardData.responsiblePersonnel,
-        discardData.reasonForDiscarding,
-        discardData.authorizedBy,
-        new Date(discardData.dateOfDiscard),
-        discardData.timeOfDiscard,
-        discardData.methodOfDisposal,
-        discardData.remarks || ''
-      ];
-      
-      const insertResult = await client.query(insertQuery, values);
-      discardedBloodIds.push(insertResult.rows[0].db_id); // Store the ID
-      discardedCount++;
-      serialIdsToDelete.push(ncRecord.nc_serial_id);
-    }
-
-    if (serialIdsToDelete.length > 0) {
-      const deleteQuery = `
-        DELETE FROM non_conforming 
-        WHERE nc_serial_id = ANY($1) AND nc_category = 'Platelet'
-      `;
-      await client.query(deleteQuery, [serialIdsToDelete]);
-    }
-
-    // Generate invoice with the discarded blood IDs
-    const invoiceResult = await this.generateDiscardedInvoiceWithClient(client, discardData, discardedBloodIds);
-
-    await client.query('COMMIT');
-    return { 
-      success: true, 
-      discardedCount: discardedCount,
-      invoiceId: invoiceResult.invoiceId,
-      invoiceDbId: invoiceResult.invoiceDbId
-    };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error discarding platelet non-conforming stock:', error);
-    throw error;
-  } finally {
-    client.release();
-  }
-},
-async discardPlasmaNonConformingStock(discardData) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const getNonConformingQuery = `
-      SELECT * FROM non_conforming 
-      WHERE nc_serial_id = ANY($1) AND nc_category = 'Plasma'
-    `;
-    const ncResult = await client.query(getNonConformingQuery, [discardData.serialIds]);
-    
-    if (ncResult.rows.length === 0) {
-      throw new Error('No valid plasma non-conforming records found for discard');
-    }
-
-    let discardedCount = 0;
-    const serialIdsToDelete = [];
-    const discardedBloodIds = []; // Track discarded blood IDs
-
-    for (const ncRecord of ncResult.rows) {
-      const checkExistingQuery = `
-        SELECT db_id FROM discarded_blood WHERE db_serial_id = $1
-      `;
-      const existingResult = await client.query(checkExistingQuery, [ncRecord.nc_serial_id]);
-      
-      if (existingResult.rows.length > 0) {
-        console.warn(`Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood, skipping`);
-        continue;
-      }
-
-      const insertQuery = `
-        INSERT INTO discarded_blood (
-          db_serial_id, db_blood_type, db_rh_factor, db_volume,
-          db_timestamp, db_expiration_date, db_status, db_created_at, 
-          db_discarded_at, db_category, db_original_id,
-          db_responsible_personnel, db_reason_for_discarding, db_authorized_by,
-          db_date_of_discard, db_time_of_discard, db_method_of_disposal, db_remarks
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
-        RETURNING db_id
-      `;
-      
-      const values = [
-        ncRecord.nc_serial_id,
-        ncRecord.nc_blood_type,
-        ncRecord.nc_rh_factor,
-        ncRecord.nc_volume,
-        ncRecord.nc_timestamp,
-        ncRecord.nc_expiration_date,
-        'Discarded',
-        ncRecord.nc_created_at,
-        'Plasma',
-        ncRecord.nc_id,
-        discardData.responsiblePersonnel,
-        discardData.reasonForDiscarding,
-        discardData.authorizedBy,
-        new Date(discardData.dateOfDiscard),
-        discardData.timeOfDiscard,
-        discardData.methodOfDisposal,
-        discardData.remarks || ''
-      ];
-      
-      const insertResult = await client.query(insertQuery, values);
-      discardedBloodIds.push(insertResult.rows[0].db_id); // Store the ID
-      discardedCount++;
-      serialIdsToDelete.push(ncRecord.nc_serial_id);
-    }
-
-    if (serialIdsToDelete.length > 0) {
-      const deleteQuery = `
-        DELETE FROM non_conforming 
-        WHERE nc_serial_id = ANY($1) AND nc_category = 'Plasma'
-      `;
-      await client.query(deleteQuery, [serialIdsToDelete]);
-    }
-
-    // Generate invoice with the discarded blood IDs
-    const invoiceResult = await this.generateDiscardedInvoiceWithClient(client, discardData, discardedBloodIds);
-
-    await client.query('COMMIT');
-    return { 
-      success: true, 
-      discardedCount: discardedCount,
-      invoiceId: invoiceResult.invoiceId,
-      invoiceDbId: invoiceResult.invoiceDbId
-    };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error discarding plasma non-conforming stock:', error);
-    throw error;
-  } finally {
-    client.release();
-  }
-},
-    
-// Search non-conforming records for discard modal (RED BLOOD CELL ONLY)
+    // Search non-conforming records for discard modal (RED BLOOD CELL ONLY)
   async searchNonConformingForDiscard(searchTerm) {
     try {
       const query = `
@@ -2734,7 +3218,7 @@ async discardPlasmaNonConformingStock(discardData) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-  
+
       const getNonConformingQuery = `
         SELECT * FROM non_conforming 
         WHERE nc_serial_id = ANY($1) AND nc_category = 'Platelet'
@@ -2744,11 +3228,10 @@ async discardPlasmaNonConformingStock(discardData) {
       if (ncResult.rows.length === 0) {
         throw new Error('No valid platelet non-conforming records found for discard');
       }
-  
+
       let discardedCount = 0;
       const serialIdsToDelete = [];
-      const discardedBloodIds = [];
-  
+
       for (const ncRecord of ncResult.rows) {
         const checkExistingQuery = `
           SELECT db_id FROM discarded_blood WHERE db_serial_id = $1
@@ -2759,7 +3242,7 @@ async discardPlasmaNonConformingStock(discardData) {
           console.warn(`Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood, skipping`);
           continue;
         }
-  
+
         const insertQuery = `
           INSERT INTO discarded_blood (
             db_serial_id, db_blood_type, db_rh_factor, db_volume,
@@ -2768,7 +3251,6 @@ async discardPlasmaNonConformingStock(discardData) {
             db_responsible_personnel, db_reason_for_discarding, db_authorized_by,
             db_date_of_discard, db_time_of_discard, db_method_of_disposal, db_remarks
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
-          RETURNING db_id
         `;
         
         const values = [
@@ -2791,12 +3273,11 @@ async discardPlasmaNonConformingStock(discardData) {
           discardData.remarks || ''
         ];
         
-        const insertResult = await client.query(insertQuery, values);
-        discardedBloodIds.push(insertResult.rows[0].db_id);
+        await client.query(insertQuery, values);
         discardedCount++;
         serialIdsToDelete.push(ncRecord.nc_serial_id);
       }
-  
+
       if (serialIdsToDelete.length > 0) {
         const deleteQuery = `
           DELETE FROM non_conforming 
@@ -2804,17 +3285,9 @@ async discardPlasmaNonConformingStock(discardData) {
         `;
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
-  
-      // Generate invoice with the discarded blood IDs
-      const invoiceResult = await this.generateDiscardedInvoiceWithClient(client, discardData, discardedBloodIds);
-  
+
       await client.query('COMMIT');
-      return { 
-        success: true, 
-        discardedCount: discardedCount,
-        invoiceId: invoiceResult.invoiceId,
-        invoiceDbId: invoiceResult.invoiceDbId
-      };
+      return { success: true, discardedCount: discardedCount };
     } catch (error) {
       await client.query('ROLLBACK');
       console.error('Error discarding platelet non-conforming stock:', error);
@@ -3172,7 +3645,7 @@ async discardPlasmaNonConformingStock(discardData) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-  
+
       const getNonConformingQuery = `
         SELECT * FROM non_conforming 
         WHERE nc_serial_id = ANY($1) AND nc_category = 'Plasma'
@@ -3182,11 +3655,10 @@ async discardPlasmaNonConformingStock(discardData) {
       if (ncResult.rows.length === 0) {
         throw new Error('No valid plasma non-conforming records found for discard');
       }
-  
+
       let discardedCount = 0;
       const serialIdsToDelete = [];
-      const discardedBloodIds = [];
-  
+
       for (const ncRecord of ncResult.rows) {
         const checkExistingQuery = `
           SELECT db_id FROM discarded_blood WHERE db_serial_id = $1
@@ -3197,7 +3669,7 @@ async discardPlasmaNonConformingStock(discardData) {
           console.warn(`Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood, skipping`);
           continue;
         }
-  
+
         const insertQuery = `
           INSERT INTO discarded_blood (
             db_serial_id, db_blood_type, db_rh_factor, db_volume,
@@ -3206,7 +3678,6 @@ async discardPlasmaNonConformingStock(discardData) {
             db_responsible_personnel, db_reason_for_discarding, db_authorized_by,
             db_date_of_discard, db_time_of_discard, db_method_of_disposal, db_remarks
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
-          RETURNING db_id
         `;
         
         const values = [
@@ -3229,12 +3700,11 @@ async discardPlasmaNonConformingStock(discardData) {
           discardData.remarks || ''
         ];
         
-        const insertResult = await client.query(insertQuery, values);
-        discardedBloodIds.push(insertResult.rows[0].db_id);
+        await client.query(insertQuery, values);
         discardedCount++;
         serialIdsToDelete.push(ncRecord.nc_serial_id);
       }
-  
+
       if (serialIdsToDelete.length > 0) {
         const deleteQuery = `
           DELETE FROM non_conforming 
@@ -3242,17 +3712,9 @@ async discardPlasmaNonConformingStock(discardData) {
         `;
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
-  
-      // Generate invoice with the discarded blood IDs
-      const invoiceResult = await this.generateDiscardedInvoiceWithClient(client, discardData, discardedBloodIds);
-  
+
       await client.query('COMMIT');
-      return { 
-        success: true, 
-        discardedCount: discardedCount,
-        invoiceId: invoiceResult.invoiceId,
-        invoiceDbId: invoiceResult.invoiceDbId
-      };
+      return { success: true, discardedCount: discardedCount };
     } catch (error) {
       await client.query('ROLLBACK');
       console.error('Error discarding plasma non-conforming stock:', error);
@@ -3322,613 +3784,1775 @@ async discardPlasmaNonConformingStock(discardData) {
           return result.rows;
         }
       }
+
       return null;
     } catch (error) {
       throw error;
     }
   },
 
-  // ========== INVOICE METHODS ==========
 
-  // Generate invoice using existing transaction client
-async generateInvoiceWithClient(client, releaseData, releasedBloodIds) {
-  try {
-    // Generate invoice ID
-    const invoiceIdResult = await client.query('SELECT generate_invoice_id() as invoice_id');
-    const invoiceId = invoiceIdResult.rows[0].invoice_id;
-
-    // Insert invoice header
-    const insertInvoiceQuery = `
-      INSERT INTO blood_invoices (
-        bi_invoice_id, bi_receiving_facility, bi_classification,
-        bi_date_of_release, bi_released_by, bi_reference_number,
-        bi_prepared_by, bi_verified_by, bi_created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-      RETURNING bi_id
-    `;
-
-    const invoiceValues = [
-      invoiceId,
-      releaseData.receivingFacility || '',
-      releaseData.classification || '',
-      releaseData.dateOfRelease ? new Date(releaseData.dateOfRelease) : new Date(),
-      releaseData.releasedBy || '',
-      releaseData.requestReference || '',
-      releaseData.releasedBy || '',
-      releaseData.verifiedBy || '',
-    ];
-
-    const invoiceResult = await client.query(insertInvoiceQuery, invoiceValues);
-    const invoiceDbId = invoiceResult.rows[0].bi_id;
-
-    // Get released blood details and insert invoice items
-    for (const rbId of releasedBloodIds) {
-      const getReleasedBloodQuery = `
-        SELECT rb_serial_id, rb_blood_type, rb_rh_factor, rb_timestamp, 
-               rb_expiration_date, rb_volume
-        FROM released_blood
-        WHERE rb_id = $1
-      `;
-      
-      const rbResult = await client.query(getReleasedBloodQuery, [rbId]);
-      
-      if (rbResult.rows.length > 0) {
-        const rb = rbResult.rows[0];
-        
-        const insertItemQuery = `
-          INSERT INTO blood_invoice_items (
-            bii_invoice_id, bii_released_blood_id, bii_serial_id,
-            bii_blood_type, bii_rh_factor, bii_date_of_collection,
-            bii_date_of_expiration, bii_volume, bii_created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-        `;
-        
-        await client.query(insertItemQuery, [
-          invoiceDbId,
-          rbId,
-          rb.rb_serial_id,
-          rb.rb_blood_type,
-          rb.rb_rh_factor,
-          rb.rb_timestamp,
-          rb.rb_expiration_date,
-          rb.rb_volume
-        ]);
-
-        // Update released_blood with invoice reference
-        await client.query(
-          'UPDATE released_blood SET rb_invoice_id = $1 WHERE rb_id = $2',
-          [invoiceDbId, rbId]
-        );
-      }
-    }
-
-    return { success: true, invoiceId: invoiceId, invoiceDbId: invoiceDbId };
-  } catch (error) {
-    console.error('Error generating invoice:', error);
-    throw error;
-  }
-},
-
-// Get all invoices with item counts
-async getAllInvoices() {
-  try {
-    const query = `
-      SELECT 
-        bi.bi_id as id,
-        bi.bi_invoice_id as "invoiceId",
-        bi.bi_receiving_facility as "receivingFacility",
-        bi.bi_classification as classification,
-        TO_CHAR(bi.bi_date_of_release, 'MM/DD/YYYY') as "dateOfRelease",
-        bi.bi_released_by as "releasedBy",
-        bi.bi_reference_number as "referenceNumber",
-        bi.bi_prepared_by as "preparedBy",
-        bi.bi_verified_by as "verifiedBy",
-        TO_CHAR(bi.bi_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
-        COUNT(bii.bii_id) as "itemCount"
-      FROM blood_invoices bi
-      LEFT JOIN blood_invoice_items bii ON bi.bi_id = bii.bii_invoice_id
-      GROUP BY bi.bi_id
-      ORDER BY bi.bi_created_at DESC
-    `;
-    
-    const result = await pool.query(query);
-    return result.rows.map(row => ({
-      ...row,
-      selected: false
-    }));
-  } catch (error) {
-    console.error('Error fetching invoices:', error);
-    throw error;
-  }
-},
-
-async getInvoiceDetails(invoiceId) {
-  try {
-    const headerQuery = `
-      SELECT 
-        bi.bi_id as id,
-        bi.bi_invoice_id as "invoiceId",
-        bi.bi_receiving_facility as "receivingFacility",
-        bi.bi_classification as classification,
-        TO_CHAR(bi.bi_date_of_release, 'MM/DD/YYYY') as "dateOfRelease",
-        bi.bi_released_by as "releasedBy",
-        bi.bi_reference_number as "referenceNumber",
-        bi.bi_prepared_by as "preparedBy",
-        bi.bi_verified_by as "verifiedBy",
-        TO_CHAR(bi.bi_created_at, 'MM/DD/YYYY') as created,
-        rb.rb_authorized_recipient as "authorizedRecipient"
-      FROM blood_invoices bi
-      LEFT JOIN blood_invoice_items bii ON bi.bi_id = bii.bii_invoice_id
-      LEFT JOIN released_blood rb ON bii.bii_released_blood_id = rb.rb_id
-      WHERE bi.bi_id = $1
-      LIMIT 1
-    `;
-    
-    const itemsQuery = `
-      SELECT 
-        bii_serial_id as "serialId",
-        bii_blood_type as "bloodType",
-        bii_rh_factor as "rhFactor",
-        TO_CHAR(bii_date_of_collection, 'MM/DD/YYYY') as "dateOfCollection",
-        TO_CHAR(bii_date_of_expiration, 'MM/DD/YYYY') as "dateOfExpiration",
-        bii_volume as volume,
-        bii_remarks as remarks
-      FROM blood_invoice_items
-      WHERE bii_invoice_id = $1
-      ORDER BY bii_created_at
-    `;
-    
-    const headerResult = await pool.query(headerQuery, [invoiceId]);
-    const itemsResult = await pool.query(itemsQuery, [invoiceId]);
-    
-    if (headerResult.rows.length === 0) {
-      throw new Error('Invoice not found');
-    }
-    
-    return {
-      header: headerResult.rows[0],
-      items: itemsResult.rows
-    };
-  } catch (error) {
-    console.error('Error fetching invoice details:', error);
-    throw error;
-  }
-},
-
-// Search invoices
-async searchInvoices(searchTerm) {
-  try {
-    const query = `
-      SELECT 
-        bi.bi_id as id,
-        bi.bi_invoice_id as "invoiceId",
-        bi.bi_receiving_facility as "receivingFacility",
-        bi.bi_classification as classification,
-        TO_CHAR(bi.bi_date_of_release, 'MM/DD/YYYY') as "dateOfRelease",
-        bi.bi_released_by as "releasedBy",
-        bi.bi_reference_number as "referenceNumber",
-        COUNT(bii.bii_id) as "itemCount"
-      FROM blood_invoices bi
-      LEFT JOIN blood_invoice_items bii ON bi.bi_id = bii.bii_invoice_id
-      WHERE 
-        bi.bi_invoice_id ILIKE $1 OR
-        bi.bi_receiving_facility ILIKE $1 OR
-        bi.bi_classification ILIKE $1 OR
-        bi.bi_released_by ILIKE $1 OR
-        bi.bi_reference_number ILIKE $1
-      GROUP BY bi.bi_id
-      ORDER BY bi.bi_created_at DESC
-    `;
-    
-    const result = await pool.query(query, [`%${searchTerm}%`]);
-    return result.rows.map(row => ({
-      ...row,
-      selected: false
-    }));
-  } catch (error) {
-    console.error('Error searching invoices:', error);
-    throw error;
-  }
-},
-
-  // Delete invoices
-  async deleteInvoices(invoiceIds) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    // Ensure invoiceIds is an array and contains valid integers
-    if (!Array.isArray(invoiceIds) || invoiceIds.length === 0) {
-      throw new Error('Invalid invoice IDs provided');
-    }
-
-    // Get all released_blood IDs associated with these invoices
-    const getReleasedBloodQuery = `
-      SELECT DISTINCT bii.bii_released_blood_id
-      FROM blood_invoice_items bii
-      WHERE bii.bii_invoice_id = ANY($1::integer[])
-    `;
-    const releasedBloodResult = await client.query(getReleasedBloodQuery, [invoiceIds]);
-    const releasedBloodIds = releasedBloodResult.rows
-      .map(row => row.bii_released_blood_id)
-      .filter(id => id !== null);
-
-    // Delete invoice items first (due to foreign key constraint)
-    const deleteItemsQuery = `
-      DELETE FROM blood_invoice_items
-      WHERE bii_invoice_id = ANY($1::integer[])
-    `;
-    await client.query(deleteItemsQuery, [invoiceIds]);
-
-    // Delete invoices
-    const deleteInvoicesQuery = `
-      DELETE FROM blood_invoices
-      WHERE bi_id = ANY($1::integer[])
-    `;
-    const deleteResult = await client.query(deleteInvoicesQuery, [invoiceIds]);
-
-    // Clear invoice reference from released_blood records
-    if (releasedBloodIds.length > 0) {
-      const clearInvoiceRefQuery = `
-        UPDATE released_blood
-        SET rb_invoice_id = NULL
-        WHERE rb_id = ANY($1::integer[])
-      `;
-      await client.query(clearInvoiceRefQuery, [releasedBloodIds]);
-    }
-
-    await client.query('COMMIT');
-
-    return {
-      success: true,
-      deletedCount: deleteResult.rowCount,
-      message: `Successfully deleted ${deleteResult.rowCount} invoice(s)`
-    };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error deleting invoices:', error);
-    throw error;
-  } finally {
-    client.release();
-  }
-},
-
-// ========== DISCARDED BLOOD INVOICE METHODS ==========
-
-async generateDiscardedInvoiceId() {
-  try {
-    // Get current timestamp in the format: YYYYMMDD-HHMMSS-mmm
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
-    
-    const timestamp = `${year}${month}${day}-${hours}${minutes}${seconds}-${milliseconds}`;
-    
-    return timestamp;
-  } catch (error) {
-    console.error('Error generating discarded invoice ID:', error);
-    throw error;
-  }
-},
-
-// Generate reference number for discarded invoice
-async generateDiscardedReferenceNumber(category) {
-  try {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
-    
-    // Determine category prefix
-    let categoryPrefix = 'RBC';
-    if (category === 'Platelet') {
-      categoryPrefix = 'PLT';
-    } else if (category === 'Plasma') {
-      categoryPrefix = 'PLS';
-    }
-    
-    const datePart = `${year}${month}${day}`;
-    const timePart = `${hours}${minutes}${seconds}`;
-    const uniquePart = milliseconds;
-    
-    return `REF-${categoryPrefix}-${datePart}-${timePart}-${uniquePart}`;
-  } catch (error) {
-    console.error('Error generating discarded reference number:', error);
-    throw error;
-  }
-},
-
-  // Generate discarded invoice using existing transaction client
-  async generateDiscardedInvoiceWithClient(client, discardData, discardedBloodIds) {
+  // Get blood stock counts by category
+  async getBloodStockCounts() {
     try {
-      // Generate invoice ID
-      const invoiceIdResult = await client.query('SELECT generate_discarded_invoice_id() as invoice_id');
-      const invoiceId = invoiceIdResult.rows[0].invoice_id;
-
-      // Determine category from first discarded blood item
-      let category = 'Red Blood Cell'; // default
-      if (discardedBloodIds.length > 0) {
-        const categoryQuery = `
-          SELECT db_category FROM discarded_blood WHERE db_id = $1
-        `;
-        const categoryResult = await client.query(categoryQuery, [discardedBloodIds[0]]);
-        if (categoryResult.rows.length > 0) {
-          category = categoryResult.rows[0].db_category;
-        }
-      }
-
-      // Generate reference number based on category
-      const referenceNumber = await this.generateDiscardedReferenceNumber(category);
-
-      // Insert invoice header with reference number
-      const insertInvoiceQuery = `
-        INSERT INTO discarded_blood_invoices (
-          dbi_invoice_id, dbi_reference_number, dbi_responsible_personnel, dbi_reason_for_discarding,
-          dbi_authorized_by, dbi_date_of_discard, dbi_time_of_discard,
-          dbi_method_of_disposal, dbi_remarks, dbi_created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-        RETURNING dbi_id
+      const query = `
+        SELECT
+          bs_category as category,
+          COUNT(*) as count
+        FROM blood_stock
+        WHERE bs_status = 'Stored'
+        GROUP BY bs_category
       `;
 
-      const invoiceValues = [
-        invoiceId,
-        referenceNumber,
-        discardData.responsiblePersonnel || '',
-        discardData.reasonForDiscarding || '',
-        discardData.authorizedBy || '',
-        discardData.dateOfDiscard ? new Date(discardData.dateOfDiscard) : new Date(),
-        discardData.timeOfDiscard || '',
-        discardData.methodOfDisposal || '',
-        discardData.remarks || '',
-      ];
+      const result = await pool.query(query);
 
-      const invoiceResult = await client.query(insertInvoiceQuery, invoiceValues);
-      const invoiceDbId = invoiceResult.rows[0].dbi_id;
+      // Transform to object format
+      const counts = {
+        redBloodCell: 0,
+        platelet: 0,
+        plasma: 0
+      };
 
-      // Get discarded blood details and insert invoice items
-      for (const dbId of discardedBloodIds) {
-        const getDiscardedBloodQuery = `
-          SELECT db_serial_id, db_blood_type, db_rh_factor, db_timestamp, 
-                db_expiration_date, db_volume
-          FROM discarded_blood
-          WHERE db_id = $1
-        `;
-        
-        const dbResult = await client.query(getDiscardedBloodQuery, [dbId]);
-        
-        if (dbResult.rows.length > 0) {
-          const db = dbResult.rows[0];
-          
-          const insertItemQuery = `
-            INSERT INTO discarded_blood_invoice_items (
-              dbii_invoice_id, dbii_discarded_blood_id, dbii_serial_id,
-              dbii_blood_type, dbii_rh_factor, dbii_date_of_collection,
-              dbii_date_of_expiration, dbii_volume, dbii_created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-          `;
-          
-          await client.query(insertItemQuery, [
-            invoiceDbId,
-            dbId,
-            db.db_serial_id,
-            db.db_blood_type,
-            db.db_rh_factor,
-            db.db_timestamp,
-            db.db_expiration_date,
-            db.db_volume
-          ]);
-
-          // Update discarded_blood with invoice reference
-          await client.query(
-            'UPDATE discarded_blood SET db_invoice_id = $1 WHERE db_id = $2',
-            [invoiceDbId, dbId]
-          );
+      result.rows.forEach(row => {
+        if (row.category === 'Red Blood Cell') {
+          counts.redBloodCell = parseInt(row.count);
+        } else if (row.category === 'Platelet') {
+          counts.platelet = parseInt(row.count);
+        } else if (row.category === 'Plasma') {
+          counts.plasma = parseInt(row.count);
         }
-      }
+      });
 
-      return { success: true, invoiceId: invoiceId, invoiceDbId: invoiceDbId, referenceNumber: referenceNumber };
+      return counts;
     } catch (error) {
-      console.error('Error generating discarded invoice:', error);
+      console.error('Error getting blood stock counts:', error);
       throw error;
     }
   },
 
-// Get all discarded invoices with item counts
-// Get all discarded invoices with item counts
-async getAllDiscardedBloodInvoices() {
-  try {
-    const query = `
-      SELECT 
-        dbi.dbi_id as id,
-        dbi.dbi_invoice_id as "invoiceId",
-        COALESCE(dbi.dbi_reference_number, '') as "referenceNumber",
-        dbi.dbi_responsible_personnel as "responsiblePersonnel",
-        dbi.dbi_reason_for_discarding as "reasonForDiscarding",
-        dbi.dbi_authorized_by as "authorizedBy",
-        TO_CHAR(dbi.dbi_date_of_discard, 'MM/DD/YYYY') as "dateOfDiscard",
-        dbi.dbi_time_of_discard as "timeOfDiscard",
-        dbi.dbi_method_of_disposal as "methodOfDisposal",
-        dbi.dbi_remarks as remarks,
-        TO_CHAR(dbi.dbi_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
-        COUNT(dbii.dbii_id) as "itemCount"
-      FROM discarded_blood_invoices dbi
-      LEFT JOIN discarded_blood_invoice_items dbii ON dbi.dbi_id = dbii.dbii_invoice_id
-      GROUP BY dbi.dbi_id, dbi.dbi_invoice_id, dbi.dbi_reference_number,
-               dbi.dbi_responsible_personnel, dbi.dbi_reason_for_discarding,
-               dbi.dbi_authorized_by, dbi.dbi_date_of_discard, dbi.dbi_time_of_discard,
-               dbi.dbi_method_of_disposal, dbi.dbi_remarks, dbi.dbi_created_at
-      ORDER BY dbi.dbi_created_at DESC
-    `;
-    
-    const result = await pool.query(query);
-    return result.rows.map(row => ({
-      ...row,
-      selected: false
-    }));
-  } catch (error) {
-    console.error('Error fetching discarded invoices:', error);
-    throw error;
-  }
-},
+  // Get blood stock counts by result blood type (combining all categories)
+  async getBloodStockCountsByType() {
+    try {
+      const query = `
+        SELECT
+          bs_result_bloodtype as result_bloodtype,
+          COUNT(*) as count
+        FROM blood_stock
+        WHERE bs_status = 'Stored' AND bs_result_bloodtype IS NOT NULL
+        GROUP BY bs_result_bloodtype
+      `;
 
-async viewDiscardedBloodInvoice(invoiceId) {
-  try {
-    const headerQuery = `
-      SELECT 
-        dbi.dbi_id as id,
-        dbi.dbi_invoice_id as "invoiceId",
-        COALESCE(dbi.dbi_reference_number, '') as "referenceNumber",
-        dbi.dbi_responsible_personnel as "responsiblePersonnel",
-        dbi.dbi_reason_for_discarding as "reasonForDiscarding",
-        dbi.dbi_authorized_by as "authorizedBy",
-        TO_CHAR(dbi.dbi_date_of_discard, 'MM/DD/YYYY') as "dateOfDiscard",
-        dbi.dbi_time_of_discard as "timeOfDiscard",
-        dbi.dbi_method_of_disposal as "methodOfDisposal",
-        dbi.dbi_remarks as remarks,
-        TO_CHAR(dbi.dbi_created_at, 'MM/DD/YYYY') as created
-      FROM discarded_blood_invoices dbi
-      WHERE dbi.dbi_id = $1
-    `;
-    
-    const itemsQuery = `
-      SELECT 
-        dbii_serial_id as "serialId",
-        dbii_blood_type as "bloodType",
-        dbii_rh_factor as "rhFactor",
-        TO_CHAR(dbii_date_of_collection, 'MM/DD/YYYY') as "dateOfCollection",
-        TO_CHAR(dbii_date_of_expiration, 'MM/DD/YYYY') as "dateOfExpiration",
-        dbii_volume as volume
-      FROM discarded_blood_invoice_items
-      WHERE dbii_invoice_id = $1
-      ORDER BY dbii_created_at
-    `;
-    
-    const headerResult = await pool.query(headerQuery, [invoiceId]);
-    const itemsResult = await pool.query(itemsQuery, [invoiceId]);
-    
-    if (headerResult.rows.length === 0) {
-      throw new Error('Discarded invoice not found');
+      const result = await pool.query(query);
+
+      // Transform to object format with blood types
+      const counts = {
+        'AB+': 0,
+        'AB-': 0,
+        'A+': 0,
+        'A-': 0,
+        'B+': 0,
+        'B-': 0,
+        'O+': 0,
+        'O-': 0
+      };
+
+      result.rows.forEach(row => {
+        const fullType = row.result_bloodtype;
+        if (fullType && counts.hasOwnProperty(fullType)) {
+          counts[fullType] += parseInt(row.count);
+        }
+      });
+
+      return counts;
+    } catch (error) {
+      console.error('Error getting blood stock counts by type:', error);
+      throw error;
     }
-    
-    return {
-      header: headerResult.rows[0],
-      items: itemsResult.rows
-    };
-  } catch (error) {
-    console.error('Error fetching discarded invoice details:', error);
-    throw error;
-  }
-},
+  },
 
-// Search discarded invoices
-// Search discarded invoices
-async searchDiscardedBloodInvoices(searchTerm) {
-  try {
-    const query = `
-      SELECT 
-        dbi.dbi_id as id,
-        dbi.dbi_invoice_id as "invoiceId",
-        COALESCE(dbi.dbi_reference_number, '') as "referenceNumber",
-        dbi.dbi_responsible_personnel as "responsiblePersonnel",
-        dbi.dbi_reason_for_discarding as "reasonForDiscarding",
-        dbi.dbi_authorized_by as "authorizedBy",
-        TO_CHAR(dbi.dbi_date_of_discard, 'MM/DD/YYYY') as "dateOfDiscard",
-        dbi.dbi_method_of_disposal as "methodOfDisposal",
-        COUNT(dbii.dbii_id) as "itemCount"
-      FROM discarded_blood_invoices dbi
-      LEFT JOIN discarded_blood_invoice_items dbii ON dbi.dbi_id = dbii.dbii_invoice_id
-      WHERE 
-        dbi.dbi_invoice_id ILIKE $1 OR
-        COALESCE(dbi.dbi_reference_number, '') ILIKE $1 OR
-        dbi.dbi_responsible_personnel ILIKE $1 OR
-        dbi.dbi_reason_for_discarding ILIKE $1 OR
-        dbi.dbi_authorized_by ILIKE $1 OR
-        dbi.dbi_method_of_disposal ILIKE $1
-      GROUP BY dbi.dbi_id
-      ORDER BY dbi.dbi_created_at DESC
-    `;
-    
-    const result = await pool.query(query, [`%${searchTerm}%`]);
-    return result.rows.map(row => ({
-      ...row,
-      selected: false
-    }));
-  } catch (error) {
-    console.error('Error searching discarded invoices:', error);
-    throw error;
-  }
-},
+  // ========== RBC USER PROFILE MANAGEMENT ==========
 
-// Delete discarded invoices
-  async deleteDiscardedBloodInvoices(invoiceIds) {
+  // Get RBC user profile
+  async getUserProfileRBC(userId) {
     const client = await pool.connect();
+
     try {
       await client.query('BEGIN');
 
-      if (!Array.isArray(invoiceIds) || invoiceIds.length === 0) {
-        throw new Error('Invalid invoice IDs provided');
+      // First, ensure the doh_id and updated_at columns exist
+      await client.query(`
+        ALTER TABLE user_doh
+        ADD COLUMN IF NOT EXISTS doh_id VARCHAR(50) UNIQUE
+      `);
+
+      await client.query(`
+        ALTER TABLE user_doh
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP
+      `);
+
+      await client.query(`
+        ALTER TABLE user_doh
+        ADD COLUMN IF NOT EXISTS barangay TEXT
+      `);
+
+      await client.query(`
+        ALTER TABLE user_doh
+        ADD COLUMN IF NOT EXISTS last_login TIMESTAMP
+      `);
+
+      console.log('✓ DOH ID column verified/created in user_doh table');
+
+      // Ensure rbc_user_profiles table exists BEFORE querying it
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS rbc_user_profiles (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER UNIQUE REFERENCES user_doh(user_id) ON DELETE CASCADE,
+          profile_photo TEXT,
+          gender VARCHAR(50) CHECK (gender IN ('Male', 'Female', 'Non-Binary', 'Prefer Not to Say')),
+          date_of_birth DATE,
+          nationality VARCHAR(100) DEFAULT 'Filipino',
+          civil_status VARCHAR(50) CHECK (civil_status IN ('Single', 'Married', 'Widowed', 'Divorced', 'Separated')),
+          blood_type VARCHAR(3) CHECK (blood_type IN ('AB+', 'AB-', 'A+', 'A-', 'B+', 'B-', 'O+', 'O-')),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      console.log('✓ RBC user profiles table verified/created');
+
+      const result = await client.query(`
+        SELECT
+          u.user_id,
+          u.doh_id,
+          u.full_name,
+          u.role,
+          u.barangay,
+          u.email,
+          u.last_login,
+          p.profile_photo,
+          p.gender,
+          TO_CHAR(p.date_of_birth, 'YYYY-MM-DD') as date_of_birth,
+          p.nationality,
+          p.civil_status,
+          p.blood_type
+        FROM user_doh u
+        LEFT JOIN rbc_user_profiles p ON u.user_id = p.user_id
+        WHERE u.user_id = $1
+      `, [userId]);
+
+      if (result.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return null;
       }
 
-      // Get all discarded_blood IDs associated with these invoices
-      const getDiscardedBloodQuery = `
-        SELECT DISTINCT dbii.dbii_discarded_blood_id
-        FROM discarded_blood_invoice_items dbii
-        WHERE dbii.dbii_invoice_id = ANY($1::integer[])
-      `;
-      const discardedBloodResult = await client.query(getDiscardedBloodQuery, [invoiceIds]);
-      const discardedBloodIds = discardedBloodResult.rows
-        .map(row => row.dbii_discarded_blood_id)
-        .filter(id => id !== null);
+      let profile = result.rows[0];
 
-      // Clear invoice reference from discarded_blood records FIRST (before deleting invoice)
-      if (discardedBloodIds.length > 0) {
-        const clearInvoiceRefQuery = `
-          UPDATE discarded_blood
-          SET db_invoice_id = NULL
-          WHERE db_id = ANY($1::integer[])
-        `;
-        await client.query(clearInvoiceRefQuery, [discardedBloodIds]);
+      // If DOH ID doesn't exist, generate and save it
+      if (!profile.doh_id) {
+        console.log(`[DB] Generating new DOH ID for user ${userId}...`);
+        const newDohId = await this.generateDohIdRBC(client);
+
+        await client.query(`
+          UPDATE user_doh
+          SET doh_id = $1, updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = $2
+        `, [newDohId, userId]);
+
+        profile.doh_id = newDohId;
+        console.log(`[DB] ✓ New DOH ID generated: ${newDohId} for user ${userId}`);
       }
-
-      // Delete invoice items
-      const deleteItemsQuery = `
-        DELETE FROM discarded_blood_invoice_items
-        WHERE dbii_invoice_id = ANY($1::integer[])
-      `;
-      await client.query(deleteItemsQuery, [invoiceIds]);
-
-      // Delete invoices
-      const deleteInvoicesQuery = `
-        DELETE FROM discarded_blood_invoices
-        WHERE dbi_id = ANY($1::integer[])
-      `;
-      const deleteResult = await client.query(deleteInvoicesQuery, [invoiceIds]);
 
       await client.query('COMMIT');
-
-      return {
-        success: true,
-        deletedCount: deleteResult.rowCount,
-        message: `Successfully deleted ${deleteResult.rowCount} invoice(s)`
-      };
+      return profile;
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('Error deleting discarded invoices:', error);
+      console.error('[DB] Error getting RBC user profile:', error);
       throw error;
     } finally {
       client.release();
     }
   },
 
+  // Generate DOH ID for RBC users
+  async generateDohIdRBC(client = null) {
+    const shouldReleaseClient = !client;
+    if (!client) {
+      client = await pool.connect();
+    }
+
+    try {
+      let isUnique = false;
+      let dohId;
+
+      while (!isUnique) {
+        const randomNumber = Math.floor(100000000 + Math.random() * 900000000);
+        dohId = `DOH-${randomNumber}`;
+
+        const checkResult = await client.query(
+          'SELECT doh_id FROM user_doh WHERE doh_id = $1',
+          [dohId]
+        );
+
+        if (checkResult.rows.length === 0) {
+          isUnique = true;
+        }
+      }
+
+      return dohId;
+    } finally {
+      if (shouldReleaseClient) {
+        client.release();
+      }
+    }
+  },
+
+  // Update RBC user profile
+  async updateUserProfileRBC(userId, profileData, userName = 'System User') {
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      // Update barangay, role, and full_name in user_doh table if provided
+      const userUpdates = [];
+      const userValues = [];
+      let userParamCounter = 1;
+
+      if (profileData.barangay !== undefined) {
+        userUpdates.push(`barangay = $${userParamCounter++}`);
+        userValues.push(profileData.barangay);
+      }
+
+      if (profileData.role !== undefined) {
+        userUpdates.push(`role = $${userParamCounter++}`);
+        userValues.push(profileData.role);
+      }
+
+      if (profileData.dohId !== undefined) {
+        userUpdates.push(`doh_id = $${userParamCounter++}`);
+        userValues.push(profileData.dohId);
+      }
+
+      if (userUpdates.length > 0) {
+        userUpdates.push('updated_at = CURRENT_TIMESTAMP');
+        userValues.push(userId);
+
+        await client.query(
+          `UPDATE user_doh SET ${userUpdates.join(', ')} WHERE user_id = $${userParamCounter}`,
+          userValues
+        );
+      }
+
+      // Update full_name separately if provided
+      if (userName && userName !== 'System User') {
+        await client.query(
+          'UPDATE user_doh SET full_name = $1, updated_at = CURRENT_TIMESTAMP WHERE user_id = $2',
+          [userName, userId]
+        );
+      }
+
+      // Ensure activity_logs table exists
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS activity_logs (
+          id SERIAL PRIMARY KEY,
+          user_name VARCHAR(255) NOT NULL,
+          action_type VARCHAR(50) NOT NULL,
+          entity_type VARCHAR(50) NOT NULL,
+          entity_id VARCHAR(100),
+          action_description TEXT NOT NULL,
+          details JSONB,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // Create indexes for better performance
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_activity_logs_user ON activity_logs(user_name);
+        CREATE INDEX IF NOT EXISTS idx_activity_logs_entity ON activity_logs(entity_type, entity_id);
+      `);
+
+      // Ensure partnership_requests table exists
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS partnership_requests (
+          id SERIAL PRIMARY KEY,
+          appointment_id BIGINT NOT NULL,
+          organization_name VARCHAR(255) NOT NULL,
+          organization_barangay VARCHAR(255) NOT NULL,
+          contact_name VARCHAR(255) NOT NULL,
+          contact_email VARCHAR(255) NOT NULL,
+          contact_phone VARCHAR(50) NOT NULL,
+          event_date DATE NOT NULL,
+          event_time TIME NOT NULL,
+          event_address TEXT,
+          status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'declined')),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          approved_by VARCHAR(255),
+          approved_at TIMESTAMP
+        )
+      `);
+
+      // Create indexes for partnership requests
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_partnership_requests_status ON partnership_requests(status);
+        CREATE INDEX IF NOT EXISTS idx_partnership_requests_created_at ON partnership_requests(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_partnership_requests_org ON partnership_requests(organization_name);
+      `);
+
+      // Ensure rbc_user_profiles table exists
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS rbc_user_profiles (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER UNIQUE REFERENCES user_doh(user_id) ON DELETE CASCADE,
+          profile_photo TEXT,
+          gender VARCHAR(50) CHECK (gender IN ('Male', 'Female', 'Non-Binary', 'Prefer Not to Say')),
+          date_of_birth DATE,
+          nationality VARCHAR(100) DEFAULT 'Filipino',
+          civil_status VARCHAR(50) CHECK (civil_status IN ('Single', 'Married', 'Widowed', 'Divorced', 'Separated')),
+          blood_type VARCHAR(3) CHECK (blood_type IN ('AB+', 'AB-', 'A+', 'A-', 'B+', 'B-', 'O+', 'O-')),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // Check if profile exists
+      const existingProfile = await client.query(
+        'SELECT id FROM rbc_user_profiles WHERE user_id = $1',
+        [userId]
+      );
+
+      let result;
+      if (existingProfile.rows.length > 0) {
+        // Update existing profile
+        const updateQuery = `
+          UPDATE rbc_user_profiles SET
+            profile_photo = $2,
+            gender = $3,
+            date_of_birth = $4,
+            nationality = $5,
+            civil_status = $6,
+            blood_type = $7,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = $1
+          RETURNING *
+        `;
+
+        result = await client.query(updateQuery, [
+          userId,
+          profileData.profilePhoto || null,
+          profileData.gender || null,
+          profileData.dateOfBirth || null,
+          profileData.nationality || null,
+          profileData.civilStatus || null,
+          profileData.bloodType || null
+        ]);
+        console.log(`[DB] ✓ RBC user profile updated for user ${userId}`);
+      } else {
+        // Insert new profile
+        const insertQuery = `
+          INSERT INTO rbc_user_profiles (
+            user_id, profile_photo, gender, date_of_birth,
+            nationality, civil_status, blood_type
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+          RETURNING *
+        `;
+
+        result = await client.query(insertQuery, [
+          userId,
+          profileData.profilePhoto || null,
+          profileData.gender || null,
+          profileData.dateOfBirth || null,
+          profileData.nationality || null,
+          profileData.civilStatus || null,
+          profileData.bloodType || null
+        ]);
+        console.log(`[DB] ✓ New RBC user profile created for user ${userId}`);
+      }
+
+      // Log activity
+      await client.query(
+        `INSERT INTO activity_logs (user_name, action_type, action_description, entity_type, entity_id, details)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          userName || 'Unknown User',
+          'update',
+          `${userName || 'User'} updated their profile`,
+          'user_profile',
+          userId.toString(),
+          JSON.stringify({
+            updated_fields: Object.keys(profileData).filter(key => profileData[key] !== undefined)
+          })
+        ]
+      );
+
+      await client.query('COMMIT');
+      console.log(`[DB] ✓ Profile changes saved successfully for user ${userId}`);
+      return { success: true, profile: result.rows[0] };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('[DB] Error updating RBC user profile:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  // Get RBC user activities
+  async getUserActivitiesRBC(userId, limit = 100, offset = 0) {
+    try {
+      // First get the user's full name
+      const userResult = await pool.query(
+        'SELECT full_name FROM user_doh WHERE user_id = $1',
+        [userId]
+      );
+
+      if (userResult.rows.length === 0) {
+        return [];
+      }
+
+      const userName = userResult.rows[0].full_name;
+
+      // Get activities for this user
+      const result = await pool.query(
+        `SELECT
+          id,
+          user_name,
+          action_type,
+          action_description,
+          entity_type,
+          entity_id,
+          details,
+          created_at
+         FROM activity_logs
+         WHERE user_name = $1
+         ORDER BY created_at DESC
+         LIMIT $2 OFFSET $3`,
+        [userName, limit, offset]
+      );
+
+      return result.rows.map(row => ({
+        ...row,
+        details: typeof row.details === 'string' ? JSON.parse(row.details) : row.details
+      }));
+    } catch (error) {
+      console.error('[DB] Error getting RBC user activities:', error);
+      throw error;
+    }
+  },
+
+  // ========== ACTIVITY LOGGING FUNCTIONS ==========
+
+  // Log a single activity
+  async logActivity(activityData) {
+    try {
+      const insertQuery = `
+        INSERT INTO activity_logs (
+          user_name, action_type, entity_type, entity_id,
+          action_description, details
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING *
+      `;
+
+      const values = [
+        activityData.user_name || activityData.userName || 'System User',
+        activityData.action_type || activityData.actionType,
+        activityData.entity_type || activityData.entityType,
+        activityData.entity_id || activityData.entityId,
+        activityData.action_description || activityData.actionDescription,
+        JSON.stringify(activityData.details || {})
+      ];
+
+      const result = await pool.query(insertQuery, values);
+      return result.rows[0];
+    } catch (error) {
+      console.error('[DB] Error logging activity:', error);
+      // Don't throw error to prevent activity logging from breaking main operations
+    }
+  },
+
+  // Get all activities with pagination
+  async getAllActivitiesRBC(limit = 100, offset = 0) {
+    try {
+      const result = await pool.query(`
+        SELECT
+          id,
+          user_name,
+          action_type,
+          entity_type,
+          entity_id,
+          action_description,
+          details,
+          created_at
+        FROM activity_logs
+        ORDER BY created_at DESC
+        LIMIT $1 OFFSET $2
+      `, [limit, offset]);
+
+      return result.rows.map(row => ({
+        ...row,
+        details: typeof row.details === 'string' ? JSON.parse(row.details) : row.details
+      }));
+    } catch (error) {
+      console.error('[DB] Error getting all activities:', error);
+      throw error;
+    }
+  },
+
+  // Search activities
+  async searchActivitiesRBC(searchTerm, limit = 100) {
+    try {
+      const result = await pool.query(`
+        SELECT
+          id,
+          user_name,
+          action_type,
+          entity_type,
+          entity_id,
+          action_description,
+          details,
+          created_at
+        FROM activity_logs
+        WHERE
+          user_name ILIKE $1 OR
+          action_description ILIKE $1 OR
+          entity_type ILIKE $1 OR
+          entity_id ILIKE $1
+        ORDER BY created_at DESC
+        LIMIT $2
+      `, [`%${searchTerm}%`, limit]);
+
+      return result.rows.map(row => ({
+        ...row,
+        details: typeof row.details === 'string' ? JSON.parse(row.details) : row.details
+      }));
+    } catch (error) {
+      console.error('[DB] Error searching activities:', error);
+      throw error;
+    }
+  },
+
+  // ===== DONOR RECORDS SYNC METHODS =====
+
+  // Request sync - Transfer donor records from org to temp table
+  async requestDonorSync(donorRecords, sourceOrganization, sourceUserId, sourceUserName) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const insertedRecords = [];
+      for (const donor of donorRecords) {
+        const result = await client.query(`
+          INSERT INTO temp_donor_records (
+            tdr_donor_id, tdr_first_name, tdr_middle_name, tdr_last_name, tdr_gender, tdr_birthdate, tdr_age,
+            tdr_blood_type, tdr_rh_factor, tdr_contact_number, tdr_address,
+            tdr_source_organization, tdr_source_user_id, tdr_source_user_name, tdr_sync_status
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending')
+          RETURNING *
+        `, [
+          donor.donor_id, donor.first_name, donor.middle_name, donor.last_name,
+          donor.gender, donor.birthdate, donor.age, donor.blood_type, donor.rh_factor,
+          donor.contact_number, donor.address, sourceOrganization, sourceUserId,
+          sourceUserName
+        ]);
+        insertedRecords.push(result.rows[0]);
+      }
+
+      await client.query('COMMIT');
+      console.log(`[DB] Sync requested: ${insertedRecords.length} donor records added to temp table`);
+      return insertedRecords;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('[DB] Error requesting donor sync:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  // Get pending sync requests
+  async getPendingSyncRequests() {
+    try {
+      const result = await pool.query(`
+        SELECT
+          tdr_id as id,
+          tdr_donor_id as donor_id,
+          tdr_first_name as first_name,
+          tdr_middle_name as middle_name,
+          tdr_last_name as last_name,
+          tdr_gender as gender,
+          tdr_birthdate as birthdate,
+          tdr_age as age,
+          tdr_blood_type as blood_type,
+          tdr_rh_factor as rh_factor,
+          tdr_contact_number as contact_number,
+          tdr_address as address,
+          tdr_source_organization as source_organization,
+          tdr_source_user_id as source_user_id,
+          tdr_source_user_name as source_user_name,
+          tdr_sync_status as sync_status,
+          tdr_sync_requested_at as sync_requested_at,
+          tdr_sync_approved_at as sync_approved_at,
+          tdr_sync_approved_by as sync_approved_by
+        FROM temp_donor_records
+        WHERE tdr_sync_status = 'pending'
+        ORDER BY tdr_sync_requested_at DESC
+      `);
+      return result.rows;
+    } catch (error) {
+      console.error('[DB] Error getting pending sync requests:', error);
+      throw error;
+    }
+  },
+
+  // Get all donor records from main table
+  async getAllDonorRecordsMain() {
+    try {
+      const result = await pool.query(`
+        SELECT
+          dr_id as id,
+          dr_donor_id as "donorId",
+          dr_first_name as "firstName",
+          dr_middle_name as "middleName",
+          dr_last_name as "lastName",
+          dr_gender as gender,
+          TO_CHAR(dr_birthdate, 'MM/DD/YYYY') as birthdate,
+          dr_age as age,
+          dr_blood_type as "bloodType",
+          dr_rh_factor as "rhFactor",
+          dr_contact_number as "contactNumber",
+          dr_address as address,
+          COALESCE(dr_times_donated, 1) as times_donated,
+          COALESCE(dr_donation_dates, '[]'::jsonb) as donation_dates,
+          dr_last_donation_date as last_donation_date,
+          dr_source_organization as source_organization,
+          dr_created_at as created_at,
+          dr_modified_at as updated_at
+        FROM donor_records
+        ORDER BY dr_created_at DESC
+      `);
+
+      return result.rows.map(row => ({
+        ...row,
+        donation_dates: typeof row.donation_dates === 'string' ? JSON.parse(row.donation_dates) : row.donation_dates
+      }));
+    } catch (error) {
+      console.error('[DB] Error getting all donor records:', error);
+      throw error;
+    }
+  },
+
+  // Approve sync - Transfer from temp to main donor_records with duplicate handling
+  async approveDonorSync(approvedBy) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Get all pending records
+      const pendingResult = await client.query(`
+        SELECT * FROM temp_donor_records WHERE tdr_sync_status = 'pending'
+      `);
+
+      const pendingRecords = pendingResult.rows;
+      const approvedRecords = [];
+      const mergedRecords = [];
+
+      for (const record of pendingRecords) {
+        // Check for duplicate (same donor_id or same full name)
+        const duplicateCheck = await client.query(`
+          SELECT * FROM donor_records
+          WHERE dr_donor_id = $1 OR (
+            LOWER(TRIM(dr_first_name)) = LOWER(TRIM($2)) AND
+            LOWER(TRIM(dr_last_name)) = LOWER(TRIM($3))
+          )
+        `, [record.tdr_donor_id, record.tdr_first_name, record.tdr_last_name]);
+
+        if (duplicateCheck.rows.length > 0) {
+          // Duplicate found - merge donation data
+          const existingDonor = duplicateCheck.rows[0];
+          const currentDates = typeof existingDonor.dr_donation_dates === 'string'
+            ? JSON.parse(existingDonor.dr_donation_dates)
+            : existingDonor.dr_donation_dates || [];
+
+          // Add new donation date
+          const newDonationDate = { date: new Date().toISOString() };
+          const updatedDates = [...currentDates, newDonationDate];
+
+          await client.query(`
+            UPDATE donor_records
+            SET
+              dr_times_donated = COALESCE(dr_times_donated, 1) + 1,
+              dr_donation_dates = $1::jsonb,
+              dr_last_donation_date = $2,
+              dr_modified_at = CURRENT_TIMESTAMP
+            WHERE dr_id = $3
+          `, [JSON.stringify(updatedDates), new Date(), existingDonor.dr_id]);
+
+          mergedRecords.push({
+            ...existingDonor,
+            dr_times_donated: (existingDonor.dr_times_donated || 1) + 1
+          });
+        } else {
+          // No duplicate - insert new record
+          const insertResult = await client.query(`
+            INSERT INTO donor_records (
+              dr_donor_id, dr_first_name, dr_middle_name, dr_last_name, dr_gender, dr_birthdate, dr_age,
+              dr_blood_type, dr_rh_factor, dr_contact_number, dr_address, dr_times_donated,
+              dr_donation_dates, dr_last_donation_date, dr_source_organization, dr_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 1, $12::jsonb, $13, $14, CURRENT_TIMESTAMP)
+            RETURNING *
+          `, [
+            record.tdr_donor_id, record.tdr_first_name, record.tdr_middle_name, record.tdr_last_name,
+            record.tdr_gender, record.tdr_birthdate, record.tdr_age, record.tdr_blood_type, record.tdr_rh_factor,
+            record.tdr_contact_number, record.tdr_address,
+            JSON.stringify([{ date: new Date().toISOString() }]),
+            new Date(), record.tdr_source_organization
+          ]);
+
+          approvedRecords.push(insertResult.rows[0]);
+        }
+
+        // Update temp record status
+        await client.query(`
+          UPDATE temp_donor_records
+          SET tdr_sync_status = 'approved', tdr_sync_approved_at = CURRENT_TIMESTAMP, tdr_sync_approved_by = $1
+          WHERE tdr_id = $2
+        `, [approvedBy, record.tdr_id]);
+      }
+
+      await client.query('COMMIT');
+      console.log(`[DB] Sync approved: ${approvedRecords.length} new, ${mergedRecords.length} merged`);
+
+      return {
+        newRecords: approvedRecords,
+        mergedRecords: mergedRecords,
+        totalProcessed: approvedRecords.length + mergedRecords.length
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('[DB] Error approving donor sync:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  // Delete temp donor records after approval
+  async clearApprovedTempRecords() {
+    try {
+      const result = await pool.query(`
+        DELETE FROM temp_donor_records WHERE tdr_sync_status = 'approved'
+      `);
+      return result.rowCount;
+    } catch (error) {
+      console.error('[DB] Error clearing approved temp records:', error);
+      throw error;
+    }
+  },
+
+  // ===== NOTIFICATION METHODS =====
+
+  // Create notification
+  async createNotification(notificationData) {
+    try {
+      const {
+        userId, userName, notificationType, title, description,
+        relatedEntityType, relatedEntityId, linkTo, priority
+      } = notificationData;
+
+      const result = await pool.query(`
+        INSERT INTO notifications (
+          user_id, user_name, notification_type, title, description,
+          related_entity_type, related_entity_id, link_to, priority
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING *
+      `, [
+        userId, userName, notificationType, title, description,
+        relatedEntityType, relatedEntityId, linkTo, priority || 'normal'
+      ]);
+
+      console.log('[DB] Notification created:', result.rows[0].id);
+      return result.rows[0];
+    } catch (error) {
+      console.error('[DB] Error creating notification:', error);
+      throw error;
+    }
+  },
+
+  // Get all notifications
+  async getAllNotifications(userId = null) {
+    try {
+      let query = `
+        SELECT * FROM notifications
+        WHERE 1=1
+      `;
+      const params = [];
+
+      if (userId) {
+        query += ` AND (user_id = $1 OR user_id IS NULL)`;
+        params.push(userId);
+      }
+
+      query += ` ORDER BY created_at DESC`;
+
+      const result = await pool.query(query, params);
+      return result.rows;
+    } catch (error) {
+      console.error('[DB] Error getting notifications:', error);
+      throw error;
+    }
+  },
+
+  // Get unread notification count
+  async getUnreadNotificationCount(userId = null) {
+    try {
+      let query = `SELECT COUNT(*) FROM notifications WHERE is_read = FALSE`;
+      const params = [];
+
+      if (userId) {
+        query += ` AND (user_id = $1 OR user_id IS NULL)`;
+        params.push(userId);
+      }
+
+      const result = await pool.query(query, params);
+      return parseInt(result.rows[0].count, 10);
+    } catch (error) {
+      console.error('[DB] Error getting unread notification count:', error);
+      throw error;
+    }
+  },
+
+  // Mark notification as read
+  async markNotificationAsRead(notificationId) {
+    try {
+      const result = await pool.query(`
+        UPDATE notifications
+        SET is_read = TRUE, status = 'read', read_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+        RETURNING *
+      `, [notificationId]);
+
+      return result.rows[0];
+    } catch (error) {
+      console.error('[DB] Error marking notification as read:', error);
+      throw error;
+    }
+  },
+
+  // Mark all notifications as read
+  async markAllNotificationsAsRead(userId = null) {
+    try {
+      let query = `
+        UPDATE notifications
+        SET is_read = TRUE, status = 'read', read_at = CURRENT_TIMESTAMP
+        WHERE is_read = FALSE
+      `;
+      const params = [];
+
+      if (userId) {
+        query += ` AND (user_id = $1 OR user_id IS NULL)`;
+        params.push(userId);
+      }
+
+      const result = await pool.query(query, params);
+      return result.rowCount;
+    } catch (error) {
+      console.error('[DB] Error marking all notifications as read:', error);
+      throw error;
+    }
+  },
+
+  // Delete notification
+  async deleteNotification(notificationId) {
+    try {
+      const result = await pool.query(`
+        DELETE FROM notifications WHERE id = $1
+      `, [notificationId]);
+
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error('[DB] Error deleting notification:', error);
+      throw error;
+    }
+  },
+
+  // ========== PARTNERSHIP REQUEST METHODS ==========
+
+  // Create partnership request
+  async createPartnershipRequest(requestData) {
+    try {
+      const insertQuery = `
+        INSERT INTO partnership_requests (
+          appointment_id, organization_name, organization_barangay,
+          contact_name, contact_email, contact_phone,
+          event_date, event_time, event_address
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING *
+      `;
+
+      const values = [
+        requestData.appointmentId,
+        requestData.organizationName,
+        requestData.organizationBarangay,
+        requestData.contactName,
+        requestData.contactEmail,
+        requestData.contactPhone,
+        requestData.eventDate,
+        requestData.eventTime,
+        requestData.eventAddress || null
+      ];
+
+      const result = await pool.query(insertQuery, values);
+      console.log('[DB] Partnership request created:', result.rows[0].id);
+      return result.rows[0];
+    } catch (error) {
+      console.error('[DB] Error creating partnership request:', error);
+      throw error;
+    }
+  },
+
+  // Get all partnership requests
+  async getAllPartnershipRequests(status = null) {
+    try {
+      let query = `
+        SELECT * FROM partnership_requests
+      `;
+
+      const params = [];
+      if (status) {
+        query += ` WHERE status = $1`;
+        params.push(status);
+      }
+
+      query += ` ORDER BY created_at DESC`;
+
+      const result = await pool.query(query, params);
+      return result.rows;
+    } catch (error) {
+      console.error('[DB] Error getting partnership requests:', error);
+      throw error;
+    }
+  },
+
+  // Get partnership request by ID
+  async getPartnershipRequestById(requestId) {
+    try {
+      const result = await pool.query(`
+        SELECT * FROM partnership_requests WHERE id = $1
+      `, [requestId]);
+
+      return result.rows[0];
+    } catch (error) {
+      console.error('[DB] Error getting partnership request:', error);
+      throw error;
+    }
+  },
+
+  // Update partnership request status
+  async updatePartnershipRequestStatus(requestId, status, approvedBy = null) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const updateQuery = `
+        UPDATE partnership_requests
+        SET status = $1, approved_by = $2, approved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $3
+        RETURNING *
+      `;
+
+      const result = await client.query(updateQuery, [status, approvedBy, requestId]);
+      await client.query('COMMIT');
+      return result.rows[0];
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('[DB] Error updating partnership request status:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  // Get pending partnership requests count
+  async getPendingPartnershipRequestsCount() {
+    try {
+      const result = await pool.query(`
+        SELECT COUNT(*) as count FROM partnership_requests WHERE status = 'pending'
+      `);
+
+      return parseInt(result.rows[0].count, 10);
+    } catch (error) {
+      console.error('[DB] Error getting pending partnership requests count:', error);
+      throw error;
+    }
+  },
+
+  // Delete partnership request
+  async deletePartnershipRequest(requestId) {
+    try {
+      const result = await pool.query(`
+        DELETE FROM partnership_requests WHERE id = $1 RETURNING *
+      `, [requestId]);
+
+      if (result.rows.length === 0) {
+        throw new Error('Partnership request not found');
+      }
+
+      console.log('[DB] Partnership request deleted:', requestId);
+      return result.rows[0];
+    } catch (error) {
+      console.error('[DB] Error deleting partnership request:', error);
+      throw error;
+    }
+  },
+
+  // ========== BLOOD DONATION ANALYTICS METHODS ==========
+
+  // Get blood donation analytics for dashboard (last 4 months)
+  async getBloodDonationAnalytics() {
+    try {
+      // Get current date info
+      const currentDate = new Date();
+      const months = [];
+
+      // Generate 4 months: previous previous month, previous month, current month, next month
+      for (let i = -2; i <= 1; i++) {
+        const date = new Date(currentDate.getFullYear(), currentDate.getMonth() + i, 1);
+        const monthKey = date.toISOString().slice(0, 7); // YYYY-MM format
+        const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+
+        months.push({
+          monthKey,
+          monthName,
+          date
+        });
+      }
+
+      // Get donation counts for each month
+      const stats = [];
+
+      for (const month of months) {
+        const startDate = new Date(month.date.getFullYear(), month.date.getMonth(), 1);
+        const endDate = new Date(month.date.getFullYear(), month.date.getMonth() + 1, 0);
+
+        const query = `
+          SELECT
+            COUNT(*) as total_donations,
+            COUNT(DISTINCT bs_blood_type || bs_rh_factor) as unique_blood_types,
+            SUM(bs_volume) as total_volume,
+            COUNT(CASE WHEN bs_category = 'Red Blood Cell' THEN 1 END) as rbc_count,
+            COUNT(CASE WHEN bs_category = 'Plasma' THEN 1 END) as plasma_count,
+            COUNT(CASE WHEN bs_category = 'Platelet' THEN 1 END) as platelet_count
+          FROM blood_stock
+          WHERE DATE(bs_created_at) >= $1
+            AND DATE(bs_created_at) <= $2
+        `;
+
+        const result = await pool.query(query, [
+          startDate.toISOString().split('T')[0],
+          endDate.toISOString().split('T')[0]
+        ]);
+
+        const data = result.rows[0];
+
+        stats.push({
+          month: month.monthKey,
+          monthName: month.monthName,
+          totalDonations: parseInt(data.total_donations) || 0,
+          uniqueBloodTypes: parseInt(data.unique_blood_types) || 0,
+          totalVolume: parseInt(data.total_volume) || 0,
+          rbcCount: parseInt(data.rbc_count) || 0,
+          plasmaCount: parseInt(data.plasma_count) || 0,
+          plateletCount: parseInt(data.platelet_count) || 0
+        });
+      }
+
+      return stats;
+    } catch (error) {
+      console.error('[DB] Error getting blood donation analytics:', error);
+      throw error;
+    }
+  },
+
+  // ========== BLOOD EXPIRATION CHECKING METHODS ==========
+
+  // Get expiring blood stocks (within specified days)
+  async getExpiringBloodStocks(daysThreshold = 7) {
+    try {
+      const query = `
+        SELECT
+          bs_serial_id as serial_id,
+          bs_blood_type as blood_type,
+          bs_rh_factor as rh_factor,
+          bs_category as component,
+          bs_volume as units,
+          TO_CHAR(bs_expiration_date, 'YYYY-MM-DD') as expiration_date,
+          bs_expiration_date - CURRENT_DATE as days_until_expiry,
+          bs_status as status,
+          CASE
+            WHEN bs_expiration_date - CURRENT_DATE <= 3 THEN 'Urgent'
+            WHEN bs_expiration_date - CURRENT_DATE <= 7 THEN 'Alert'
+            ELSE 'Normal'
+          END as alert_status
+        FROM blood_stock
+        WHERE bs_status = 'Stored'
+          AND bs_expiration_date - CURRENT_DATE <= $1
+          AND bs_expiration_date - CURRENT_DATE >= 0
+        ORDER BY bs_expiration_date ASC, bs_blood_type ASC
+      `;
+
+      const result = await pool.query(query, [daysThreshold]);
+      return result.rows;
+    } catch (error) {
+      console.error('[DB] Error getting expiring blood stocks:', error);
+      throw error;
+    }
+  },
+
+  // Get expiring non-conforming stocks
+  async getExpiringNonConformingStocks(daysThreshold = 7) {
+    try {
+      const query = `
+        SELECT
+          nc_serial_id as serial_id,
+          nc_blood_type as blood_type,
+          nc_rh_factor as rh_factor,
+          nc_category as component,
+          nc_volume as units,
+          TO_CHAR(nc_expiration_date, 'YYYY-MM-DD') as expiration_date,
+          EXTRACT(DAY FROM (nc_expiration_date - CURRENT_DATE))::integer as days_until_expiry,
+          nc_status as status,
+          CASE
+            WHEN EXTRACT(DAY FROM (nc_expiration_date - CURRENT_DATE)) <= 3 THEN 'Urgent'
+            WHEN EXTRACT(DAY FROM (nc_expiration_date - CURRENT_DATE)) <= 7 THEN 'Alert'
+            ELSE 'Normal'
+          END as alert_status
+        FROM non_conforming
+        WHERE nc_status = 'Non-Conforming'
+          AND EXTRACT(DAY FROM (nc_expiration_date - CURRENT_DATE)) <= $1
+          AND EXTRACT(DAY FROM (nc_expiration_date - CURRENT_DATE)) >= 0
+        ORDER BY nc_expiration_date ASC, nc_blood_type ASC
+      `;
+
+      const result = await pool.query(query, [daysThreshold]);
+      return result.rows;
+    } catch (error) {
+      console.error('[DB] Error getting expiring non-conforming stocks:', error);
+      throw error;
+    }
+  },
+
+  // Get all expiring stocks (combined)
+  async getAllExpiringStocks(daysThreshold = 7) {
+    try {
+      const bloodStocks = await this.getExpiringBloodStocks(daysThreshold);
+      const nonConformingStocks = await this.getExpiringNonConformingStocks(daysThreshold);
+
+      return {
+        bloodStocks,
+        nonConformingStocks,
+        total: bloodStocks.length + nonConformingStocks.length
+      };
+    } catch (error) {
+      console.error('[DB] Error getting all expiring stocks:', error);
+      throw error;
+    }
+  },
+
+  // Check and create expiration notifications
+    async checkAndCreateExpirationNotifications() {
+      try {
+        const expiringStocks = await this.getAllExpiringStocks(7);
+        const notificationsCreated = [];
+
+        // Helper function to create notification
+        const createWarningNotification = async (stock, entityType) => {
+          const isUrgent = stock.days_until_expiry <= 2;
+          const notificationType = isUrgent ? 'stock_expiring_urgent' : 'stock_expiring_soon';
+
+          // Check if ANY expiration notification for this stock was created today
+          const existingNotif = await pool.query(`
+            SELECT id FROM notifications
+            WHERE (notification_type = 'stock_expiring_urgent' OR notification_type = 'stock_expiring_soon')
+              AND related_entity_id = $1
+              AND related_entity_type = $2
+              AND DATE(created_at) = CURRENT_DATE
+          `, [stock.serial_id, entityType]);
+
+          if (existingNotif.rows.length === 0) {
+
+            const daysText = stock.days_until_expiry === 1 ? '1 day' : `${stock.days_until_expiry} days`;
+
+            const title = isUrgent
+              ? `URGENT: This stock is about to expire in ${daysText}!`
+              : `Attention: This stock is about to expire in ${daysText}!`;
+
+            const description = `${stock.blood_type}${stock.rh_factor} ${stock.component} (Serial: ${stock.serial_id}) will expire on ${stock.expiration_date}. Only ${daysText} remaining. Please use or properly dispose to prevent wastage.`;
+            // Prepare stock data for the notification
+            const stockData = JSON.stringify({
+              category: entityType === 'blood_stock' ? 'Blood Stock' : 'Non-Conforming',
+              stockType: stock.component,
+              serialId: stock.serial_id,
+              bloodType: stock.blood_type,
+              rhFactor: stock.rh_factor,
+              volumeMl: stock.volume_ml,
+              dateOfCollection: stock.collection_date,
+              expirationDate: stock.expiration_date,
+              status: stock.status,
+              createdAt: stock.created_at,
+              modifiedAt: stock.updated_at
+            });
+
+            const notifQuery = `
+              INSERT INTO notifications (
+                notification_type, title, description,
+                related_entity_type, related_entity_id,
+                status, priority, is_read, link_to
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+              RETURNING id
+            `;
+
+            const result = await pool.query(notifQuery, [
+              notificationType,
+              title,
+              description,
+              entityType,
+              stock.serial_id,
+              'unread',
+              isUrgent ? 'urgent' : 'high',
+              false,
+              stockData
+            ]);
+
+            notificationsCreated.push({
+              id: result.rows[0].id,
+              type: entityType,
+              serial_id: stock.serial_id,
+              alert_status: isUrgent ? 'Urgent' : 'Warning'
+            });
+          }
+        };
+
+        // Create notifications for expiring blood stocks
+        for (const stock of expiringStocks.bloodStocks) {
+          await createWarningNotification(stock, 'blood_stock');
+        }
+
+        // Create notifications for expiring non-conforming stocks
+        for (const stock of expiringStocks.nonConformingStocks) {
+          await createWarningNotification(stock, 'non_conforming');
+        }
+
+        console.log(`[DB] Created ${notificationsCreated.length} expiration notifications`);
+        return {
+          notificationsCreated: notificationsCreated.length,
+          notifications: notificationsCreated
+        };
+      } catch (error) {
+        console.error('[DB] Error checking and creating expiration notifications:', error);
+        throw error;
+      }
+    },
+
+  // ========== BLOOD OPERATION NOTIFICATION METHODS ==========
+
+  // Create Blood Release Confirmation Notification
+  async createBloodReleaseNotification(stockCount, component) {
+    try {
+      const title = `Blood Release Confirmation`;
+      const description = `${stockCount} units of ${component} were successfully released.`;
+
+      const notifQuery = `
+        INSERT INTO notifications (
+          notification_type, title, description,
+          related_entity_type,
+          status, priority, is_read
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+      `;
+
+      const result = await pool.query(notifQuery, [
+        'blood_release',
+        title,
+        description,
+        'blood_stock',
+        'unread',
+        'normal',
+        false
+      ]);
+
+      console.log(`[DB] Created blood release notification for ${stockCount} units of ${component}`);
+      return result.rows[0].id;
+    } catch (error) {
+      console.error('[DB] Error creating blood release notification:', error);
+      throw error;
+    }
+  },
+
+  // Create Blood Adding Confirmation Notification (Blood Stock)
+  async createBloodAddingNotification(stockCount, component) {
+    try {
+      const title = `Blood Adding Confirmation`;
+      const description = `${stockCount} units of ${component} were successfully added.`;
+
+      const notifQuery = `
+        INSERT INTO notifications (
+          notification_type, title, description,
+          related_entity_type,
+          status, priority, is_read
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+      `;
+
+      const result = await pool.query(notifQuery, [
+        'blood_adding',
+        title,
+        description,
+        'blood_stock',
+        'unread',
+        'normal',
+        false
+      ]);
+
+      console.log(`[DB] Created blood adding notification for ${stockCount} units of ${component}`);
+      return result.rows[0].id;
+    } catch (error) {
+      console.error('[DB] Error creating blood adding notification:', error);
+      throw error;
+    }
+  },
+
+  // Create Blood Restoring Confirmation Notification
+  async createBloodRestoringNotification(stockCount, component) {
+    try {
+      const title = `Blood Restoring Confirmation`;
+      const description = `${stockCount} units of ${component} were successfully restored.`;
+
+      const notifQuery = `
+        INSERT INTO notifications (
+          notification_type, title, description,
+          related_entity_type,
+          status, priority, is_read
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+      `;
+
+      const result = await pool.query(notifQuery, [
+        'blood_restoring',
+        title,
+        description,
+        'released_blood',
+        'unread',
+        'normal',
+        false
+      ]);
+
+      console.log(`[DB] Created blood restoring notification for ${stockCount} units of ${component}`);
+      return result.rows[0].id;
+    } catch (error) {
+      console.error('[DB] Error creating blood restoring notification:', error);
+      throw error;
+    }
+  },
+
+  // Create Blood Discarding Confirmation Notification
+  async createBloodDiscardingNotification(stockCount, component) {
+    try {
+      const title = `Blood Discarding Confirmation`;
+      const description = `${stockCount} units of ${component} were successfully discarded.`;
+
+      const notifQuery = `
+        INSERT INTO notifications (
+          notification_type, title, description,
+          related_entity_type,
+          status, priority, is_read
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+      `;
+
+      const result = await pool.query(notifQuery, [
+        'blood_discarding',
+        title,
+        description,
+        'non_conforming',
+        'unread',
+        'normal',
+        false
+      ]);
+
+      console.log(`[DB] Created blood discarding notification for ${stockCount} units of ${component}`);
+      return result.rows[0].id;
+    } catch (error) {
+      console.error('[DB] Error creating blood discarding notification:', error);
+      throw error;
+    }
+  },
+
+  // Create Non-Conforming Adding Confirmation Notification
+  async createNonConformingAddingNotification(stockCount, component) {
+    try {
+      const title = `Blood Adding Confirmation`;
+      const description = `${stockCount} units of ${component} were successfully added.`;
+
+      const notifQuery = `
+        INSERT INTO notifications (
+          notification_type, title, description,
+          related_entity_type,
+          status, priority, is_read
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+      `;
+
+      const result = await pool.query(notifQuery, [
+        'nonconforming_adding',
+        title,
+        description,
+        'non_conforming',
+        'unread',
+        'normal',
+        false
+      ]);
+
+      console.log(`[DB] Created non-conforming adding notification for ${stockCount} units of ${component}`);
+      return result.rows[0].id;
+    } catch (error) {
+      console.error('[DB] Error creating non-conforming adding notification:', error);
+      throw error;
+    }
+  },
+
+  // Create Weekly Stock Update Notifications
+  async createWeeklyStockUpdateNotifications() {
+    try {
+      const notificationsCreated = [];
+      const updateDate = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      const updateTime = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+      // Get stock counts by component type
+      const stockTypes = ['Red Blood Cell', 'Plasma', 'Platelet'];
+
+      for (const component of stockTypes) {
+        // Blood Stock Update
+        const bloodStockResult = await pool.query(`
+          SELECT COUNT(*) as count FROM blood_stock
+          WHERE component = $1 AND status = 'Stored'
+        `, [component]);
+        const bloodStockCount = parseInt(bloodStockResult.rows[0].count);
+
+        const bloodStockNotif = await pool.query(`
+          INSERT INTO notifications (
+            notification_type, title, description,
+            related_entity_type, status, priority, is_read
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+          RETURNING id
+        `, [
+          'blood_stock_update',
+          'Blood Stock Update',
+          `Current stored ${component}: ${bloodStockCount} units. Updated on ${updateDate}, at ${updateTime}.`,
+          'blood_stock',
+          'unread',
+          'low',
+          false
+        ]);
+        notificationsCreated.push({ id: bloodStockNotif.rows[0].id, type: 'blood_stock_update', component });
+
+        // Non-Conforming Update
+        const nonConformingResult = await pool.query(`
+          SELECT COUNT(*) as count FROM non_conforming
+          WHERE component = $1
+        `, [component]);
+        const nonConformingCount = parseInt(nonConformingResult.rows[0].count);
+
+        const nonConformingNotif = await pool.query(`
+          INSERT INTO notifications (
+            notification_type, title, description,
+            related_entity_type, status, priority, is_read
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+          RETURNING id
+        `, [
+          'nonconforming_update',
+          'Non-Conforming Update',
+          `Current non-conforming ${component}: ${nonConformingCount} units. Updated on ${updateDate}, at ${updateTime}.`,
+          'non_conforming',
+          'unread',
+          'low',
+          false
+        ]);
+        notificationsCreated.push({ id: nonConformingNotif.rows[0].id, type: 'nonconforming_update', component });
+
+        // Released Blood Update
+        const releasedResult = await pool.query(`
+          SELECT COUNT(*) as count FROM released_blood
+          WHERE component = $1
+        `, [component]);
+        const releasedCount = parseInt(releasedResult.rows[0].count);
+
+        const releasedNotif = await pool.query(`
+          INSERT INTO notifications (
+            notification_type, title, description,
+            related_entity_type, status, priority, is_read
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+          RETURNING id
+        `, [
+          'released_update',
+          'Released Update',
+          `Current released ${component}: ${releasedCount} units. Updated on ${updateDate}, at ${updateTime}.`,
+          'released_blood',
+          'unread',
+          'low',
+          false
+        ]);
+        notificationsCreated.push({ id: releasedNotif.rows[0].id, type: 'released_update', component });
+      }
+
+      console.log(`[DB] Created ${notificationsCreated.length} weekly stock update notifications`);
+      return {
+        notificationsCreated: notificationsCreated.length,
+        notifications: notificationsCreated
+      };
+    } catch (error) {
+      console.error('[DB] Error creating weekly stock update notifications:', error);
+      throw error;
+    }
+  },
+
+  // ========== USER MANAGEMENT METHODS ==========
+
+  // Get all active users (for Access Control tab)
+  async getAllActiveUsers() {
+    try {
+      const query = `
+        SELECT
+          user_id,
+          full_name,
+          email,
+          role,
+          is_active,
+          created_at
+        FROM user_doh
+        WHERE is_active = true
+        ORDER BY created_at DESC
+      `;
+
+      const result = await pool.query(query);
+      return result.rows;
+    } catch (error) {
+      console.error('[DB] Error getting all active users:', error);
+      throw error;
+    }
+  },
+
+  // Get all pending users (for User Approval tab)
+  async getPendingUsers() {
+    try {
+      const query = `
+        SELECT
+          user_id,
+          full_name,
+          email,
+          role,
+          is_active,
+          created_at
+        FROM user_doh
+        WHERE is_active = false
+        ORDER BY created_at DESC
+      `;
+
+      const result = await pool.query(query);
+      return result.rows;
+    } catch (error) {
+      console.error('[DB] Error getting pending users:', error);
+      throw error;
+    }
+  },
+
+  // Approve user account
+  async approveUser(userId) {
+    try {
+      const query = `
+        UPDATE user_doh
+        SET is_active = true
+        WHERE user_id = $1
+        RETURNING user_id, full_name, email, role
+      `;
+
+      const result = await pool.query(query, [userId]);
+
+      if (result.rows.length === 0) {
+        throw new Error('User not found');
+      }
+
+      return result.rows[0];
+    } catch (error) {
+      console.error('[DB] Error approving user:', error);
+      throw error;
+    }
+  },
+
+  // Reject/Delete user account
+  async rejectUser(userId) {
+    try {
+      const query = `
+        DELETE FROM user_doh
+        WHERE user_id = $1
+        RETURNING user_id, full_name, email
+      `;
+
+      const result = await pool.query(query, [userId]);
+
+      if (result.rows.length === 0) {
+        throw new Error('User not found');
+      }
+
+      return result.rows[0];
+    } catch (error) {
+      console.error('[DB] Error rejecting user:', error);
+      throw error;
+    }
+  },
+
+  // Update user role (for Access Control)
+  async updateUserRole(userId, newRole) {
+    try {
+      const validRoles = ['Admin', 'Doctor', 'Medical Technologist', 'Scheduler'];
+
+      if (!validRoles.includes(newRole)) {
+        throw new Error('Invalid role specified');
+      }
+
+      const query = `
+        UPDATE user_doh
+        SET role = $1
+        WHERE user_id = $2
+        RETURNING user_id, full_name, email, role
+      `;
+
+      const result = await pool.query(query, [newRole, userId]);
+
+      if (result.rows.length === 0) {
+        throw new Error('User not found');
+      }
+
+      return result.rows[0];
+    } catch (error) {
+      console.error('[DB] Error updating user role:', error);
+      throw error;
+    }
+  },
+
+  // Delete user account (for Access Control)
+  async deleteUser(userId) {
+    try {
+      const query = `
+        DELETE FROM user_doh
+        WHERE user_id = $1
+        RETURNING user_id, full_name, email
+      `;
+
+      const result = await pool.query(query, [userId]);
+
+      if (result.rows.length === 0) {
+        throw new Error('User not found');
+      }
+
+      return result.rows[0];
+    } catch (error) {
+      console.error('[DB] Error deleting user:', error);
+      throw error;
+    }
+  },
+
+  // Utility methods
+  async testConnection() {
+    return await testConnection();
+  },
+
+  async closePool() {
+    try {
+      await pool.end();
+      console.log('Database pool closed');
+    } catch (error) {
+      console.error('Error closing database pool:', error);
+      throw error;
+    }
+  }
 };
 
-module.exports = dbService;
+// Initialize database tables on startup
+(async () => {
+  try {
+    await testConnection();
+    await dbService.initializeTables();
+    console.log('Database service initialized successfully');
+  } catch (error) {
+    console.error('Failed to initialize database service:', error);
+  }
+})();
+
+// Clean up expired tokens periodically (every hour)
+setInterval(async () => {
+  try {
+    await dbService.cleanupExpiredTokens();
+  } catch (error) {
+    console.error('Error during periodic token cleanup:', error);
+  }
+}, 60 * 60 * 1000); // 1 hour
+
+// Check for expiring blood stocks and create notifications (every 6 hours)
+const checkExpiringStocks = async () => {
+  try {
+    console.log('[DB] Checking for expiring blood stocks...');
+    const result = await dbService.checkAndCreateExpirationNotifications();
+    console.log(`[DB] Expiration check complete: ${result.notificationsCreated} notifications created`);
+  } catch (error) {
+    console.error('Error during expiration stock check:', error);
+  }
+};
+
+// Run expiration check on startup
+checkExpiringStocks();
+
+// Run expiration check every 24 hours
+setInterval(checkExpiringStocks, 24 * 60 * 60 * 1000);
+
+// Check and create weekly stock update notifications
+const createWeeklyUpdates = async () => {
+  try {
+    console.log('[DB] Creating weekly stock update notifications...');
+    const result = await dbService.createWeeklyStockUpdateNotifications();
+    console.log(`[DB] Weekly update complete: ${result.notificationsCreated} notifications created`);
+  } catch (error) {
+    console.error('Error during weekly stock update:', error);
+  }
+};
+
+// Run weekly update on startup (for testing - you can remove this later)
+// createWeeklyUpdates();
+
+// Run weekly update every 7 days at 6:00 AM
+const scheduleWeeklyUpdate = () => {
+  const now = new Date();
+  const nextRun = new Date();
+  nextRun.setHours(6, 0, 0, 0); // Set to 6:00 AM
+
+  // If 6 AM has passed today, schedule for next week
+  if (now.getHours() >= 6) {
+    nextRun.setDate(nextRun.getDate() + 7);
+  }
+
+  const timeUntilNextRun = nextRun - now;
+
+  setTimeout(() => {
+    createWeeklyUpdates();
+    // Then run every 7 days
+    setInterval(createWeeklyUpdates, 7 * 24 * 60 * 60 * 1000);
+  }, timeUntilNextRun);
+
+  console.log(`[DB] Weekly stock updates scheduled for ${nextRun.toLocaleString()}`);
+};
+
+scheduleWeeklyUpdate();
+
+module.exports = {
+  ...dbService,
+  sendPasswordResetEmail
+};

@@ -1,11 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Trash2, Plus } from "lucide-react";
-
-const Loader = () => (
-  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-    <div style={{ fontSize: '18px', color: '#6b7280' }}>Loading...</div>
-  </div>
-);
+import Loader from "../../../components/Loader";
 
 const PlateletNC = () => {
   const [bloodData, setBloodData] = useState([]);
@@ -119,6 +114,8 @@ const PlateletNC = () => {
   }, []);
 
   const loadNonConformingData = async () => {
+    const startTime = Date.now();
+
     try {
       setLoading(true);
       setError(null);
@@ -135,6 +132,10 @@ const PlateletNC = () => {
       console.error("Error loading platelet non-conforming data:", err);
       setError(`Failed to load platelet non-conforming data: ${err.message}`);
     } finally {
+      // Ensure minimum 1 second loading time
+      const elapsedTime = Date.now() - startTime;
+      const remainingTime = Math.max(0, 1000 - elapsedTime);
+      await new Promise(resolve => setTimeout(resolve, remainingTime));
       setLoading(false);
     }
   };
@@ -529,6 +530,30 @@ const PlateletNC = () => {
       };
       const result = await window.electronAPI.discardPlateletNonConformingStock(discardData);
       if (result.success) {
+        // Log activity
+        try {
+          const user = JSON.parse(localStorage.getItem('currentUser'));
+          const userName = user?.fullName || 'Unknown User';
+
+          await window.electronAPI.logActivityRBC({
+            user_name: userName,
+            action_type: 'discard',
+            entity_type: 'non_conforming_platelet',
+            entity_id: discardData.serialIds.join(','),
+            action_description: `${userName} discarded ${discardData.serialIds.length} unit(s) of Platelets from Non-Conforming`,
+            details: {
+              serialNumbers: discardData.serialIds,
+              count: discardData.serialIds.length,
+              discardReason: discardFormData.reasonForDiscarding,
+              responsiblePersonnel: discardFormData.responsiblePersonnel,
+              authorizedBy: discardFormData.authorizedBy,
+              dateOfDiscard: discardFormData.dateOfDiscard
+            }
+          });
+        } catch (logError) {
+          console.error('Failed to log activity:', logError);
+        }
+
         setShowDiscardDetailsModal(false);
         setShowDiscardModal(false);
         setDiscardItems([{
@@ -626,6 +651,27 @@ const PlateletNC = () => {
         await window.electronAPI.transferPlateletToNonConforming(serialIds);
 
       if (result.success) {
+        // Log activity
+        try {
+          const user = JSON.parse(localStorage.getItem('currentUser'));
+          const userName = user?.fullName || 'Unknown User';
+
+          await window.electronAPI.logActivityRBC({
+            user_name: userName,
+            action_type: 'add',
+            entity_type: 'non_conforming_platelet',
+            entity_id: serialIds.join(','),
+            action_description: `${userName} stored ${serialIds.length} unit(s) of Platelets in the Non-Conforming`,
+            details: {
+              serialNumbers: serialIds,
+              count: serialIds.length,
+              reason: 'Transferred from blood stock'
+            }
+          });
+        } catch (logError) {
+          console.error('Failed to log activity:', logError);
+        }
+
         setShowAddModal(false);
         setNonConformingItems([
           {
@@ -712,6 +758,27 @@ const PlateletNC = () => {
       };
 
       await window.electronAPI.updatePlateletNonConforming(editingItem.id, ncData);
+
+      // Log activity
+      try {
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const userName = user?.fullName || 'Unknown User';
+
+        await window.electronAPI.logActivity({
+          user_name: userName,
+          action_type: 'update',
+          entity_type: 'non_conforming_platelet',
+          entity_id: editingItem.serial_id,
+          action_description: `${userName} updated non-conforming details for Serial Number ${editingItem.serial_id}`,
+          details: {
+            serialNumber: editingItem.serial_id,
+            changes: ncData
+          }
+        });
+      } catch (logError) {
+        console.error('Failed to log activity:', logError);
+      }
+
       setShowEditConfirmModal(false);
       setShowEditModal(false);
       setEditingItem(null);
@@ -751,11 +818,32 @@ const PlateletNC = () => {
         return;
       }
 
-      const selectedIds = bloodData
-        .filter((item) => item.selected)
-        .map((item) => item.id);
+      const selectedItems = bloodData.filter((item) => item.selected);
+      const selectedIds = selectedItems.map((item) => item.id);
+      const serialNumbers = selectedItems.map((item) => item.serial_id);
 
       await window.electronAPI.deletePlateletNonConforming(selectedIds);
+
+      // Log activity
+      try {
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const userName = user?.fullName || 'Unknown User';
+
+        await window.electronAPI.logActivity({
+          user_name: userName,
+          action_type: 'delete',
+          entity_type: 'non_conforming_platelet',
+          entity_id: selectedIds.join(','),
+          action_description: `${userName} removed ${selectedIds.length} unit(s) from Non-Conforming (Serial Numbers: ${serialNumbers.slice(0, 3).join(', ')}${selectedIds.length > 3 ? '...' : ''})`,
+          details: {
+            serialNumbers: serialNumbers,
+            count: selectedIds.length
+          }
+        });
+      } catch (logError) {
+        console.error('Failed to log activity:', logError);
+      }
+
       setShowDeleteConfirmModal(false);
       await loadNonConformingData();
       clearAllSelection();
@@ -2610,14 +2698,10 @@ const PlateletNC = () => {
                   >
                     <option value="">Select classification</option>
                     <option value="Expired">Expired</option>
-                    <option value="Reactive">Reactive</option>
-                    <option value="Bloody Platelet">Bloody Platelet</option>
-                    <option value="TTI (Transfusion Transmitted Infection)">TTI (Transfusion Transmitted Infection)</option>
-                    <option value="Chylous">Chylous</option>
-                    <option value="Under Volume">Under Volume</option>
-                    <option value="Icteric">Icteric</option>
-                    <option value="Greenish">Greenish</option>
-                    <option value="Punctured/Open">Punctured/Open</option>
+                    <option value="Hemolyzed">Hemolyzed</option>
+                    <option value="Contaminated">Contaminated</option>
+                    <option value="Clotted">Clotted</option>
+                    <option value="Leakage">Leakage</option>
                     <option value="Other">Other</option>
                   </select>
                 </div>

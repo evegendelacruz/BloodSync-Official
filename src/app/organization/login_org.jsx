@@ -1,33 +1,179 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 const LoginOrg = () => {
   const navigate = useNavigate();
-  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [modalInfo, setModalInfo] = useState({
+    show: false,
+    type: "", // 'success' or 'error'
+    title: "",
+    message: "",
+  });
+
+  useEffect(() => {
+    // Suppress DevTools autofill warnings
+    const originalError = console.error;
+    console.error = (...args) => {
+      if (typeof args[0] === 'string' &&
+          (args[0].includes('Autofill.enable') ||
+           args[0].includes('Autofill.setAddresses'))) {
+        return;
+      }
+      originalError.apply(console, args);
+    };
+
+    return () => {
+      console.error = originalError;
+    };
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    setError("");
+    setLoading(true);
 
     const formData = new FormData(e.target);
-    const loginData = {
-      email: formData.get("email"),
-      password: formData.get("password"),
-    };
+    const emailOrDohId = formData.get("email");
+    const password = formData.get("password");
 
     try {
-      // Simulate login API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      // Use IPC to login organization user (accepts email or DOH ID)
+      const user = await window.electronAPI.loginOrgUser(emailOrDohId, password);
 
-      // Navigate to donor-record-org instead of dashboard
-      navigate("/donor-record-org");
+      // Store user data in localStorage
+      localStorage.setItem('currentOrgUser', JSON.stringify({
+        userId: user.userId,
+        email: user.email,
+        role: user.role,
+        barangay: user.barangay,
+        fullName: user.fullName,
+        profilePhoto: user.profilePhoto
+      }));
+
+      // Log the login activity
+      try {
+        await window.electronAPI.logActivity({
+          user_name: user.fullName,
+          action_type: 'login',
+          entity_type: 'user_auth',
+          entity_id: user.userId.toString(),
+          action_description: `${user.fullName} logged in to the Organization system`,
+          details: {
+            email: user.email,
+            role: user.role,
+            barangay: user.barangay,
+            loginTime: new Date().toISOString()
+          }
+        });
+      } catch (logError) {
+        console.error('Error logging login activity:', logError);
+      }
+
+      setModalInfo({
+        show: true,
+        type: "success",
+        title: "Login Successful!",
+        message: "You'll be directed shortly...",
+      });
+      setTimeout(() => {
+        navigate("/donor-record-org");
+      }, 2000);
     } catch (err) {
-      setError("Login failed. Please check your credentials and try again.");
+      console.error('Login error:', err);
+      setModalInfo({
+        show: true,
+        type: "error",
+        title: "Login Error",
+        message: err.message || "Incorrect Email Address/Password. If issue persists, proceed to Forgot Password or contact System Developer.",
+      });
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const closeModal = () => {
+    setModalInfo({ ...modalInfo, show: false });
+  };
+
+  const styles = {
+    modalOverlay: {
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 1000,
+    },
+    modalContent: {
+      backgroundColor: 'white',
+      padding: '20px',
+      borderRadius: '8px',
+      textAlign: 'center',
+      boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+      width: '90%',
+      maxWidth: '400px',
+    },
+    modalHeader: {
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      marginBottom: '15px',
+    },
+    modalIcon: {
+      fontSize: '48px',
+    },
+    modalTitle: {
+      fontSize: '24px',
+      fontWeight: 'bold',
+      color: '#333',
+      margin: '10px 0 0 0',
+    },
+    modalMessage: {
+      fontSize: '16px',
+      color: '#666',
+      marginBottom: '20px',
+    },
+    modalButton: {
+      backgroundColor: '#165c3c',
+      color: 'white',
+      border: 'none',
+      padding: '10px 20px',
+      borderRadius: '5px',
+      cursor: 'pointer',
+      fontSize: '16px',
+    },
   };
 
   return (
     <>
+      {modalInfo.show && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent}>
+            <div style={styles.modalHeader}>
+              <span style={styles.modalIcon}>
+                <img
+                  src={modalInfo.type === "success" ? "../src/assets/success.png" : "../src/assets/error-.png"}
+                  alt={modalInfo.type}
+                  style={{ width: '60px', height: '60px' }}
+                />
+              </span>
+              <h2 style={styles.modalTitle}>{modalInfo.title}</h2>
+            </div>
+            <p style={styles.modalMessage}>{modalInfo.message}</p>
+            {modalInfo.type === "error" && (
+              <button onClick={closeModal} style={styles.modalButton}>
+                Close
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <style>{`
         * {
           margin: 0;
@@ -74,31 +220,6 @@ const LoginOrg = () => {
           margin-right: 12px;
         }
 
-        .bloodsync-title {
-          font-size: 20px;
-          font-weight: bold;
-          margin: 0;
-        }
-
-        .bloodsync-subtitle {
-          font-size: 10px;
-          color: rgba(255, 255, 255, 0.8);
-          margin: 0;
-        }
-
-        .doh-title {
-          font-size: 12px;
-          font-weight: 600;
-          margin: 0 0 2px 0;
-        }
-
-        .doh-republic,
-        .doh-tagalog {
-          font-size: 10px;
-          color: rgba(255, 255, 255, 0.8);
-          margin: 0;
-        }
-
         .page-container {
           min-height: 100vh;
           display: flex;
@@ -118,21 +239,10 @@ const LoginOrg = () => {
           box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
           overflow: hidden;
           width: 350px;
-          min-height: 400px; /* keeps a minimum size */
-          height: auto;      /* adjust based on content */
+          min-height: 400px;
+          height: auto;
           display: flex;
-          flex-direction: column; /* keeps rows stacking */
-        }
-
-        .reset-container {
-          background: rgba(22, 92, 60, 0.8);
-          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-          overflow: hidden;
-          width: 350px;
-          min-height: 300px; /* keeps a minimum size */
-          height: auto;      /* adjust based on content */
-          display: flex;
-          flex-direction: column; /* keeps rows stacking */
+          flex-direction: column;
         }
 
         .login-header {
@@ -225,28 +335,11 @@ const LoginOrg = () => {
           text-decoration: none;
           font-weight: bold;
           font-family: inherit;
+          cursor: pointer;
         }
 
         .link:hover {
           text-decoration: underline;
-        }
-
-        .error {
-          color: #ef4444;
-          font-size: 14px;
-          margin-top: 8px;
-          display: none;
-        }
-
-        .success {
-          color: #10b981;
-          font-size: 14px;
-          margin-top: 8px;
-        }
-
-        .loading {
-          opacity: 0.6;
-          pointer-events: none;
         }
 
         /* Footer styling */
@@ -334,25 +427,48 @@ const LoginOrg = () => {
             <div className="content">
               <form onSubmit={handleLogin}>
                 <div className="form-group">
-                  <label htmlFor="email">Email Address</label>
-                  <input type="email" id="email" name="email" required />
+                  <label htmlFor="email">Email Address / DOH ID</label>
+                  <input type="text" id="email" name="email" required />
                 </div>
 
-                <div className="form-group">
+                <div className="form-group" style={{ position: 'relative' }}>
                   <label htmlFor="password">Password</label>
-                  <input
-                    type="password"
-                    id="password"
-                    name="password"
-                    required
-                  />
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      id="password"
+                      name="password"
+                      required
+                      style={{ paddingRight: '40px', width: '100%' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      style={{
+                        position: 'absolute',
+                        right: '12px',
+                        top: '12px',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: '#666',
+                        padding: '0',
+                        width: '20px',
+                        height: '20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      title={showPassword ? "Hide password" : "Show password"}
+                    >
+                      <i className={showPassword ? "fa-solid fa-eye-slash" : "fa-solid fa-eye"}></i>
+                    </button>
+                  </div>
                 </div>
 
-                <button type="submit" className="btn">
-                  LOGIN
+                <button type="submit" className="btn" disabled={loading}>
+                  {loading ? 'LOGGING IN...' : 'LOGIN'}
                 </button>
-
-                {error && <div className="error">{error}</div>}
               </form>
 
               <div

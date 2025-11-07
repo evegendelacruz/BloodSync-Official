@@ -6,10 +6,14 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Disable autofill features completely
 app.commandLine.appendSwitch(
   "disable-features",
-  "AutofillEnable,AutofillAddressEnabled,AutofillCreditCardEnabled"
+  "AutofillEnable,AutofillAddressEnabled,AutofillCreditCardEnabled,Autofill"
 );
+
+// Disable DevTools autofill warnings
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 
 // Create the browser window
 const createWindow = () => {
@@ -25,10 +29,20 @@ const createWindow = () => {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
+      devTools: process.env.NODE_ENV !== 'production',
     },
   });
 
   mainWindow.setMenuBarVisibility(false);
+
+  // Suppress autofill-related console errors
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    // Filter out autofill errors
+    if (message.includes('Autofill.enable') || message.includes('Autofill.setAddresses')) {
+      event.preventDefault();
+      return;
+    }
+  });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -44,9 +58,575 @@ const createWindow = () => {
 };
 
 const setupIpcHandlers = () => {
+  // Remove all existing IPC handlers to prevent duplicates during hot reload
+  const handlersToRemove = [
+    // Notification handlers (RBC DB)
+    "db:getAllNotifications",
+    "db:getAllNotificationsRBC",
+    "db:sendNotification",
+    "db:updateNotificationStatus",
+    "db:updateNotificationStatusWithReason",
+    "db:deleteNotification",
+    "db:deleteNotificationRBC",
+    "db:createNotification",
+    "db:markNotificationAsRead",
+    "db:getUnreadNotificationCount",
+    "db:markAllNotificationsAsRead",
+    // Mail handlers (organization)
+    "db:createMail",
+    "db:getAllMails",
+    "db:markMailAsRead",
+    "db:toggleMailStar",
+    "db:deleteMail",
+    // Blood expiration checking handlers
+    "db:getExpiringBloodStocks",
+    "db:getExpiringNonConformingStocks",
+    "db:getAllExpiringStocks",
+    "db:checkAndCreateExpirationNotifications",
+    // Blood donation analytics handlers
+    "db:getBloodDonationAnalytics",
+    // User management handlers
+    "db:getAllActiveUsers",
+    "db:getPendingUsers",
+    "db:approveUser",
+    "db:rejectUser",
+    "db:updateUserRole",
+    "db:deleteUser",
+    // Organization user management handlers
+    "db:getAllActiveOrgUsers",
+    "db:updateOrgUserRole",
+    "db:deleteOrgUser",
+    // Activity handlers
+    "db:getAllActivitiesRBC",
+    "db:getUserActivitiesRBC",
+    "db:logActivityRBC",
+    // Partnership request handlers
+    "db:createPartnershipRequest",
+    "db:getAllPartnershipRequests",
+    "db:getPartnershipRequestById",
+    "db:updatePartnershipRequestStatus",
+    "db:getPendingPartnershipRequestsCount",
+    "db:deletePartnershipRequest",
+  ];
+
+  handlersToRemove.forEach(handler => {
+    try {
+      ipcMain.removeHandler(handler);
+    } catch (e) {
+      // Ignore errors if handler doesn't exist
+    }
+  });
+
   const dbService = require(
     path.join(__dirname, "..", "..", "backend", "db.js")
   );
+
+  // Import donor and appointment database service with activity logging
+  const dbOrgService = require(
+    path.join(__dirname, "..", "..", "backend", "db_org.js")
+  );
+
+
+  // Initialize donor database on startup
+  dbOrgService.initializeDatabase().catch(console.error);
+
+  // ========== ACTIVITY LOGGING IPC HANDLERS ==========
+  ipcMain.handle("db:getAllActivities", async (_event, limit = 100, offset = 0) => {
+    try {
+      return await dbOrgService.getAllActivities(limit, offset);
+    } catch (error) {
+      console.error("IPC Error - getAllActivities:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:searchActivities", async (_event, searchTerm, limit = 100) => {
+    try {
+      return await dbOrgService.searchActivities(searchTerm, limit);
+    } catch (error) {
+      console.error("IPC Error - searchActivities:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:logActivity", async (_event, activityData) => {
+    try {
+      return await dbOrgService.logActivity(activityData);
+    } catch (error) {
+      console.error("IPC Error - logActivity:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:logActivityRBC", async (_event, activityData) => {
+    try {
+      return await dbService.logActivity(activityData);
+    } catch (error) {
+      console.error("IPC Error - logActivityRBC:", error);
+      throw error;
+    }
+  });
+
+  // ========== PARTNERSHIP REQUEST IPC HANDLERS ==========
+  ipcMain.handle("db:createPartnershipRequest", async (_event, requestData) => {
+    try {
+      return await dbService.createPartnershipRequest(requestData);
+    } catch (error) {
+      console.error("IPC Error - createPartnershipRequest:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getAllPartnershipRequests", async (_event, status) => {
+    try {
+      return await dbService.getAllPartnershipRequests(status);
+    } catch (error) {
+      console.error("IPC Error - getAllPartnershipRequests:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getPartnershipRequestById", async (_event, requestId) => {
+    try {
+      return await dbService.getPartnershipRequestById(requestId);
+    } catch (error) {
+      console.error("IPC Error - getPartnershipRequestById:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:updatePartnershipRequestStatus", async (_event, requestId, status, approvedBy) => {
+    try {
+      return await dbService.updatePartnershipRequestStatus(requestId, status, approvedBy);
+    } catch (error) {
+      console.error("IPC Error - updatePartnershipRequestStatus:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getPendingPartnershipRequestsCount", async () => {
+    try {
+      return await dbService.getPendingPartnershipRequestsCount();
+    } catch (error) {
+      console.error("IPC Error - getPendingPartnershipRequestsCount:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:deletePartnershipRequest", async (_event, requestId) => {
+    try {
+      return await dbService.deletePartnershipRequest(requestId);
+    } catch (error) {
+      console.error("IPC Error - deletePartnershipRequest:", error);
+      throw error;
+    }
+  });
+
+  // ========== MAIL IPC HANDLERS (ORGANIZATION) ==========
+  ipcMain.handle("db:createMail", async (_event, mailData) => {
+    try {
+      return await dbOrgService.createMail(mailData);
+    } catch (error) {
+      console.error("IPC Error - createMail:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getAllMails", async () => {
+    try {
+      return await dbOrgService.getAllMails();
+    } catch (error) {
+      console.error("IPC Error - getAllMails:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:markMailAsRead", async (_event, mailId) => {
+    try {
+      return await dbOrgService.markMailAsRead(mailId);
+    } catch (error) {
+      console.error("IPC Error - markMailAsRead:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:toggleMailStar", async (_event, mailId) => {
+    try {
+      return await dbOrgService.toggleMailStar(mailId);
+    } catch (error) {
+      console.error("IPC Error - toggleMailStar:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:deleteMail", async (_event, mailId) => {
+    try {
+      return await dbOrgService.deleteMail(mailId);
+    } catch (error) {
+      console.error("IPC Error - deleteMail:", error);
+      throw error;
+    }
+  });
+
+  // ========== BLOOD EXPIRATION CHECKING IPC HANDLERS ==========
+  ipcMain.handle("db:getExpiringBloodStocks", async (_event, daysThreshold = 7) => {
+    try {
+      return await dbService.getExpiringBloodStocks(daysThreshold);
+    } catch (error) {
+      console.error("IPC Error - getExpiringBloodStocks:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getExpiringNonConformingStocks", async (_event, daysThreshold = 7) => {
+    try {
+      return await dbService.getExpiringNonConformingStocks(daysThreshold);
+    } catch (error) {
+      console.error("IPC Error - getExpiringNonConformingStocks:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getAllExpiringStocks", async (_event, daysThreshold = 7) => {
+    try {
+      return await dbService.getAllExpiringStocks(daysThreshold);
+    } catch (error) {
+      console.error("IPC Error - getAllExpiringStocks:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:checkAndCreateExpirationNotifications", async () => {
+    try {
+      return await dbService.checkAndCreateExpirationNotifications();
+    } catch (error) {
+      console.error("IPC Error - checkAndCreateExpirationNotifications:", error);
+      throw error;
+    }
+  });
+
+  // ========== BLOOD DONATION ANALYTICS IPC HANDLERS ==========
+  ipcMain.handle("db:getBloodDonationAnalytics", async () => {
+    try {
+      return await dbService.getBloodDonationAnalytics();
+    } catch (error) {
+      console.error("IPC Error - getBloodDonationAnalytics:", error);
+      throw error;
+    }
+  });
+
+  // ========== USER MANAGEMENT IPC HANDLERS ==========
+  ipcMain.handle("db:getAllActiveUsers", async () => {
+    try {
+      return await dbService.getAllActiveUsers();
+    } catch (error) {
+      console.error("IPC Error - getAllActiveUsers:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getPendingUsers", async () => {
+    try {
+      return await dbService.getPendingUsers();
+    } catch (error) {
+      console.error("IPC Error - getPendingUsers:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:approveUser", async (_event, userId) => {
+    try {
+      return await dbService.approveUser(userId);
+    } catch (error) {
+      console.error("IPC Error - approveUser:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:rejectUser", async (_event, userId) => {
+    try {
+      return await dbService.rejectUser(userId);
+    } catch (error) {
+      console.error("IPC Error - rejectUser:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:updateUserRole", async (_event, userId, newRole) => {
+    try {
+      return await dbService.updateUserRole(userId, newRole);
+    } catch (error) {
+      console.error("IPC Error - updateUserRole:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:deleteUser", async (_event, userId) => {
+    try {
+      return await dbService.deleteUser(userId);
+    } catch (error) {
+      console.error("IPC Error - deleteUser:", error);
+      throw error;
+    }
+  });
+
+  // ========== ORGANIZATION USER MANAGEMENT IPC HANDLERS ==========
+  ipcMain.handle("db:getAllActiveOrgUsers", async () => {
+    try {
+      return await dbOrgService.getAllActiveOrgUsers();
+    } catch (error) {
+      console.error("IPC Error - getAllActiveOrgUsers:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:updateOrgUserRole", async (_event, userId, newRole) => {
+    try {
+      return await dbOrgService.updateOrgUserRole(userId, newRole);
+    } catch (error) {
+      console.error("IPC Error - updateOrgUserRole:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:deleteOrgUser", async (_event, userId) => {
+    try {
+      return await dbOrgService.deleteOrgUser(userId);
+    } catch (error) {
+      console.error("IPC Error - deleteOrgUser:", error);
+      throw error;
+    }
+  });
+
+  // ========== DONOR IPC HANDLERS WITH ACTIVITY LOGGING ==========
+  ipcMain.handle("db:getAllDonors", async () => {
+    try {
+      return await dbOrgService.getAllDonors();
+    } catch (error) {
+      console.error("IPC Error - getAllDonors:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:addDonor", async (_event, donorData, userName = 'Alaiza Rose Olores') => {
+    try {
+      return await dbOrgService.addDonor(donorData, userName);
+    } catch (error) {
+      console.error("IPC Error - addDonor:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:updateDonor", async (_event, id, donorData, userName = 'Alaiza Rose Olores') => {
+    try {
+      return await dbOrgService.updateDonor(id, donorData, userName);
+    } catch (error) {
+      console.error("IPC Error - updateDonor:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:deleteDonors", async (_event, ids, userName = 'Alaiza Rose Olores') => {
+    try {
+      return await dbOrgService.deleteDonors(ids, userName);
+    } catch (error) {
+      console.error("IPC Error - deleteDonors:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:searchDonors", async (_event, searchTerm) => {
+    try {
+      return await dbOrgService.searchDonors(searchTerm);
+    } catch (error) {
+      console.error("IPC Error - searchDonors:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getDonorByDonorId", async (_event, donorId) => {
+    try {
+      return await dbOrgService.getDonorByDonorId(donorId);
+    } catch (error) {
+      console.error("IPC Error - getDonorByDonorId:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getDonorStatistics", async () => {
+    try {
+      return await dbOrgService.getDonorStatistics();
+    } catch (error) {
+      console.error("IPC Error - getDonorStatistics:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:testDonorConnection", async () => {
+    try {
+      return await dbOrgService.testConnection();
+    } catch (error) {
+      console.error("IPC Error - testDonorConnection:", error);
+      throw error;
+    }
+  });
+
+  // ========== APPOINTMENT IPC HANDLERS WITH ACTIVITY LOGGING ==========
+  ipcMain.handle("db:getAllAppointments", async (_event, organizationName) => {
+    try {
+      return await dbOrgService.getAllAppointments(organizationName);
+    } catch (error) {
+      console.error("IPC Error - getAllAppointments:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:addAppointment", async (_event, appointmentData, userName = 'Alaiza Rose Olores') => {
+    try {
+      return await dbOrgService.addAppointment(appointmentData, userName);
+    } catch (error) {
+      console.error("IPC Error - addAppointment:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:updateAppointment", async (_event, id, appointmentData, userName = 'Alaiza Rose Olores') => {
+    try {
+      return await dbOrgService.updateAppointment(id, appointmentData, userName);
+    } catch (error) {
+      console.error("IPC Error - updateAppointment:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:deleteAppointments", async (_event, ids, userName = 'Alaiza Rose Olores') => {
+    try {
+      return await dbOrgService.deleteAppointments(ids, userName);
+    } catch (error) {
+      console.error("IPC Error - deleteAppointments:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:deleteAppointment", async (_event, id, userName = 'Alaiza Rose Olores') => {
+    try {
+      return await dbOrgService.deleteAppointment(id, userName);
+    } catch (error) {
+      console.error("IPC Error - deleteAppointment:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:searchAppointments", async (_event, searchTerm) => {
+    try {
+      return await dbOrgService.searchAppointments(searchTerm);
+    } catch (error) {
+      console.error("IPC Error - searchAppointments:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getAppointmentsByDateRange", async (_event, startDate, endDate) => {
+    try {
+      return await dbOrgService.getAppointmentsByDateRange(startDate, endDate);
+    } catch (error) {
+      console.error("IPC Error - getAppointmentsByDateRange:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getAppointmentById", async (_event, id) => {
+    try {
+      return await dbOrgService.getAppointmentById(id);
+    } catch (error) {
+      console.error("IPC Error - getAppointmentById:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getAppointmentStatistics", async () => {
+    try {
+      return await dbOrgService.getAppointmentStatistics();
+    } catch (error) {
+      console.error("IPC Error - getAppointmentStatistics:", error);
+      throw error;
+    }
+  });
+
+    // ========== NOTIFICATION IPC HANDLERS (Main System - Regional Blood Center) ==========
+ipcMain.handle("db:sendNotification", async (_event, notificationData) => {
+  try {
+    return await dbService.createNotification(notificationData);
+  } catch (error) {
+    console.error("IPC Error - sendNotification:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("db:getAllNotifications", async () => {
+  try {
+    return await dbService.getAllNotifications();
+  } catch (error) {
+    console.error("IPC Error - getAllNotifications:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("db:updateNotificationStatus", async (_event, notificationId, status, userName = 'Central System Admin') => {
+  try {
+    return await dbService.markNotificationAsRead(notificationId);
+  } catch (error) {
+    console.error("IPC Error - updateNotificationStatus:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("db:updateNotificationStatusWithReason", async (_event, notificationId, status, userName = 'Central System Admin', reason) => {
+  try {
+    return await dbService.markNotificationAsRead(notificationId);
+  } catch (error) {
+    console.error("IPC Error - updateNotificationStatusWithReason:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("db:deleteNotification", async (_event, notificationId) => {
+  try {
+    return await dbService.deleteNotification(notificationId);
+  } catch (error) {
+    console.error("IPC Error - deleteNotification:", error);
+    throw error;
+  }
+});
+
+// ========== NOTIFICATION IPC HANDLERS (Organization System) ==========
+// These use dbOrgService to read from notifications_organization table
+ipcMain.handle("db:getAllNotificationsOrg", async () => {
+  try {
+    return await dbOrgService.getAllNotifications();
+  } catch (error) {
+    console.error("IPC Error - getAllNotificationsOrg:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("db:updateNotificationStatusOrg", async (_event, notificationId) => {
+  try {
+    return await dbOrgService.markNotificationAsRead(notificationId);
+  } catch (error) {
+    console.error("IPC Error - updateNotificationStatusOrg:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("db:deleteNotificationOrg", async (_event, notificationId) => {
+  try {
+    return await dbOrgService.deleteNotification(notificationId);
+  } catch (error) {
+    console.error("IPC Error - deleteNotificationOrg:", error);
+    throw error;
+  }
+});
 
   // ========== RED BLOOD CELL IPC HANDLERS ==========
   ipcMain.handle("db:getAllBloodStock", async () => {
@@ -223,29 +803,28 @@ ipcMain.handle("db:deleteReleasedPlateletStock", async (_event, ids) => {
     }
   });
 
-  ipcMain.handle("db:getPlateletStockBySerialId", async (_event, serialId) => {
+  ipcMain.handle('db:getPlateletStockBySerialId', async (event, serialId) => {
     try {
       return await dbService.getPlateletStockBySerialId(serialId);
     } catch (error) {
-      console.error("IPC Error - getPlateletStockBySerialId:", error);
       throw error;
     }
   });
 
-  ipcMain.handle("db:releasePlateletStock", async (_event, releaseData) => {
+  ipcMain.handle('db:releasePlateletStock', async (event, releaseData) => {
     try {
       return await dbService.releasePlateletStock(releaseData);
     } catch (error) {
-      console.error("IPC Error - releasePlateletStock:", error);
+      console.error('Error in releasePlateletStock handler:', error);
       throw error;
     }
   });
 
-  ipcMain.handle("db:getReleasedPlateletStock", async () => {
+  ipcMain.handle('db:getReleasedPlateletStock', async (event) => {
     try {
       return await dbService.getReleasedPlateletStock();
     } catch (error) {
-      console.error("IPC Error - getReleasedPlateletStock:", error);
+      console.error('Error in getReleasedPlateletStock handler:', error);
       throw error;
     }
   });
@@ -314,15 +893,181 @@ ipcMain.handle("db:deleteReleasedPlateletStock", async (_event, ids) => {
       throw error;
     }
   });
-
   ipcMain.handle("db:getPlasmaStockBySerialId", async (_event, serialId) => {
+  try {
+  return await dbService.getPlasmaStockBySerialId(serialId);
+  } catch (error) {
+  console.error("IPC Error - getPlasmaStockBySerialId:", error);
+  throw error;
+  }
+  });
+
+  // ========== USER AUTHENTICATION IPC HANDLERS ==========
+  ipcMain.handle("db:registerUser", async (_event, userData) => {
     try {
-      return await dbService.getPlasmaStockBySerialId(serialId);
+      return await dbService.registerUser(userData);
     } catch (error) {
-      console.error("IPC Error - getPlasmaStockBySerialId:", error);
+      console.error("IPC Error - registerUser:", error);
       throw error;
     }
   });
+
+  ipcMain.handle("db:loginUser", async (_event, email, password) => {
+    try {
+      return await dbService.loginUser(email, password);
+    } catch (error) {
+      console.error("IPC Error - loginUser:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:generatePasswordResetToken", async (_event, email) => {
+    try {
+      return await dbService.generatePasswordResetToken(email);
+    } catch (error) {
+      console.error("IPC Error - generatePasswordResetToken:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:resetPassword", async (_event, email, resetToken, newPassword) => {
+    try {
+      return await dbService.resetPassword(email, resetToken, newPassword);
+    } catch (error) {
+      console.error("IPC Error - resetPassword:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:activateUserByToken", async (_event, token) => {
+    try {
+      // Try activating Regional Blood Center user first
+      let activated = await dbService.activateUserByToken(token);
+
+      // If not found in Regional Blood Center database, try Organization database
+      if (!activated) {
+        console.log('[IPC] User not found in Regional Blood Center DB, trying Organization DB...');
+        activated = await dbOrgService.activateOrgUserByToken(token);
+      }
+
+      return activated;
+    } catch (error) {
+      console.error("IPC Error - activateUserByToken:", error);
+      throw error;
+    }
+  });
+
+  // ========== ORGANIZATION USER REGISTRATION IPC HANDLERS ==========
+  ipcMain.handle("db:registerOrgUser", async (_event, userData) => {
+    try {
+      return await dbOrgService.registerOrgUser(userData);
+    } catch (error) {
+      console.error("IPC Error - registerOrgUser:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:activateOrgUserByToken", async (_event, token) => {
+    try {
+      return await dbOrgService.activateOrgUserByToken(token);
+    } catch (error) {
+      console.error("IPC Error - activateOrgUserByToken:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:loginOrgUser", async (_event, email, password) => {
+    try {
+      return await dbOrgService.loginOrgUser(email, password);
+    } catch (error) {
+      console.error("IPC Error - loginOrgUser:", error);
+      throw error;
+    }
+  });
+
+  // Organization Profile Handlers
+  // Organization user profile handlers
+  ipcMain.handle("db:getUserProfile", async (_event, userId) => {
+    try {
+      return await dbOrgService.getUserProfile(userId);
+    } catch (error) {
+      console.error("IPC Error - getUserProfile:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:updateUserProfile", async (_event, userId, profileData, userName) => {
+    try {
+      return await dbOrgService.updateUserProfile(userId, profileData, userName);
+    } catch (error) {
+      console.error("IPC Error - updateUserProfile:", error);
+      throw error;
+    }
+  });
+
+  // RBC user profile handlers
+  ipcMain.handle("db:getUserProfileRBC", async (_event, userId) => {
+    try {
+      return await dbService.getUserProfileRBC(userId);
+    } catch (error) {
+      console.error("IPC Error - getUserProfileRBC:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:updateUserProfileRBC", async (_event, userId, profileData, userName) => {
+    try {
+      return await dbService.updateUserProfileRBC(userId, profileData, userName);
+    } catch (error) {
+      console.error("IPC Error - updateUserProfileRBC:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getUserActivitiesRBC", async (_event, userId, limit, offset) => {
+    try {
+      return await dbService.getUserActivitiesRBC(userId, limit, offset);
+    } catch (error) {
+      console.error("IPC Error - getUserActivitiesRBC:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getAllActivitiesRBC", async (_event, limit = 100, offset = 0) => {
+    try {
+      return await dbService.getAllActivitiesRBC(limit, offset);
+    } catch (error) {
+      console.error("IPC Error - getAllActivitiesRBC:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getUserActivities", async (_event, userId, limit = 100, offset = 0) => {
+    try {
+      return await dbOrgService.getUserActivities(userId, limit, offset);
+    } catch (error) {
+      console.error("IPC Error - getUserActivities:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getBloodStockCounts", async (_event) => {
+    try {
+      return await dbService.getBloodStockCounts();
+    } catch (error) {
+      console.error("IPC Error - getBloodStockCounts:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("db:getBloodStockCountsByType", async (_event) => {
+    try {
+      return await dbService.getBloodStockCountsByType();
+    } catch (error) {
+      console.error("IPC Error - getBloodStockCountsByType:", error);
+        throw error;
+      }
+    });
 
   // ========== DONOR RECORD IPC HANDLERS ==========
   ipcMain.handle("db:getAllDonorRecords", async () => {
@@ -642,39 +1387,129 @@ ipcMain.handle("db:deleteReleasedPlateletStock", async (_event, ids) => {
     }
   });
 
-  // ========== INVOICE IPC HANDLERS ========== 
-  ipcMain.handle('get-all-invoices', async () => {
-    return await dbService.getAllInvoices();
+  // ===== DONOR RECORDS SYNC HANDLERS =====
+
+  // Request donor sync
+  ipcMain.handle('db:requestDonorSync', async (event, donorRecords, sourceOrganization, sourceUserId, sourceUserName) => {
+    try {
+      const result = await dbService.requestDonorSync(donorRecords, sourceOrganization, sourceUserId, sourceUserName);
+
+      // Create notification for main system
+      await dbService.createNotification({
+        userId: null, // For all main system users
+        userName: sourceUserName,
+        notificationType: 'sync_request',
+        title: 'Incoming Donor Records Sync Request',
+        description: `${sourceUserName} wants to approve incoming donor records. Click here to proceed to Donor Record Page.`,
+        relatedEntityType: 'temp_donor_records',
+        relatedEntityId: result[0]?.id,
+        linkTo: 'donor-record',
+        priority: 'high'
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Error in requestDonorSync:', error);
+      throw error;
+    }
   });
 
-  ipcMain.handle('search-invoices', async (event, searchTerm) => {
-    return await dbService.searchInvoices(searchTerm);
+  // Get pending sync requests
+  ipcMain.handle('db:getPendingSyncRequests', async () => {
+    try {
+      return await dbService.getPendingSyncRequests();
+    } catch (error) {
+      console.error('Error in getPendingSyncRequests:', error);
+      throw error;
+    }
   });
 
-  ipcMain.handle('get-invoice-details', async (event, invoiceId) => {
-    return await dbService.getInvoiceDetails(invoiceId);
+  // Get all donor records from main table
+  ipcMain.handle('db:getAllDonorRecordsMain', async () => {
+    try {
+      return await dbService.getAllDonorRecordsMain();
+    } catch (error) {
+      console.error('Error in getAllDonorRecordsMain:', error);
+      throw error;
+    }
   });
 
-  ipcMain.handle('delete-released-blood-invoices', async (event, invoiceIds) => {
-    return await dbService.deleteInvoices(invoiceIds);
+  // Approve donor sync
+  ipcMain.handle('db:approveDonorSync', async (event, approvedBy) => {
+    try {
+      const result = await dbService.approveDonorSync(approvedBy);
+
+      // Clear approved temp records
+      await dbService.clearApprovedTempRecords();
+
+      return result;
+    } catch (error) {
+      console.error('Error in approveDonorSync:', error);
+      throw error;
+    }
   });
 
-  // Discarded Blood Invoice Handlers
-ipcMain.handle('getAllDiscardedBloodInvoices', async () => {
-  return await dbService.getAllDiscardedBloodInvoices();
-});
+  // ===== NOTIFICATION HANDLERS =====
 
-ipcMain.handle('viewDiscardedBloodInvoice', async (event, invoiceId) => {
-  return await dbService.viewDiscardedBloodInvoice(invoiceId);
-});
+  // Create notification
+  ipcMain.handle('db:createNotification', async (event, notificationData) => {
+    try {
+      return await dbService.createNotification(notificationData);
+    } catch (error) {
+      console.error('Error in createNotification:', error);
+      throw error;
+    }
+  });
 
-ipcMain.handle('searchDiscardedBloodInvoices', async (event, searchTerm) => {
-  return await dbService.searchDiscardedBloodInvoices(searchTerm);
-});
+  // Get all notifications (Main System - RBC)
+  ipcMain.handle('db:getAllNotificationsRBC', async (event, userId = null) => {
+    try {
+      return await dbService.getAllNotifications(userId);
+    } catch (error) {
+      console.error('Error in getAllNotificationsRBC:', error);
+      throw error;
+    }
+  });
 
-ipcMain.handle('deleteDiscardedBloodInvoices', async (event, invoiceIds) => {
-  return await dbService.deleteDiscardedBloodInvoices(invoiceIds);
-});
+  // Get unread notification count
+  ipcMain.handle('db:getUnreadNotificationCount', async (event, userId = null) => {
+    try {
+      return await dbService.getUnreadNotificationCount(userId);
+    } catch (error) {
+      console.error('Error in getUnreadNotificationCount:', error);
+      throw error;
+    }
+  });
+
+  // Mark notification as read
+  ipcMain.handle('db:markNotificationAsRead', async (event, notificationId) => {
+    try {
+      return await dbService.markNotificationAsRead(notificationId);
+    } catch (error) {
+      console.error('Error in markNotificationAsRead:', error);
+      throw error;
+    }
+  });
+
+  // Mark all notifications as read
+  ipcMain.handle('db:markAllNotificationsAsRead', async (event, userId = null) => {
+    try {
+      return await dbService.markAllNotificationsAsRead(userId);
+    } catch (error) {
+      console.error('Error in markAllNotificationsAsRead:', error);
+      throw error;
+    }
+  });
+
+  // Delete notification (RBC)
+  ipcMain.handle('db:deleteNotificationRBC', async (event, notificationId) => {
+    try {
+      return await dbService.deleteNotification(notificationId);
+    } catch (error) {
+      console.error('Error in deleteNotificationRBC:', error);
+      throw error;
+    }
+  });
 }; 
 
 // Electron app lifecycle

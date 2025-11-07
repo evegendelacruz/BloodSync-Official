@@ -4,10 +4,172 @@ import { useNavigate } from "react-router-dom";
 const Signup = () => {
   const navigate = useNavigate();
 
-  const handleSignup = (e) => {
+  const [form, setForm] = React.useState({
+    full_name: "",
+    role: "",
+    email: "",
+    password: "",
+    confirmPassword: ""
+  });
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const [success, setSuccess] = React.useState("");
+  const [showSuccessModal, setShowSuccessModal] = React.useState(false);
+  const [showActivationModal, setShowActivationModal] = React.useState(false);
+  const [activationToken, setActivationToken] = React.useState("");
+
+  // Validation states
+  const [validationErrors, setValidationErrors] = React.useState({
+    full_name: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+    role: ""
+  });
+  const [touched, setTouched] = React.useState({
+    full_name: false,
+    email: false,
+    password: false,
+    confirmPassword: false,
+    role: false
+  });
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
+
+  React.useEffect(() => {
+    // Check activation status from localStorage
+    const status = localStorage.getItem('activationStatus');
+    const token = localStorage.getItem('activationToken');
+    if (status === 'success') {
+      setShowActivationModal(true);
+      setActivationToken(token);
+      // Optionally clear after showing
+      localStorage.removeItem('activationStatus');
+      localStorage.removeItem('activationToken');
+    }
+  }, []);
+
+  // Validation functions
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email) return "Email is required";
+    if (!emailRegex.test(email)) return "Please enter a valid email address";
+    return "";
+  };
+
+  const validatePassword = (password) => {
+    if (!password) return "Password is required";
+    if (password.length < 8) return "Password must be at least 8 characters long";
+    if (!/[A-Z]/.test(password)) return "Password must contain at least one uppercase letter";
+    if (!/[a-z]/.test(password)) return "Password must contain at least one lowercase letter";
+    if (!/\d/.test(password)) return "Password must contain at least one digit";
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) return "Password must contain at least one special character (!@#$%^&* etc.)";
+    return "";
+  };
+
+  const validateName = (name) => {
+    if (!name) return "Full name is required";
+    if (name.length < 2) return "Name must be at least 2 characters long";
+    return "";
+  };
+
+  const validateRole = (role) => {
+    if (!role) return "Please select a role";
+    return "";
+  };
+
+  const validateConfirmPassword = (password, confirmPassword) => {
+    if (!confirmPassword) return "Please confirm your password";
+    if (password !== confirmPassword) return "Passwords do not match";
+    return "";
+  };
+
+  const validateField = (name, value) => {
+    switch (name) {
+      case 'full_name':
+        return validateName(value);
+      case 'email':
+        return validateEmail(value);
+      case 'password':
+        return validatePassword(value);
+      case 'confirmPassword':
+        return validateConfirmPassword(form.password, value);
+      case 'role':
+        return validateRole(value);
+      default:
+        return "";
+    }
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm({ ...form, [name]: value });
+
+    // Real-time validation
+    const error = validateField(name, value);
+    setValidationErrors(prev => ({ ...prev, [name]: error }));
+
+    // Also validate confirm password when password changes
+    if (name === 'password' && form.confirmPassword) {
+      const confirmError = validateConfirmPassword(value, form.confirmPassword);
+      setValidationErrors(prev => ({ ...prev, confirmPassword: confirmError }));
+    }
+  };
+
+  const handleBlur = (e) => {
+    const { name } = e.target;
+    setTouched(prev => ({ ...prev, [name]: true }));
+  };
+
+  const handleSignup = async (e) => {
     e.preventDefault();
-    // Add your signup logic here
-    navigate("/login");
+    setError("");
+    setSuccess("");
+
+    // Mark all fields as touched to show validation errors
+    setTouched({
+      full_name: true,
+      email: true,
+      password: true,
+      confirmPassword: true,
+      role: true
+    });
+
+    // Validate all fields
+    const errors = {
+      full_name: validateName(form.full_name),
+      email: validateEmail(form.email),
+      password: validatePassword(form.password),
+      confirmPassword: validateConfirmPassword(form.password, form.confirmPassword),
+      role: validateRole(form.role)
+    };
+
+    setValidationErrors(errors);
+
+    // Check if there are any validation errors
+    const hasErrors = Object.values(errors).some(error => error !== "");
+    if (hasErrors) {
+      setError("Please correct the validation errors above");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Use IPC instead of fetch
+      await window.electronAPI.registerUser({
+        full_name: form.full_name,
+        role: form.role,
+        email: form.email,
+        password: form.password
+      });
+
+      setShowSuccessModal(true);
+      setForm({ full_name: "", role: "", email: "", password: "", confirmPassword: "" });
+    } catch (err) {
+      console.error('Registration error:', err);
+      setError(err.message || "Registration failed. Please try again.");
+    }
+    setLoading(false);
   };
 
   return (
@@ -194,6 +356,19 @@ const Signup = () => {
           font-family: Arial;
         }
 
+        .btn-1 {
+          width: 100%;
+          padding: 14px;
+          background: #165c3c;
+          color: white;
+          border: none;
+          font-size: 16px;
+          font-weight: 600;
+          transition: transform 0.2s;
+          margin-bottom: 16px;
+          font-family: Arial;
+        }
+
         .btn:hover {
           transform: translateY(-2px);
         }
@@ -238,6 +413,40 @@ const Signup = () => {
           color: #10b981;
           font-size: 14px;
           margin-top: 8px;
+        }
+
+        .validation-error {
+          color: #ef4444;
+          font-size: 12px;
+          margin-top: 4px;
+          font-weight: 500;
+        }
+
+        .password-input-container {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+
+        .password-toggle {
+          position: absolute;
+          right: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: #666;
+          font-size: 16px;
+          z-index: 1;
+        }
+
+        .password-toggle:hover {
+          color: #333;
+        }
+
+        .password-input {
+          padding-right: 40px !important;
         }
 
         .loading {
@@ -325,33 +534,161 @@ const Signup = () => {
           </div>
           <div className="content">
             <form onSubmit={handleSignup}>
+              {/* Success Modal */}
+              {showSuccessModal && (
+                <div style={{position:'fixed',top:0,left:0,width:'100vw',height:'100vh',background:'rgba(0,0,0,0.3)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}}>
+                  <div style={{background:'#fff',padding:'32px',borderRadius:'12px',boxShadow:'0 4px 16px rgba(0,0,0,0.1)',textAlign:'center',minWidth:'320px'}}>
+                    <img
+                      src="/assets/success.png"
+                      alt="Success"
+                      style={{width:'60px',height:'60px',marginBottom:'16px'}}
+                    />
+                    <h2 style={{color:'#165c3c',marginBottom:'16px'}}>Registration Submitted</h2>
+                    <p style={{color:'#666',fontSize:'16px',marginBottom:'24px'}}>Your registered information has been sent to our servers. Please be patient for activation.</p>
+                    <button className="btn-1" onClick={() => setShowSuccessModal(false)} style={{marginTop:'8px'}}>Okay</button>
+                  </div>
+                </div>
+              )}
+              {/* Activation Modal */}
+              {showActivationModal && (
+                <div style={{position:'fixed',top:0,left:0,width:'100vw',height:'100vh',background:'rgba(0,0,0,0.3)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}}>
+                  <div style={{background:'#fff',padding:'32px',borderRadius:'12px',boxShadow:'0 4px 16px rgba(0,0,0,0.1)',textAlign:'center',minWidth:'320px'}}>
+                    <h2 style={{color:'#165c3c',marginBottom:'16px'}}>New User Activation</h2>
+                    <div style={{color:'#10b981',fontSize:'18px',marginBottom:'16px'}}>Activation successful!</div>
+                    <div style={{fontSize:'14px',marginBottom:'16px'}}>Token: <span style={{fontWeight:'bold'}}>{activationToken}</span></div>
+                    <button className="btn" onClick={()=>setShowActivationModal(false)} style={{marginTop:'8px'}}>Close</button>
+                  </div>
+                </div>
+              )}
               <div className="form-group">
-                <label htmlFor="name">Full Name:</label>
-                <input type="text" id="name" name="name" required />
+                <label htmlFor="full_name">Full Name:</label>
+                <input
+                  type="text"
+                  id="full_name"
+                  name="full_name"
+                  value={form.full_name}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  required
+                  style={{
+                    borderColor: touched.full_name && validationErrors.full_name ? '#ef4444' : '#e5e7eb'
+                  }}
+                />
+                {touched.full_name && validationErrors.full_name && (
+                  <div className="validation-error">{validationErrors.full_name}</div>
+                )}
               </div>
               <div className="form-group">
                 <label htmlFor="role">Role:</label>
-                <select id="role" name="role" required>
+                <select
+                  id="role"
+                  name="role"
+                  value={form.role}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  required
+                  style={{
+                    borderColor: touched.role && validationErrors.role ? '#ef4444' : '#e5e7eb'
+                  }}
+                >
                   <option value="">Select a role...</option>
-                  <option value="admin">Admin</option>
-                  <option value="doctor">Doctor</option>
-                  <option value="medical-technologist">Medical Technologist</option>
+                  <option value="Admin">Admin</option>
+                  <option value="Doctor">Doctor</option>
+                  <option value="Medical Technologist">Medical Technologist</option>
+                  <option value="Scheduler">Scheduler</option>
                 </select>
+                {touched.role && validationErrors.role && (
+                  <div className="validation-error">{validationErrors.role}</div>
+                )}
               </div>
               <div className="form-group">
                 <label htmlFor="email">Email:</label>
-                <input type="email" id="email" name="email" required />
+                <input
+                  type="email"
+                  id="email"
+                  name="email"
+                  value={form.email}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  required
+                  style={{
+                    borderColor: touched.email && validationErrors.email ? '#ef4444' : '#e5e7eb'
+                  }}
+                />
+                {touched.email && validationErrors.email && (
+                  <div className="validation-error">{validationErrors.email}</div>
+                )}
               </div>
               <div className="form-group">
                 <label htmlFor="password">Password:</label>
-                <input type="password" id="password" name="password" required />
+                <div className="password-input-container">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    id="password"
+                    name="password"
+                    value={form.password}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    required
+                    className="password-input"
+                    style={{
+                      borderColor: touched.password && validationErrors.password ? '#ef4444' : '#e5e7eb',
+                      width: '100%',
+                      padding: '10px 40px 10px 16px',
+                      border: '2px solid #e5e7eb',
+                      fontSize: '13px',
+                      transition: 'border-color 0.2s'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    <i className={showPassword ? "fa-solid fa-eye-slash" : "fa-solid fa-eye"}></i>
+                  </button>
+                </div>
+                {touched.password && validationErrors.password && (
+                  <div className="validation-error">{validationErrors.password}</div>
+                )}
               </div>
               <div className="form-group">
-                <label htmlFor="password">Confirm Password:</label>
-                <input type="password" id="password" name="password" required />
+                <label htmlFor="confirmPassword">Confirm Password:</label>
+                <div className="password-input-container">
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    value={form.confirmPassword}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    required
+                    className="password-input"
+                    style={{
+                      borderColor: touched.confirmPassword && validationErrors.confirmPassword ? '#ef4444' : '#e5e7eb',
+                      width: '100%',
+                      padding: '10px 40px 10px 16px',
+                      border: '2px solid #e5e7eb',
+                      fontSize: '13px',
+                      transition: 'border-color 0.2s'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  >
+                    <i className={showConfirmPassword ? "fa-solid fa-eye-slash" : "fa-solid fa-eye"}></i>
+                  </button>
+                </div>
+                {touched.confirmPassword && validationErrors.confirmPassword && (
+                  <div className="validation-error">{validationErrors.confirmPassword}</div>
+                )}
               </div>
-              <button type="submit" className="btn" style={{ marginBottom: "30px" }}>
-                REGISTER
+              {error && <div className="error" style={{display:'block'}}>{error}</div>}
+              {success && <div className="success" style={{display:'block'}}>{success}</div>}
+              <button type="submit" className="btn" style={{ marginBottom: "30px" }} disabled={loading}>
+                {loading ? "Registering..." : "REGISTER"}
               </button>
             </form>
           </div>

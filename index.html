@@ -5,9 +5,50 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self';"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; connect-src 'self' http://localhost:5000 http://localhost:3001; img-src 'self' data:; font-src 'self' https://cdnjs.cloudflare.com;"
     />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <title>Blood Sync</title>
+
+    <!-- Barlow Font Declarations -->
+    <style>
+      @font-face {
+        font-family: 'Barlow';
+        src: url('./src/assets/fonts/Barlow-Regular.ttf') format('truetype');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'Barlow';
+        src: url('./src/assets/fonts/Barlow-Medium.ttf') format('truetype');
+        font-weight: 500;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'Barlow';
+        src: url('./src/assets/fonts/Barlow-SemiBold.ttf') format('truetype');
+        font-weight: 600;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'Barlow';
+        src: url('./src/assets/fonts/Barlow-Bold.ttf') format('truetype');
+        font-weight: 700;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      /* Global font family for the entire application */
+      body {
+        font-family: 'Barlow', Arial, sans-serif;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

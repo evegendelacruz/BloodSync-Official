@@ -1,92 +1,224 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 const ForgotPassword = () => {
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     email: "",
-    recoveryCode: "",
-    newPassword: "",
-    confirmPassword: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [modalInfo, setModalInfo] = useState({
+    show: false,
+    type: "", // 'success' or 'error'
+    title: "",
+    message: "",
+  });
+  const [canResend, setCanResend] = useState(true);
+  const [countdown, setCountdown] = useState(0);
+  const [showGotOTP, setShowGotOTP] = useState(false);
+  const [otpSentTime, setOtpSentTime] = useState(null);
+
+  useEffect(() => {
+    // Check if there's an active OTP session
+    const sentTime = sessionStorage.getItem('otpSentTime');
+    if (sentTime) {
+      const elapsed = Math.floor((Date.now() - parseInt(sentTime)) / 1000);
+      const remaining = 300 - elapsed; // 5 minutes
+
+      if (remaining > 0) {
+        setShowGotOTP(true);
+        setOtpSentTime(parseInt(sentTime));
+      } else {
+        sessionStorage.removeItem('otpSentTime');
+        sessionStorage.removeItem('resetEmail');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!otpSentTime) return;
+
+    const timer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - otpSentTime) / 1000);
+      const remaining = 300 - elapsed; // 5 minutes
+
+      if (remaining <= 0) {
+        setShowGotOTP(false);
+        sessionStorage.removeItem('otpSentTime');
+        sessionStorage.removeItem('resetEmail');
+        clearInterval(timer);
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [otpSentTime]);
+
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    } else if (countdown === 0) {
+      setCanResend(true);
+    }
+  }, [countdown]);
 
   const handleInputChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSendCode = (e) => {
+  const closeModal = () => {
+    setModalInfo({ ...modalInfo, show: false });
+    if (modalInfo.type === "success") {
+      // Store email and timestamp in sessionStorage
+      sessionStorage.setItem('resetEmail', formData.email);
+      const currentTime = Date.now();
+      sessionStorage.setItem('otpSentTime', currentTime.toString());
+      setOtpSentTime(currentTime);
+      setShowGotOTP(true);
+
+      // Navigate to reset password page
+      navigate("/reset-password");
+    }
+  };
+
+  const handleSendCode = async (e) => {
     e.preventDefault();
     setError("");
-    setSuccess("");
+
+    if (!canResend) {
+      setError(`Please wait ${countdown} seconds before requesting another code`);
+      return;
+    }
 
     if (!formData.email) {
       setError("Please enter your email address");
       return;
     }
 
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setError("Please enter a valid email address");
+      return;
+    }
+
     setLoading(true);
-    setTimeout(() => {
+
+    try {
+      // Use IPC instead of fetch
+      const data = await window.electronAPI.generatePasswordResetToken(formData.email);
+      console.log('Password reset response:', data);
+
+      if (data.success) {
+        setCanResend(false);
+        setCountdown(60); // 1 minute cooldown
+        setModalInfo({
+          show: true,
+          type: "success",
+          title: "Success",
+          message: "Your OTP Code is now sent to your registered email."
+        });
+      } else {
+        setModalInfo({
+          show: true,
+          type: "error",
+          title: "Error",
+          message: data.message || "Failed to send recovery code"
+        });
+      }
+    } catch (err) {
+      console.error('Error sending recovery code:', err);
+      setModalInfo({
+        show: true,
+        type: "error",
+        title: "Error",
+        message: "Network error. Please try again."
+      });
+    } finally {
       setLoading(false);
-      setSuccess("Recovery code sent to your email!");
-      setTimeout(() => {
-        setStep(2);
-        setSuccess("");
-      }, 1500);
-    }, 1500);
+    }
   };
 
-  const handleResetPassword = (e) => {
-    e.preventDefault();
-    setError("");
-    setSuccess("");
-  
-    if (!formData.recoveryCode) {
-      setError("Please enter the recovery code");
-      return;
-    }
-  
-    if (!formData.newPassword) {
-      setError("Please enter a new password");
-      return;
-    }
-  
-    if (formData.newPassword.length < 6) {
-      setError("Password must be at least 6 characters long");
-      return;
-    }
-  
-    if (formData.newPassword !== formData.confirmPassword) {
-      setError("Passwords do not match");
-      return;
-    }
-  
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setSuccess("Password reset successfully! Redirecting to login...");
-      // Redirect after short delay so user sees the message
-      setTimeout(() => {
-        navigate("/login");
-      }, 1500);
-    }, 1500);
-  };
-  
   const handleBack = () => {
-    if (step === 2) {
-      setStep(1);
-      setError("");
-      setSuccess("");
-    } else {
-      navigate("/login");
-    }
+    navigate("/login");
+  };
+
+  const modalStyles = {
+    modalOverlay: {
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 1000,
+    },
+    modalContent: {
+      backgroundColor: 'white',
+      padding: '20px',
+      borderRadius: '8px',
+      textAlign: 'center',
+      boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+      width: '90%',
+      maxWidth: '400px',
+    },
+    modalHeader: {
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      marginBottom: '15px',
+    },
+    modalIcon: {
+      fontSize: '48px',
+    },
+    modalTitle: {
+      fontSize: '24px',
+      fontWeight: 'bold',
+      color: '#333',
+      margin: '10px 0 0 0',
+    },
+    modalMessage: {
+      fontSize: '16px',
+      color: '#666',
+      marginBottom: '20px',
+    },
+    modalButton: {
+      backgroundColor: '#165c3c',
+      color: 'white',
+      border: 'none',
+      padding: '10px 20px',
+      borderRadius: '5px',
+      cursor: 'pointer',
+      fontSize: '16px',
+    },
   };
 
   return (
     <>
+      {modalInfo.show && (
+        <div style={modalStyles.modalOverlay}>
+          <div style={modalStyles.modalContent}>
+            <div style={modalStyles.modalHeader}>
+              <span style={modalStyles.modalIcon}>
+                <img
+                  src={modalInfo.type === "success" ? "./assets/success.png" : "./assets/error-.png"}
+                  alt={modalInfo.type}
+                  style={{ width: '60px', height: '60px' }}
+                />
+              </span>
+              <h2 style={modalStyles.modalTitle}>{modalInfo.title}</h2>
+            </div>
+            <p style={modalStyles.modalMessage}>{modalInfo.message}</p>
+            <button onClick={closeModal} style={modalStyles.modalButton}>
+              OK
+            </button>
+          </div>
+        </div>
+      )}
       <style>{`
         * {
           margin: 0;
@@ -373,91 +505,70 @@ const ForgotPassword = () => {
       <div className="main-content">
         <div className="reset-container">
           <div className="login-header">
-            <h1>Reset Password</h1>
-            <p>
-              {step === 1
-                ? "Enter email to send your recovery code."
-                : "Enter the code and your new password."}
-            </p>
+            <h1>Forgot Password</h1>
+            <p>Enter your email address to receive a recovery code.</p>
           </div>
 
-          <form
-            onSubmit={step === 1 ? handleSendCode : handleResetPassword}
-            className={`content ${loading ? "loading" : ""}`}
-            >
-          
-            {step === 1 && (
+          <div className={`content ${loading ? "loading" : ""}`}>
+            <form onSubmit={handleSendCode}>
               <div className="form-group">
-                <label htmlFor="email">Email</label>
+                <label htmlFor="email">Email Address</label>
                 <input
                   type="email"
                   id="email"
                   name="email"
                   value={formData.email}
                   onChange={handleInputChange}
+                  placeholder="Enter your email"
                   required
                 />
               </div>
-            )}
 
-            {step === 2 && (
-              <>
-                <div className="form-group">
-                  <label htmlFor="recoveryCode">Recovery Code</label>
-                  <input
-                    type="text"
-                    id="recoveryCode"
-                    name="recoveryCode"
-                    value={formData.recoveryCode}
-                    onChange={handleInputChange}
-                    required
-                  />
+              {error && <p style={{ margin: "10px 0", color: "#ffcf35", fontSize: "14px" }}>{error}</p>}
+
+              {showGotOTP && (
+                <div style={{ textAlign: "center", marginBottom: "15px" }}>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/reset-password")}
+                    className="link"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#ffcf35",
+                      textDecoration: "underline",
+                      cursor: "pointer",
+                      fontSize: "14px"
+                    }}
+                  >
+                    Got OTP Code?
+                  </button>
                 </div>
+              )}
 
-                <div className="form-group">
-                  <label htmlFor="newPassword">New Password</label>
-                  <input
-                    type="password"
-                    id="newPassword"
-                    name="newPassword"
-                    value={formData.newPassword}
-                    onChange={handleInputChange}
-                    required
-                  />
-                </div>
+              <button
+                type="submit"
+                className="btn"
+                disabled={loading || !canResend}
+              >
+                {loading ? "SENDING..." : canResend ? "SEND CODE" : `WAIT ${countdown}s`}
+              </button>
 
-                <div className="form-group">
-                  <label htmlFor="confirmPassword">Confirm Password</label>
-                  <input
-                    type="password"
-                    id="confirmPassword"
-                    name="confirmPassword"
-                    value={formData.confirmPassword}
-                    onChange={handleInputChange}
-                    required
-                  />
-                </div>
-              </>
-            )}
-
-            {error && <p style={{ margin: "20px 0", color: "yellow" }}>{error}</p>}
-
-            <button type="submit" className="btn">
-              {step === 1 ? "SEND CODE" : "RESET PASSWORD"}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleBack}
-              className="link"
-              style={{
-                display: "block",
-                margin: "10px auto", // centers it horizontally with some spacing
-              }}
-            >
-              Back
-            </button>
-          </form>
+              <button
+                type="button"
+                onClick={handleBack}
+                className="link"
+                style={{
+                  display: "block",
+                  margin: "10px auto",
+                  cursor: "pointer",
+                }}
+                disabled={loading}
+              >
+                Back to Login
+              </button>
+            </form>
+          </div>
         </div>
       </div>
       <footer className="footer">
