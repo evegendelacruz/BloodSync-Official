@@ -659,6 +659,29 @@ const RedBloodCell = () => {
     }
   };
 
+  const generateNextReferenceNumber = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    
+    return `REF-RBC-${year}${month}${day}-${hours}${minutes}${seconds}-${random}`;
+  };
+  
+  // Modified useEffect for release modal initialization
+  useEffect(() => {
+    if (showReleaseDetailsModal) {
+      setReleaseData((prev) => ({
+        ...prev,
+        requestReference: generateNextReferenceNumber(),
+      }));
+    }
+  }, [showReleaseDetailsModal]);
+
   const displayData = getSortedAndFilteredData();
   const selectedCount = bloodData.filter((item) => item.selected).length;
   const singleSelected = selectedCount === 1;
@@ -2549,82 +2572,82 @@ const RedBloodCell = () => {
             </div>
 
             <div style={styles.modalContent}>
-              <div
+            <div
+              style={{
+                backgroundColor: "#f0f9ff",
+                border: "1px solid #0ea5e9",
+                borderRadius: "8px",
+                padding: "16px",
+                marginBottom: "24px",
+              }}
+            >
+              <h4
                 style={{
-                  backgroundColor: "#f0f9ff",
-                  border: "1px solid #0ea5e9",
-                  borderRadius: "8px",
-                  padding: "16px",
-                  marginBottom: "24px",
+                  fontSize: "16px",
+                  fontWeight: "600",
+                  color: "#1e40af",
+                  margin: "0 0 12px 0",
                 }}
               >
-                <h4
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: "600",
-                    color: "#1e40af",
-                    margin: "0 0 12px 0",
-                  }}
-                >
-                  Items to Release (
-                  {selectedItems.filter((item) => item.found).length})
-                </h4>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "2fr 1fr 1fr 1fr",
-                    gap: "12px",
-                    fontSize: "12px",
-                    fontWeight: "500",
-                    color: "#374151",
-                    marginBottom: "8px",
-                  }}
-                >
-                  <div>Serial ID</div>
-                  <div>Blood Type</div>
-                  <div>RH Factor</div>
-                  <div>Volume (mL)</div>
-                </div>
+                Items to Release (
+                {selectedItems.filter((item) => item.found).length})
+              </h4>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "2fr 1fr 1fr 1fr",
+                  gap: "12px",
+                  fontSize: "12px",
+                  fontWeight: "500",
+                  color: "#374151",
+                  marginBottom: "8px",
+                }}
+              >
+                <div>Serial ID</div>
+                <div>Blood Type</div>
+                <div>RH Factor</div>
+                <div>Volume (mL)</div>
+              </div>
+              {selectedItems
+                .filter((item) => item.found)
+                .map((item, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "2fr 1fr 1fr 1fr",
+                      gap: "12px",
+                      fontSize: "12px",
+                      color: "#6b7280",
+                      padding: "8px 0",
+                      borderTop: index > 0 ? "1px solid #e5e7eb" : "none",
+                    }}
+                  >
+                    <div style={{ fontWeight: "500", color: "#374151" }}>
+                      {item.serialId}
+                    </div>
+                    <div>{item.bloodType}</div>
+                    <div>{item.rhFactor}</div>
+                    <div>{item.volume}</div>
+                  </div>
+                ))}
+              <div
+                style={{
+                  marginTop: "12px",
+                  paddingTop: "12px",
+                  borderTop: "1px solid #0ea5e9",
+                  fontSize: "14px",
+                  fontWeight: "600",
+                  color: "#1e40af",
+                }}
+              >
+                Total Volume:{" "}
                 {selectedItems
                   .filter((item) => item.found)
-                  .map((item, index) => (
-                    <div
-                      key={index}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "2fr 1fr 1fr 1fr",
-                        gap: "12px",
-                        fontSize: "12px",
-                        color: "#6b7280",
-                        padding: "8px 0",
-                        borderTop: index > 0 ? "1px solid #e5e7eb" : "none",
-                      }}
-                    >
-                      <div style={{ fontWeight: "500", color: "#374151" }}>
-                        {item.serialId}
-                      </div>
-                      <div>{item.bloodType}</div>
-                      <div>{item.rhFactor}</div>
-                      <div>{item.volume}</div>
-                    </div>
-                  ))}
-                <div
-                  style={{
-                    marginTop: "12px",
-                    paddingTop: "12px",
-                    borderTop: "1px solid #0ea5e9",
-                    fontSize: "14px",
-                    fontWeight: "600",
-                    color: "#1e40af",
-                  }}
-                >
-                  Total Volume:{" "}
-                  {selectedItems
-                    .filter((item) => item.found)
-                    .reduce((sum, item) => sum + item.volume, 0)}{" "}
-                  mL
-                </div>
+                  .reduce((sum, item) => sum + parseInt(item.volume || 0), 0)}{" "}
+                mL
               </div>
+            </div>
 
               <div style={styles.filterContainer}>
                 <div style={styles.formGroup}>
@@ -2687,16 +2710,23 @@ const RedBloodCell = () => {
               </div>
 
               <div style={styles.filterContainer}>
-                <div style={styles.formGroup}>
+              <div style={styles.formGroup}>
                   <label style={styles.label}>Contact Number</label>
                   <input
                     type="tel"
                     style={styles.fieldInput}
                     value={releaseData.contactNumber}
-                    onChange={(e) =>
-                      handleReleaseDataChange("contactNumber", e.target.value)
-                    }
-                    placeholder="+ 63"
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      // Remove +63 prefix if present to get the actual input
+                      const numberPart = value.replace('+63', '').replace(/\D/g, '');
+                      // Limit to 10 digits
+                      const limitedNumber = numberPart.slice(0, 10);
+                      // Add +63 prefix back
+                      handleReleaseDataChange("contactNumber", limitedNumber ? `+63${limitedNumber}` : '+63');
+                    }}
+                    placeholder="+63"
+                    maxLength={13}
                   />
                 </div>
                 <div style={styles.formGroup}>
@@ -2750,18 +2780,14 @@ const RedBloodCell = () => {
               </div>
 
               <div style={styles.filterContainer}>
-                <div style={styles.formGroup}>
+              <div style={styles.formGroup}>
                   <label style={styles.label}>Request Reference Number</label>
                   <input
                     type="text"
-                    style={styles.fieldInput}
+                    style={{...styles.fieldInput, backgroundColor: '#f9fafb', cursor: 'not-allowed'}}
                     value={releaseData.requestReference}
-                    onChange={(e) =>
-                      handleReleaseDataChange(
-                        "requestReference",
-                        e.target.value
-                      )
-                    }
+                    readOnly
+                    disabled
                   />
                 </div>
                 <div style={styles.formGroup}>

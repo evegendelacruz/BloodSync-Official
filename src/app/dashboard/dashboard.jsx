@@ -11,7 +11,8 @@ import Plasma from "./blood_stock/plasma";
 import Platelet from "./blood_stock/platelet";
 import RedBloodCell from "./blood_stock/rbc";
 import DonorRecord from "./donor_record";
-import Invoice from "./invoice";
+import Discarded from "./invoice/discarded_blood";
+import ReleasedInvoice from "./invoice/released_blood";
 import RecentActivity from "./recent_activity";
 import ReleasedBlood from "./released_blood";
 import Reports from "./reports";
@@ -961,8 +962,10 @@ const Dashboard = () => {
         return <PlateletNC />;
       case "donor-record":
         return <DonorRecord />;
-      case "invoice":
-        return <Invoice />;
+      case "released-invoice":
+        return <ReleasedInvoice />;
+      case "discard-invoice-nc":
+        return <Discarded />;
       case "reports":
         return <Reports />;
       case "recent-activity":

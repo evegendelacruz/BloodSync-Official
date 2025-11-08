@@ -71,7 +71,15 @@ const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
       id: "invoice",
       label: "Invoice",
       icon: FileText,
-      screen: "invoice",
+      hasSubmenu: true,
+      submenu: [
+        {
+          id: "released-invoice",
+          label: "Released Blood",
+          screen: "released-invoice",
+        },
+        { id: "discard-invoice-nc", label: "Discarded Blood", screen: "discard-invoice-nc" },
+      ],
     },
     {
       id: "reports",

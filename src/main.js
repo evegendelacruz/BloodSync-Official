@@ -641,6 +641,40 @@ ipcMain.handle("db:deleteReleasedPlateletStock", async (_event, ids) => {
       throw error;
     }
   });
+
+  // ========== INVOICE IPC HANDLERS ========== 
+  ipcMain.handle('get-all-invoices', async () => {
+    return await dbService.getAllInvoices();
+  });
+
+  ipcMain.handle('search-invoices', async (event, searchTerm) => {
+    return await dbService.searchInvoices(searchTerm);
+  });
+
+  ipcMain.handle('get-invoice-details', async (event, invoiceId) => {
+    return await dbService.getInvoiceDetails(invoiceId);
+  });
+
+  ipcMain.handle('delete-released-blood-invoices', async (event, invoiceIds) => {
+    return await dbService.deleteInvoices(invoiceIds);
+  });
+
+  // Discarded Blood Invoice Handlers
+ipcMain.handle('getAllDiscardedBloodInvoices', async () => {
+  return await dbService.getAllDiscardedBloodInvoices();
+});
+
+ipcMain.handle('viewDiscardedBloodInvoice', async (event, invoiceId) => {
+  return await dbService.viewDiscardedBloodInvoice(invoiceId);
+});
+
+ipcMain.handle('searchDiscardedBloodInvoices', async (event, searchTerm) => {
+  return await dbService.searchDiscardedBloodInvoices(searchTerm);
+});
+
+ipcMain.handle('deleteDiscardedBloodInvoices', async (event, invoiceIds) => {
+  return await dbService.deleteDiscardedBloodInvoices(invoiceIds);
+});
 }; 
 
 // Electron app lifecycle

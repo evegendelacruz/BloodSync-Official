@@ -2610,10 +2610,14 @@ const PlateletNC = () => {
                   >
                     <option value="">Select classification</option>
                     <option value="Expired">Expired</option>
-                    <option value="Hemolyzed">Hemolyzed</option>
-                    <option value="Contaminated">Contaminated</option>
-                    <option value="Clotted">Clotted</option>
-                    <option value="Leakage">Leakage</option>
+                    <option value="Reactive">Reactive</option>
+                    <option value="Bloody Platelet">Bloody Platelet</option>
+                    <option value="TTI (Transfusion Transmitted Infection)">TTI (Transfusion Transmitted Infection)</option>
+                    <option value="Chylous">Chylous</option>
+                    <option value="Under Volume">Under Volume</option>
+                    <option value="Icteric">Icteric</option>
+                    <option value="Greenish">Greenish</option>
+                    <option value="Punctured/Open">Punctured/Open</option>
                     <option value="Other">Other</option>
                   </select>
                 </div>
