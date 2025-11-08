@@ -145,35 +145,45 @@ const dbService = {
     }
   },
 
-    // Add new red blood cell stock record
-    async addBloodStock(bloodData) {
-      try {
-        const query = `
-          INSERT INTO blood_stock (
-            bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
-            bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
-          RETURNING bs_id
-        `;
-        
-        const values = [
-          bloodData.serial_id,
-          bloodData.type,
-          bloodData.rhFactor,
-          parseInt(bloodData.volume),
-          new Date(bloodData.collection),
-          new Date(bloodData.expiration),
-          bloodData.status || 'Stored',
-          'Red Blood Cell'
-        ];
-        
-        const result = await pool.query(query, values);
-        return result.rows[0];
-      } catch (error) {
-        console.error('Error adding red blood cell stock:', error);
-        throw error;
-      }
-    },
+  async addBloodStock(bloodData) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      const query = `
+        INSERT INTO blood_stock (
+          bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
+          bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
+        RETURNING bs_id
+      `;
+      
+      const values = [
+        bloodData.serial_id,
+        bloodData.type,
+        bloodData.rhFactor,
+        parseInt(bloodData.volume),
+        new Date(bloodData.collection),
+        new Date(bloodData.expiration),
+        bloodData.status || 'Stored',
+        'Red Blood Cell'
+      ];
+      
+      const result = await client.query(query, values);
+      const stockId = result.rows[0].bs_id;
+      
+     
+      
+      await client.query('COMMIT');
+      return result.rows[0];
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error adding blood stock:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
 
   // Update red blood cell stock record
   async updateBloodStock(id, bloodData) {
@@ -3928,6 +3938,590 @@ async searchDiscardedBloodInvoices(searchTerm) {
       client.release();
     }
   },
+
+  // ========== BLOOD REPORTS METHODS ==========
+  // Get all blood reports
+async getAllBloodReports() {
+  try {
+    const query = `
+      SELECT 
+        br_id as id,
+        br_report_id as "docId",
+        br_quarter as quarter,
+        br_year as year,
+        br_month_start as "monthStart",
+        br_month_end as "monthEnd",
+        br_month_labels as "monthLabels",
+        br_o_positive as "oPositive",
+        br_o_negative as "oNegative",
+        br_a_positive as "aPositive",
+        br_a_negative as "aNegative",
+        br_b_positive as "bPositive",
+        br_b_negative as "bNegative",
+        br_ab_positive as "abPositive",
+        br_ab_negative as "abNegative",
+        br_others as others,
+        br_o_positive_pct as "oPositivePct",
+        br_o_negative_pct as "oNegativePct",
+        br_a_positive_pct as "aPositivePct",
+        br_a_negative_pct as "aNegativePct",
+        br_b_positive_pct as "bPositivePct",
+        br_b_negative_pct as "bNegativePct",
+        br_ab_positive_pct as "abPositivePct",
+        br_ab_negative_pct as "abNegativePct",
+        br_others_pct as "othersPct",
+        br_total_count as total,
+        br_month1_data as "month1Data",
+        br_month2_data as "month2Data",
+        br_month3_data as "month3Data",
+        br_created_by as "createdBy",
+        TO_CHAR(br_created_at, 'MM/DD/YYYY') as "dateCreated"
+      FROM blood_reports
+      ORDER BY br_year DESC, br_month_start DESC
+    `;
+    
+    const result = await pool.query(query);
+    return result.rows.map(row => ({
+      ...row,
+      selected: false
+    }));
+  } catch (error) {
+    console.error('Error fetching blood reports:', error);
+    throw error;
+  }
+},
+
+// Check if quarter has ended
+async canGenerateQuarterReport(quarter, year) {
+  try {
+    const query = `
+      SELECT 
+        CASE 
+          WHEN $2 < EXTRACT(YEAR FROM CURRENT_DATE) THEN TRUE
+          WHEN $2 = EXTRACT(YEAR FROM CURRENT_DATE) THEN
+            CASE $1
+              WHEN '1st Quarter' THEN EXTRACT(MONTH FROM CURRENT_DATE) > 3
+              WHEN '2nd Quarter' THEN EXTRACT(MONTH FROM CURRENT_DATE) > 6
+              WHEN '3rd Quarter' THEN EXTRACT(MONTH FROM CURRENT_DATE) > 9
+              WHEN '4th Quarter' THEN EXTRACT(MONTH FROM CURRENT_DATE) > 12
+              ELSE FALSE
+            END
+          ELSE FALSE
+        END as can_generate
+    `;
+    
+    const result = await pool.query(query, [quarter, year]);
+    return result.rows[0].can_generate;
+  } catch (error) {
+    console.error('Error checking quarter status:', error);
+    throw error;
+  }
+},
+
+  // Generate quarterly report
+async generateQuarterlyReport(quarter, year) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    // Determine quarter months
+    let monthStart, monthEnd, monthLabels;
+    switch(quarter) {
+      case '1st Quarter':
+        monthStart = 1;
+        monthEnd = 3;
+        monthLabels = ['Jan', 'Feb', 'Mar'];
+        break;
+      case '2nd Quarter':
+        monthStart = 4;
+        monthEnd = 6;
+        monthLabels = ['Apr', 'May', 'Jun'];
+        break;
+      case '3rd Quarter':
+        monthStart = 7;
+        monthEnd = 9;
+        monthLabels = ['Jul', 'Aug', 'Sep'];
+        break;
+      case '4th Quarter':
+        monthStart = 10;
+        monthEnd = 12;
+        monthLabels = ['Oct', 'Nov', 'Dec'];
+        break;
+      default:
+        throw new Error('Invalid quarter');
+    }
+    
+    // CRITICAL FIX: Ensure year is an integer
+    const yearInt = parseInt(year);
+    
+    // Check if quarter has ended
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // 1-12
+    
+    if (yearInt > currentYear) {
+      throw new Error(`Cannot generate report for future year ${yearInt}`);
+    }
+    
+    if (yearInt === currentYear && currentMonth <= monthEnd) {
+      throw new Error(`Quarter ${quarter} of ${yearInt} has not ended yet`);
+    }
+    
+    // Generate report ID
+    const reportIdQuery = `
+      SELECT COALESCE(
+        'DOC-' || $1::text || '-' || 
+        LPAD((
+          SELECT COUNT(*) + 1 
+          FROM blood_reports 
+          WHERE br_year = $1::integer
+        )::text, 3, '0'),
+        'DOC-' || $1::text || '-001'
+      ) as report_id
+    `;
+    const reportIdResult = await client.query(reportIdQuery, [yearInt]);
+    const reportId = reportIdResult.rows[0].report_id;
+    
+    // CRITICAL FIX: Updated query with proper type casting
+    const statsQuery = `
+    WITH quarter_data AS (
+      SELECT 
+        bsh_blood_type,
+        bsh_rh_factor,
+        EXTRACT(MONTH FROM bsh_timestamp)::integer as month_num,
+        COUNT(*)::integer as count
+      FROM blood_stock_history
+      WHERE 
+        EXTRACT(YEAR FROM bsh_timestamp)::integer = $1::integer
+        AND EXTRACT(MONTH FROM bsh_timestamp)::integer BETWEEN $2::integer AND $3::integer
+        AND bsh_action = 'ADDED'
+        AND bsh_category = 'Red Blood Cell'
+      GROUP BY bsh_blood_type, bsh_rh_factor, EXTRACT(MONTH FROM bsh_timestamp)
+    )
+    SELECT 
+      bsh_blood_type || bsh_rh_factor as blood_type,
+      month_num,
+      SUM(count)::integer as total
+    FROM quarter_data
+    GROUP BY bsh_blood_type, bsh_rh_factor, month_num
+    `;
+    
+    // CRITICAL FIX: Pass integers, not strings
+    const statsResult = await client.query(statsQuery, [yearInt, monthStart, monthEnd]);
+    
+    // Initialize counters
+    const bloodTypes = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'];
+    const monthlyCounts = {
+      [monthStart]: {},
+      [monthStart + 1]: {},
+      [monthStart + 2]: {}
+    };
+    const quarterTotals = {};
+    
+    bloodTypes.forEach(type => {
+      quarterTotals[type] = 0;
+      monthlyCounts[monthStart][type] = 0;
+      monthlyCounts[monthStart + 1][type] = 0;
+      monthlyCounts[monthStart + 2][type] = 0;
+    });
+    
+    // Process query results
+    statsResult.rows.forEach(row => {
+      const type = row.blood_type;
+      const month = parseInt(row.month_num);
+      const count = parseInt(row.total);
+      
+      if (monthlyCounts[month] && bloodTypes.includes(type)) {
+        monthlyCounts[month][type] = count;
+        quarterTotals[type] += count;
+      }
+    });
+    
+    // Calculate grand total
+    const grandTotal = Object.values(quarterTotals).reduce((sum, val) => sum + val, 0);
+    
+    // Calculate percentages for quarter totals
+    const percentages = {};
+    bloodTypes.forEach(type => {
+      percentages[type] = grandTotal > 0 
+        ? ((quarterTotals[type] / grandTotal) * 100).toFixed(2)
+        : '0.00';
+    });
+    
+    // Calculate monthly percentages RELATIVE TO QUARTER TOTAL (not month total)
+      const monthlyPercentages = {};
+      Object.keys(monthlyCounts).forEach(month => {
+        monthlyPercentages[month] = {};
+        bloodTypes.forEach(type => {
+          monthlyPercentages[month][type] = grandTotal > 0
+            ? ((monthlyCounts[month][type] / grandTotal) * 100).toFixed(2)
+            : '0.00';
+        });
+      });
+    
+    // Prepare monthly data as JSONB
+    const month1Data = {
+      counts: monthlyCounts[monthStart],
+      percentages: monthlyPercentages[monthStart],
+      total: Object.values(monthlyCounts[monthStart]).reduce((sum, val) => sum + val, 0)
+    };
+    
+    const month2Data = {
+      counts: monthlyCounts[monthStart + 1],
+      percentages: monthlyPercentages[monthStart + 1],
+      total: Object.values(monthlyCounts[monthStart + 1]).reduce((sum, val) => sum + val, 0)
+    };
+    
+    const month3Data = {
+      counts: monthlyCounts[monthStart + 2],
+      percentages: monthlyPercentages[monthStart + 2],
+      total: Object.values(monthlyCounts[monthStart + 2]).reduce((sum, val) => sum + val, 0)
+    };
+    
+    // CRITICAL FIX: Pass array directly, use ::text[] cast in query
+    const insertQuery = `
+      INSERT INTO blood_reports (
+        br_report_id, br_quarter, br_year, br_month_start, br_month_end, br_month_labels,
+        br_o_positive, br_o_negative, br_a_positive, br_a_negative,
+        br_b_positive, br_b_negative, br_ab_positive, br_ab_negative,
+        br_o_positive_pct, br_o_negative_pct, br_a_positive_pct, br_a_negative_pct,
+        br_b_positive_pct, br_b_negative_pct, br_ab_positive_pct, br_ab_negative_pct,
+        br_total_count, br_month1_data, br_month2_data, br_month3_data,
+        br_created_by, br_created_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6::text[],
+        $7, $8, $9, $10, $11, $12, $13, $14,
+        $15, $16, $17, $18, $19, $20, $21, $22,
+        $23, $24::jsonb, $25::jsonb, $26::jsonb, $27, NOW()
+      )
+      ON CONFLICT (br_quarter, br_year)
+      DO UPDATE SET
+        br_report_id = $1,
+        br_month_start = $4,
+        br_month_end = $5,
+        br_month_labels = $6::text[],
+        br_o_positive = $7, 
+        br_o_negative = $8, 
+        br_a_positive = $9, 
+        br_a_negative = $10,
+        br_b_positive = $11, 
+        br_b_negative = $12, 
+        br_ab_positive = $13, 
+        br_ab_negative = $14,
+        br_o_positive_pct = $15, 
+        br_o_negative_pct = $16, 
+        br_a_positive_pct = $17, 
+        br_a_negative_pct = $18,
+        br_b_positive_pct = $19, 
+        br_b_negative_pct = $20, 
+        br_ab_positive_pct = $21, 
+        br_ab_negative_pct = $22,
+        br_total_count = $23, 
+        br_month1_data = $24::jsonb, 
+        br_month2_data = $25::jsonb, 
+        br_month3_data = $26::jsonb,
+        br_modified_at = NOW()
+      RETURNING br_id
+    `;
+    
+    // CRITICAL FIX: Pass monthLabels as array, not JSON string
+    const values = [
+      reportId, // $1
+      quarter, // $2
+      yearInt, // $3
+      monthStart, // $4
+      monthEnd, // $5
+      monthLabels, // $6 - Pass array directly, NOT JSON.stringify()
+      quarterTotals['O+'], // $7
+      quarterTotals['O-'], // $8
+      quarterTotals['A+'], // $9
+      quarterTotals['A-'], // $10
+      quarterTotals['B+'], // $11
+      quarterTotals['B-'], // $12
+      quarterTotals['AB+'], // $13
+      quarterTotals['AB-'], // $14
+      percentages['O+'], // $15
+      percentages['O-'], // $16
+      percentages['A+'], // $17
+      percentages['A-'], // $18
+      percentages['B+'], // $19
+      percentages['B-'], // $20
+      percentages['AB+'], // $21
+      percentages['AB-'], // $22
+      grandTotal, // $23
+      JSON.stringify(month1Data), // $24 - Keep JSON.stringify for JSONB
+      JSON.stringify(month2Data), // $25 - Keep JSON.stringify for JSONB
+      JSON.stringify(month3Data), // $26 - Keep JSON.stringify for JSONB
+      'Auto-generated' // $27
+    ];
+    
+    await client.query(insertQuery, values);
+    await client.query('COMMIT');
+    
+    return {
+      success: true,
+      reportId,
+      quarter,
+      year: yearInt,
+      total: grandTotal
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error generating quarterly report:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
+// Get reports by year
+async getReportsByYear(year) {
+  try {
+    const query = `
+      SELECT 
+        br_id as id,
+        br_report_id as "docId",
+        br_quarter as quarter,
+        br_year as year,
+        br_month_start as "monthStart",
+        br_month_end as "monthEnd",
+        br_month_labels as "monthLabels",
+        br_o_positive as "oPositive",
+        br_o_negative as "oNegative",
+        br_a_positive as "aPositive",
+        br_a_negative as "aNegative",
+        br_b_positive as "bPositive",
+        br_b_negative as "bNegative",
+        br_ab_positive as "abPositive",
+        br_ab_negative as "abNegative",
+        br_others as others,
+        br_o_positive_pct as "oPositivePct",
+        br_o_negative_pct as "oNegativePct",
+        br_a_positive_pct as "aPositivePct",
+        br_a_negative_pct as "aNegativePct",
+        br_b_positive_pct as "bPositivePct",
+        br_b_negative_pct as "bNegativePct",
+        br_ab_positive_pct as "abPositivePct",
+        br_ab_negative_pct as "abNegativePct",
+        br_others_pct as "othersPct",
+        br_total_count as total,
+        br_month1_data as "month1Data",
+        br_month2_data as "month2Data",
+        br_month3_data as "month3Data",
+        br_created_by as "createdBy",
+        TO_CHAR(br_created_at, 'MM/DD/YYYY') as "dateCreated"
+      FROM blood_reports
+      WHERE br_year = $1
+      ORDER BY br_month_start
+    `;
+    
+    const result = await pool.query(query, [year]);
+    return result.rows.map(row => ({
+      ...row,
+      selected: false
+    }));
+  } catch (error) {
+    console.error('Error fetching reports by year:', error);
+    throw error;
+  }
+},
+
+// Get report by ID (updated to include new fields)
+async getReportById(reportId) {
+  try {
+    const query = `
+      SELECT 
+        br_id as id,
+        br_report_id as "docId",
+        br_quarter as quarter,
+        br_year as year,
+        br_month_start as "monthStart",
+        br_month_end as "monthEnd",
+        br_month_labels as "monthLabels",
+        br_o_positive as "oPositive",
+        br_o_negative as "oNegative",
+        br_a_positive as "aPositive",
+        br_a_negative as "aNegative",
+        br_b_positive as "bPositive",
+        br_b_negative as "bNegative",
+        br_ab_positive as "abPositive",
+        br_ab_negative as "abNegative",
+        br_others as others,
+        br_o_positive_pct as "oPositivePct",
+        br_o_negative_pct as "oNegativePct",
+        br_a_positive_pct as "aPositivePct",
+        br_a_negative_pct as "aNegativePct",
+        br_b_positive_pct as "bPositivePct",
+        br_b_negative_pct as "bNegativePct",
+        br_ab_positive_pct as "abPositivePct",
+        br_ab_negative_pct as "abNegativePct",
+        br_others_pct as "othersPct",
+        br_total_count as total,
+        br_month1_data as "month1Data",
+        br_month2_data as "month2Data",
+        br_month3_data as "month3Data",
+        br_created_by as "createdBy",
+        TO_CHAR(br_created_at, 'MM/DD/YYYY') as "dateCreated"
+      FROM blood_reports
+      WHERE br_id = $1
+    `;
+    
+    const result = await pool.query(query, [reportId]);
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error fetching report by ID:', error);
+    throw error;
+  }
+},
+
+// Delete reports
+async deleteReports(reportIds) {
+  try {
+    const query = `DELETE FROM blood_reports WHERE br_id = ANY($1)`;
+    await pool.query(query, [reportIds]);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting reports:', error);
+    throw error;
+  }
+},
+
+// Search reports
+async searchReports(searchTerm) {
+  try {
+    const query = `
+      SELECT 
+        br_id as id,
+        br_report_id as "docId",
+        br_quarter as quarter,
+        br_year as year,
+        br_month_start as "monthStart",
+        br_month_end as "monthEnd",
+        br_month_labels as "monthLabels",
+        br_o_positive as "oPositive",
+        br_o_negative as "oNegative",
+        br_a_positive as "aPositive",
+        br_a_negative as "aNegative",
+        br_b_positive as "bPositive",
+        br_b_negative as "bNegative",
+        br_ab_positive as "abPositive",
+        br_ab_negative as "abNegative",
+        br_others as others,
+        br_o_positive_pct as "oPositivePct",
+        br_o_negative_pct as "oNegativePct",
+        br_a_positive_pct as "aPositivePct",
+        br_a_negative_pct as "aNegativePct",
+        br_b_positive_pct as "bPositivePct",
+        br_b_negative_pct as "bNegativePct",
+        br_ab_positive_pct as "abPositivePct",
+        br_ab_negative_pct as "abNegativePct",
+        br_others_pct as "othersPct",
+        br_total_count as total,
+        br_month1_data as "month1Data",
+        br_month2_data as "month2Data",
+        br_month3_data as "month3Data",
+        br_created_by as "createdBy",
+        TO_CHAR(br_created_at, 'MM/DD/YYYY') as "dateCreated"
+      FROM blood_reports
+      WHERE 
+        br_report_id ILIKE $1 OR
+        br_quarter ILIKE $1 OR
+        CAST(br_year AS TEXT) ILIKE $1 OR
+        br_created_by ILIKE $1
+      ORDER BY br_year DESC, br_month_start DESC
+    `;
+    
+    const result = await pool.query(query, [`%${searchTerm}%`]);
+    return result.rows.map(row => ({
+      ...row,
+      selected: false
+    }));
+  } catch (error) {
+    console.error('Error searching reports:', error);
+    throw error;
+  }
+},
+
+// Refresh/regenerate reports for current year
+async refreshCurrentYearReports() {
+  try {
+    const currentYear = new Date().getFullYear();
+    
+    // Delete existing reports for current year
+    await pool.query('DELETE FROM blood_reports WHERE br_year = $1', [currentYear]);
+    
+    // Generate all available quarters
+    await this.generateAllQuarterlyReports(currentYear);
+    
+    return await this.getReportsByYear(currentYear);
+  } catch (error) {
+    console.error('Error refreshing current year reports:', error);
+    throw error;
+  }
+},
+
+// Add to history when adding new stock
+async addToBloodStockHistory(stockData, action = 'ADDED', originalStockId = null) {
+  try {
+    const query = `
+      INSERT INTO blood_stock_history (
+        bsh_serial_id, bsh_blood_type, bsh_rh_factor, bsh_volume,
+        bsh_timestamp, bsh_expiration_date, bsh_status, bsh_category,
+        bsh_original_stock_id, bsh_action, bsh_action_timestamp
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+      RETURNING bsh_id
+    `;
+    
+    const values = [
+      stockData.serial_id,
+      stockData.type,
+      stockData.rhFactor,
+      parseInt(stockData.volume),
+      new Date(stockData.collection),
+      new Date(stockData.expiration),
+      stockData.status || 'Stored',
+      stockData.category || 'Red Blood Cell',
+      originalStockId,
+      action
+    ];
+    
+    const result = await pool.query(query, values);
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error adding to blood stock history:', error);
+    throw error;
+  }
+},
+
+// Generate all available quarterly reports for a year
+async generateAllQuarterlyReports(year) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // 1-12
+  
+  const quarters = [
+    { name: '1st Quarter', endMonth: 3 },
+    { name: '2nd Quarter', endMonth: 6 },
+    { name: '3rd Quarter', endMonth: 9 },
+    { name: '4th Quarter', endMonth: 12 }
+  ];
+  
+  const generatedReports = [];
+  
+  for (const quarter of quarters) {
+    try {
+      // Check if quarter has ended
+      if (year < currentYear || (year === currentYear && currentMonth > quarter.endMonth)) {
+        const report = await this.generateQuarterlyReport(quarter.name, year);
+        generatedReports.push(report);
+      }
+    } catch (error) {
+      console.log(`Skipping ${quarter.name} ${year}: ${error.message}`);
+    }
+  }
+  
+  return generatedReports;
+},
 
 };
 

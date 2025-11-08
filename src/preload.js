@@ -517,7 +517,13 @@ transferPlateletToNonConforming: async (serialIds) => {
   viewDiscardedBloodInvoice: (invoiceId) => ipcRenderer.invoke('viewDiscardedBloodInvoice', invoiceId),
   searchDiscardedBloodInvoices: (searchTerm) => ipcRenderer.invoke('searchDiscardedBloodInvoices', searchTerm),
   deleteDiscardedBloodInvoices: (invoiceIds) => ipcRenderer.invoke('deleteDiscardedBloodInvoices', invoiceIds),
-  
+
+  // ========== BLOOD REPORTS API METHODS ==========
+  getAllBloodReports: () => ipcRenderer.invoke('get-all-blood-reports'),
+  generateAllQuarterlyReports: (year) => ipcRenderer.invoke('generate-all-quarterly-reports', year),
+  deleteReports: (reportIds) => ipcRenderer.invoke('delete-reports', reportIds),
+  searchReports: (searchTerm) => ipcRenderer.invoke('search-reports', searchTerm),
+  refreshCurrentYearReports: () => ipcRenderer.invoke('refresh-current-year-reports'),
 });
 
 
