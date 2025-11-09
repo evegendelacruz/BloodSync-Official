@@ -1199,7 +1199,7 @@ const ReleasedBlood = () => {
     },
     tableHeader: {
       display: "grid",
-      gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1.5fr 1.5fr",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
       gap: "15px",
       marginBottom: "15px",
       padding: "0 5px",
@@ -1772,7 +1772,7 @@ const ReleasedBlood = () => {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr",
+                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
                   gap: "15px",
                   marginBottom: "15px",
                   padding: "0 5px",
@@ -1795,7 +1795,7 @@ const ReleasedBlood = () => {
                   key={index}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr",
+                    gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
                     gap: "6px",
                     marginBottom: "15px",
                     alignItems: "center",
