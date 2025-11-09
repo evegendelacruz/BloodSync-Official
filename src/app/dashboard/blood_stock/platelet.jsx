@@ -27,6 +27,7 @@ const Platelet = () => {
       collection: "",
       expiration: "",
       status: "Stored",
+      source: "Walk-In",
       found: false,
     },
   ]);
@@ -40,6 +41,7 @@ const Platelet = () => {
       collection: "",
       expiration: "",
       status: "Stored",
+      source: "Walk-In",
     },
   ]);
   const [editingItem, setEditingItem] = useState(null);
@@ -243,6 +245,7 @@ const Platelet = () => {
         collection: "",
         expiration: "",
         status: "Stored",
+        source: "Walk-In",
       },
     ]);
   };
@@ -280,6 +283,7 @@ const Platelet = () => {
           expiration: item.expiration,
           status: item.status,
           category: "Platelet",
+          source: item.source, 
         };
         await window.electronAPI.addPlateletStock(stockData);
       }
@@ -295,6 +299,7 @@ const Platelet = () => {
           collection: "",
           expiration: "",
           status: "Stored",
+          source: "Walk-In",
         },
       ]);
       await loadBloodData();
@@ -360,6 +365,7 @@ const Platelet = () => {
         collection: editingItem.collection,
         expiration: editingItem.expiration,
         status: editingItem.status,
+        source: editingItem.source,
       };
 
       await window.electronAPI.updatePlateletStock(editingItem.id, stockData);
@@ -463,6 +469,7 @@ const Platelet = () => {
         collection: "",
         expiration: "",
         status: "Stored",
+        source: "Walk-In",
         found: false,
       },
     ]);
@@ -509,6 +516,7 @@ const Platelet = () => {
                       collection: stockData.collection,
                       expiration: stockData.expiration,
                       status: stockData.status,
+                      source: stockData.source,
                       found: true,
                     }
                   : item
@@ -529,6 +537,7 @@ const Platelet = () => {
                       collection: firstMatch.collection,
                       expiration: firstMatch.expiration,
                       status: firstMatch.status,
+                      source: firstMatch.source,
                       found: true,
                     }
                   : item
@@ -548,6 +557,7 @@ const Platelet = () => {
                       collection: "",
                       expiration: "",
                       status: "Stored",
+                      source: "Walk-In",
                       found: false,
                     }
                   : item
@@ -590,6 +600,7 @@ const Platelet = () => {
         collection: "",
         expiration: "",
         status: "Stored",
+        source: "Walk-In",
         found: false,
       },
     ]);
@@ -662,6 +673,7 @@ const Platelet = () => {
             collection: "",
             expiration: "",
             status: "Stored",
+            source: "Walk-In",
             found: false,
           },
         ]);
@@ -709,6 +721,7 @@ const Platelet = () => {
       volume: "Volume",
       status: "Status",
       created: "Sort by",
+      source: "Source",
     };
     return labels[sortConfig.key] || "Sort";
   };
@@ -1121,7 +1134,7 @@ const Platelet = () => {
     },
     tableHeader: {
       display: "grid",
-      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr",
       gap: "15px",
       marginBottom: "15px",
       padding: "0 5px",
@@ -1135,7 +1148,7 @@ const Platelet = () => {
     },
     dataRow: {
       display: "grid",
-      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr",
       gap: "15px",
       marginBottom: "15px",
       alignItems: "center",
@@ -1496,6 +1509,7 @@ const Platelet = () => {
                   { key: "volume", label: "Volume" },
                   { key: "status", label: "Status" },
                   { key: "created", label: "Sort by" },
+                  { key: "source", label: "Source" },
                 ].map((item) => (
                   <div
                     key={item.key}
@@ -1595,6 +1609,7 @@ const Platelet = () => {
                       <option value="rhFactor">RH Factor</option>
                       <option value="status">Status</option>
                       <option value="volume">Volume</option>
+                      <option value="source">Source</option>
                     </select>
                   </div>
                 </div>
@@ -1758,6 +1773,14 @@ const Platelet = () => {
                 {sortConfig.key === "status" &&
                   (sortConfig.direction === "asc" ? "↑" : "↓")}
               </th>
+              <th
+                style={{ ...styles.th, width: "7%", cursor: "pointer" }}
+                onClick={() => handleSort("source")}
+              >
+                SOURCE{" "}
+                {sortConfig.key === "source" &&
+                  (sortConfig.direction === "asc" ? "↑" : "↓")}
+              </th>
               <th style={{ ...styles.th, width: "13%" }}>CREATED AT</th>
               <th style={{ ...styles.th, width: "13%" }}>MODIFIED AT</th>
             </tr>
@@ -1798,6 +1821,7 @@ const Platelet = () => {
                   <td style={styles.td}>
                     <span style={styles.statusBadge}>{item.status}</span>
                   </td>
+                  <td style={styles.td}>{item.source}</td>
                   <td style={styles.td}>{item.created}</td>
                   <td style={styles.td}>{item.modified}</td>
                 </tr>
@@ -1981,6 +2005,7 @@ const Platelet = () => {
                 <div style={styles.tableHeaderCell}>Volume (mL)</div>
                 <div style={styles.tableHeaderCell}>Date of Collection</div>
                 <div style={styles.tableHeaderCell}>Expiration Date</div>
+                <div style={styles.tableHeaderCell}>Source</div>
               </div>
 
               <div style={styles.rowsContainer}>
@@ -2053,6 +2078,16 @@ const Platelet = () => {
                       readOnly
                       disabled
                     />
+                    <select
+                      style={styles.fieldSelect}
+                      value={item.source}
+                      onChange={(e) =>
+                        handleStockItemChange(item.id, "source", e.target.value)
+                      }
+                    >
+                      <option value="Walk-In">Walk-In</option>
+                      <option value="Mobile">Mobile</option>
+                    </select>
                   </div>
                 ))}
               </div>
@@ -2133,12 +2168,13 @@ const Platelet = () => {
 
             <div style={styles.modalContent}>
               <div style={styles.tableHeader}>
-                <div style={styles.tableHeaderCell}>Barcode Serial ID</div>
-                <div style={styles.tableHeaderCell}>Blood Type</div>
-                <div style={styles.tableHeaderCell}>Rh Factor</div>
-                <div style={styles.tableHeaderCell}>Volume (mL)</div>
-                <div style={styles.tableHeaderCell}>Date of Collection</div>
-                <div style={styles.tableHeaderCell}>Expiration Date</div>
+              <div style={styles.tableHeaderCell}>Barcode Serial ID</div>
+              <div style={styles.tableHeaderCell}>Blood Type</div>
+              <div style={styles.tableHeaderCell}>Rh Factor</div>
+              <div style={styles.tableHeaderCell}>Volume (mL)</div>
+              <div style={styles.tableHeaderCell}>Date of Collection</div>
+              <div style={styles.tableHeaderCell}>Expiration Date</div>
+              <div style={styles.tableHeaderCell}>Source</div>
               </div>
 
               <div style={styles.dataRow}>
@@ -2195,6 +2231,16 @@ const Platelet = () => {
                   readOnly
                   disabled
                 />
+                <select
+                  style={styles.fieldSelect}
+                  value={editingItem.source || 'Walk-In'}
+                  onChange={(e) =>
+                    handleEditItemChange("source", e.target.value)
+                  }
+                >
+                  <option value="Walk-In">Walk-In</option>
+                  <option value="Mobile">Mobile</option>
+                </select>
               </div>
             </div>
 

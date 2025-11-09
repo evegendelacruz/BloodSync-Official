@@ -29,6 +29,7 @@ const PlasmaNC = () => {
       expiration: "",
       status: "Stored",
       category: "",
+      source: "Walk-In", 
       found: false,
     },
   ]);
@@ -69,6 +70,7 @@ const PlasmaNC = () => {
       expiration: "",
       status: "Stored",
       category: "",
+      source: "Walk-In", 
       found: false,
     },
   ]);
@@ -238,6 +240,7 @@ const PlasmaNC = () => {
                       expiration: stockData.expiration,
                       status: stockData.status,
                       category: stockData.category,
+                      source: stockData.source || "Walk-In", // ADDED
                       found: true,
                     }
                   : item
@@ -261,6 +264,7 @@ const PlasmaNC = () => {
                         expiration: plasmaMatch.expiration,
                         status: plasmaMatch.status,
                         category: plasmaMatch.category,
+                        source: plasmaMatch.source || "Walk-In", // ADDED
                         found: true,
                       }
                     : item
@@ -281,6 +285,7 @@ const PlasmaNC = () => {
                         expiration: "",
                         status: "Stored",
                         category: "",
+                        source: "Walk-In", // ADDED
                         found: false,
                       }
                     : item
@@ -302,6 +307,7 @@ const PlasmaNC = () => {
                       expiration: "",
                       status: "Stored",
                       category: "",
+                      source: "Walk-In", 
                       found: false,
                     }
                   : item
@@ -370,6 +376,7 @@ const PlasmaNC = () => {
                       expiration: ncData.expiration,
                       status: ncData.status,
                       category: ncData.category,
+                      source: ncData.source || "Walk-In", 
                       found: true,
                     }
                   : item
@@ -393,6 +400,7 @@ const PlasmaNC = () => {
                         expiration: plasmaMatch.expiration,
                         status: plasmaMatch.status,
                         category: plasmaMatch.category,
+                        source: plasmaMatch.source || "Walk-In",
                         found: true,
                       }
                     : item
@@ -413,6 +421,7 @@ const PlasmaNC = () => {
                         expiration: "",
                         status: "Stored",
                         category: "",
+                        source: "Walk-In", 
                         found: false,
                       }
                     : item
@@ -434,6 +443,7 @@ const PlasmaNC = () => {
                       expiration: "",
                       status: "Stored",
                       category: "",
+                      source: "Walk-In",
                       found: false,
                     }
                   : item
@@ -474,6 +484,7 @@ const PlasmaNC = () => {
         expiration: "",
         status: "Stored",
         category: "",
+        source: "Walk-In", 
         found: false,
       },
     ]);
@@ -541,6 +552,7 @@ const PlasmaNC = () => {
           expiration: "",
           status: "Stored",
           category: "",
+          source: "Walk-In",
           found: false,
         }]);
         setDiscardFormData({
@@ -590,6 +602,7 @@ const PlasmaNC = () => {
         expiration: "",
         status: "Stored",
         category: "",
+        source: "Walk-In", 
         found: false,
       },
     ]);
@@ -638,6 +651,7 @@ const PlasmaNC = () => {
             expiration: "",
             status: "Stored",
             category: "",
+            source: "Walk-In",
             found: false,
           },
         ]);
@@ -709,6 +723,7 @@ const PlasmaNC = () => {
         expiration: editingItem.expiration,
         status: "Non-Conforming",
         category: editingItem.category,
+        source: editingItem.source,
       };
 
       await window.electronAPI.updatePlasmaNonConforming(editingItem.id, ncData);
@@ -830,6 +845,7 @@ const PlasmaNC = () => {
       volume: "Volume",
       status: "Status",
       category: "Category",
+      source: "Source",
       created: "Sort by",
     };
     return labels[sortConfig.key] || "Sort";
@@ -1219,7 +1235,7 @@ const PlasmaNC = () => {
     },
     tableHeader: {
       display: "grid",
-      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
       gap: "15px",
       marginBottom: "15px",
       padding: "0 5px",
@@ -1233,7 +1249,7 @@ const PlasmaNC = () => {
     },
     dataRow: {
       display: "grid",
-      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
       gap: "6px",
       marginBottom: "15px",
       alignItems: "center",
@@ -1630,6 +1646,7 @@ const PlasmaNC = () => {
                   { key: "volume", label: "Volume" },
                   { key: "status", label: "Status" },
                   { key: "category", label: "Category" },
+                  { key: "source", label: "Source" },
                   { key: "created", label: "Sort by" },
                 ].map((item) => (
                   <div
@@ -1731,6 +1748,7 @@ const PlasmaNC = () => {
                       <option value="status">Status</option>
                       <option value="volume">Volume</option>
                       <option value="category">Category</option>
+                      <option value="source">Source</option>
                     </select>
                   </div>
                 </div>
@@ -1895,6 +1913,14 @@ const PlasmaNC = () => {
                 {sortConfig.key === "category" &&
                   (sortConfig.direction === "asc" ? "↑" : "↓")}
               </th>
+              <th
+                  style={{ ...styles.th, width: "7%", cursor: "pointer" }}
+                  onClick={() => handleSort("source")}
+                >
+                  SOURCE{" "}
+                  {sortConfig.key === "source" &&
+                    (sortConfig.direction === "asc" ? "↑" : "↓")}
+                </th>
               <th style={{ ...styles.th, width: "15%" }}>CREATED AT</th>
               <th style={{ ...styles.th, width: "15%" }}>MODIFIED AT</th>
             </tr>
@@ -1936,6 +1962,7 @@ const PlasmaNC = () => {
                     <span style={styles.statusBadge}>{item.status}</span>
                   </td>
                   <td style={styles.td}>{item.category}</td>
+                  <td style={styles.td}>{item.source || "Walk-In"}</td>
                   <td style={styles.td}>{item.created}</td>
                   <td style={styles.td}>{item.modified}</td>
                 </tr>
@@ -2193,20 +2220,22 @@ const PlasmaNC = () => {
                 <div style={styles.tableHeaderCell}>Date of Collection</div>
                 <div style={styles.tableHeaderCell}>Expiration Date</div>
                 <div style={styles.tableHeaderCell}>Category</div>
+                <div style={styles.tableHeaderCell}>Source</div>
                 <div style={styles.tableHeaderCell}>Action</div>
               </div>
 
               <div style={styles.rowsContainer}>
                 {discardItems.map((item, index) => (
                   <div
-                    key={item.id}
-                    style={{
-                      ...styles.dataRow,
-                      backgroundColor: item.found ? "#f0f9ff" : "#fef2f2",
-                      padding: "8px 5px",
-                      borderRadius: "4px",
-                    }}
-                  >
+                      key={item.id}
+                      style={{
+                        ...styles.dataRow,
+                        gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr", 
+                        backgroundColor: item.found ? "#f0f9ff" : "#fef2f2",
+                        padding: "8px 5px",
+                        borderRadius: "4px",
+                      }}
+                    >
                     <div style={{ position: "relative" }}>
                       <input
                         type="text"
@@ -2350,6 +2379,21 @@ const PlasmaNC = () => {
                       {item.found ? item.category : "Not Found"}
                     </span>
 
+                    <span
+                      style={{
+                        padding: "4px 8px",
+                        backgroundColor: item.found ? "#dbeafe" : "#f9fafb",
+                        color: item.found ? "#1e40af" : "#9ca3af",
+                        borderRadius: "12px",
+                        fontSize: "10px",
+                        fontWeight: "500",
+                        textAlign: "center",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {item.found ? item.source || "Walk-In" : "-"}
+                    </span>
+
                     <button
                       type="button"
                       style={{
@@ -2474,7 +2518,7 @@ const PlasmaNC = () => {
         </div>
       )}
 
-{showDiscardDetailsModal && (
+      {showDiscardDetailsModal && (
         <div
           style={styles.modalOverlay}
           onClick={() => setShowDiscardDetailsModal(false)}
@@ -2771,15 +2815,17 @@ const PlasmaNC = () => {
                 <div style={styles.tableHeaderCell}>Date of Collection</div>
                 <div style={styles.tableHeaderCell}>Expiration Date</div>
                 <div style={styles.tableHeaderCell}>Category</div>
+                <div style={styles.tableHeaderCell}>Source</div>
                 <div style={styles.tableHeaderCell}>Action</div>
               </div>
 
               <div style={styles.rowsContainer}>
                 {nonConformingItems.map((item, index) => (
-                  <div
+                    <div
                     key={item.id}
                     style={{
                       ...styles.dataRow,
+                      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr", // UPDATED
                       backgroundColor: item.found ? "#f0f9ff" : "#fef2f2",
                       padding: "8px 5px",
                       borderRadius: "4px",
@@ -2926,6 +2972,21 @@ const PlasmaNC = () => {
                       }}
                     >
                       {item.found ? item.category : "Not Found"}
+                    </span>
+
+                    <span
+                      style={{
+                        padding: "4px 8px",
+                        backgroundColor: item.found ? "#dbeafe" : "#f9fafb",
+                        color: item.found ? "#1e40af" : "#9ca3af",
+                        borderRadius: "12px",
+                        fontSize: "10px",
+                        fontWeight: "500",
+                        textAlign: "center",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {item.found ? item.source || "Walk-In" : "-"}
                     </span>
 
                     <button
@@ -3080,14 +3141,16 @@ const PlasmaNC = () => {
             </div>
 
             <div style={styles.modalContent}>
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr",
-                gap: "6px",
-                marginBottom: "15px",
-                padding: "0 5px",
-                alignItems: "center",
-              }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr",
+                  gap: "6px",
+                  marginBottom: "15px",
+                  padding: "0 5px",
+                  alignItems: "center",
+                }}
+              >
                 <div style={styles.tableHeaderCell}>Barcode Serial ID</div>
                 <div style={styles.tableHeaderCell}>Blood Type</div>
                 <div style={styles.tableHeaderCell}>Rh Factor</div>
@@ -3095,12 +3158,13 @@ const PlasmaNC = () => {
                 <div style={styles.tableHeaderCell}>Date of Collection</div>
                 <div style={styles.tableHeaderCell}>Expiration Date</div>
                 <div style={styles.tableHeaderCell}>Category</div>
+                <div style={styles.tableHeaderCell}>Source</div>
               </div>
 
               <div
                 style={{
                   ...styles.dataRow,
-                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr",
+                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr",
                 }}
               >
                 <input
@@ -3163,6 +3227,16 @@ const PlasmaNC = () => {
                   readOnly
                   disabled
                 />
+                <select
+                  style={styles.fieldSelect}
+                  value={editingItem.source || 'Walk-In'} 
+                  onChange={(e) =>
+                    handleEditItemChange("source", e.target.value)
+                  }
+                >
+                  <option value="Walk-In">Walk-In</option>
+                  <option value="Mobile">Mobile</option>
+                </select>
               </div>
             </div>
 

@@ -36,6 +36,7 @@ const RedBloodCell = () => {
       collection: "",
       expiration: "",
       status: "Stored",
+      source: "Walk-In",
     },
   ]);
   const [releaseData, setReleaseData] = useState({
@@ -210,6 +211,7 @@ const RedBloodCell = () => {
         collection: "",
         expiration: "",
         status: "Stored",
+        source: "Walk-In", 
       },
     ]);
   };
@@ -228,7 +230,7 @@ const RedBloodCell = () => {
         setError("Electron API not available");
         return;
       }
-
+  
       for (const item of stockItems) {
         if (!item.serial_id || !item.collection) {
           setError("Please fill in all required fields for all items");
@@ -236,7 +238,7 @@ const RedBloodCell = () => {
           return;
         }
       }
-
+  
       for (const item of stockItems) {
         const stockData = {
           serial_id: item.serial_id,
@@ -246,10 +248,11 @@ const RedBloodCell = () => {
           collection: item.collection,
           expiration: item.expiration,
           status: item.status,
+          source: item.source, 
         };
         await window.electronAPI.addBloodStock(stockData);
       }
-
+  
       setShowAddModal(false);
       setStockItems([
         {
@@ -261,12 +264,12 @@ const RedBloodCell = () => {
           collection: "",
           expiration: "",
           status: "Stored",
+          source: "Walk-In", 
         },
       ]);
       await loadBloodData();
       setError(null);
-
-      // Show success modal
+  
       setSuccessMessage({
         title: "Stock Added Successfully!",
         description:
@@ -312,13 +315,13 @@ const RedBloodCell = () => {
         setError("Electron API not available");
         return;
       }
-
+  
       if (!editingItem.serial_id || !editingItem.collection) {
         setError("Please fill in all required fields");
         setSaving(false);
         return;
       }
-
+  
       const stockData = {
         serial_id: editingItem.serial_id,
         type: editingItem.type,
@@ -327,8 +330,9 @@ const RedBloodCell = () => {
         collection: editingItem.collection,
         expiration: editingItem.expiration,
         status: editingItem.status,
+        source: editingItem.source, 
       };
-
+  
       await window.electronAPI.updateBloodStock(editingItem.id, stockData);
       setShowEditModal(false);
       setEditingItem(null);
@@ -662,16 +666,18 @@ const RedBloodCell = () => {
   const generateNextReferenceNumber = () => {
     const now = new Date();
     const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+    const seconds = String(now.getSeconds()).padStart(2, "0");
+    const random = Math.floor(Math.random() * 1000)
+      .toString()
+      .padStart(3, "0");
+
     return `REF-RBC-${year}${month}${day}-${hours}${minutes}${seconds}-${random}`;
   };
-  
+
   // Modified useEffect for release modal initialization
   useEffect(() => {
     if (showReleaseDetailsModal) {
@@ -1107,10 +1113,17 @@ const RedBloodCell = () => {
     },
     tableHeader: {
       display: "grid",
-      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr", // Updated for 7 columns
       gap: "15px",
       marginBottom: "15px",
       padding: "0 5px",
+    },
+    dataRow: {
+      display: "grid",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr", 
+      gap: "15px",
+      marginBottom: "15px",
+      alignItems: "center",
     },
     tableHeaderCell: {
       fontSize: "12px",
@@ -1118,13 +1131,6 @@ const RedBloodCell = () => {
       color: "#374151",
       fontFamily: "Barlow",
       textAlign: "left",
-    },
-    dataRow: {
-      display: "grid",
-      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr",
-      gap: "15px",
-      marginBottom: "15px",
-      alignItems: "center",
     },
     fieldInput: {
       padding: "8px 12px",
@@ -1482,6 +1488,7 @@ const RedBloodCell = () => {
                   { key: "rhFactor", label: "RH Factor" },
                   { key: "volume", label: "Volume" },
                   { key: "status", label: "Status" },
+                  { key: "source", label: "Source" },
                   { key: "created", label: "Sort by" },
                 ].map((item) => (
                   <div
@@ -1582,6 +1589,7 @@ const RedBloodCell = () => {
                       <option value="rhFactor">RH Factor</option>
                       <option value="status">Status</option>
                       <option value="volume">Volume</option>
+                      <option value="source">Source</option>
                     </select>
                   </div>
                 </div>
@@ -1692,7 +1700,7 @@ const RedBloodCell = () => {
         <table style={styles.table}>
           <thead style={styles.thead}>
             <tr>
-              <th style={{ ...styles.th, width: "4%" }}>
+              <th style={{ ...styles.th, width: "3%" }}>
                 <input
                   type="checkbox"
                   style={styles.checkbox}
@@ -1704,7 +1712,7 @@ const RedBloodCell = () => {
                 />
               </th>
               <th
-                style={{ ...styles.th, width: "14%", cursor: "pointer" }}
+                style={{ ...styles.th, width: "12%", cursor: "pointer" }}
                 onClick={() => handleSort("serial_id")}
               >
                 SERIAL ID{" "}
@@ -1712,7 +1720,7 @@ const RedBloodCell = () => {
                   (sortConfig.direction === "asc" ? "↑" : "↓")}
               </th>
               <th
-                style={{ ...styles.th, width: "8%", cursor: "pointer" }}
+                style={{ ...styles.th, width: "7%", cursor: "pointer" }}
                 onClick={() => handleSort("type")}
               >
                 BLOOD TYPE{" "}
@@ -1720,7 +1728,7 @@ const RedBloodCell = () => {
                   (sortConfig.direction === "asc" ? "↑" : "↓")}
               </th>
               <th
-                style={{ ...styles.th, width: "7%", cursor: "pointer" }}
+                style={{ ...styles.th, width: "6%", cursor: "pointer" }}
                 onClick={() => handleSort("rhFactor")}
               >
                 RH FACTOR{" "}
@@ -1728,32 +1736,40 @@ const RedBloodCell = () => {
                   (sortConfig.direction === "asc" ? "↑" : "↓")}
               </th>
               <th
-                style={{ ...styles.th, width: "8%", cursor: "pointer" }}
+                style={{ ...styles.th, width: "7%", cursor: "pointer" }}
                 onClick={() => handleSort("volume")}
               >
                 VOLUME (ML){" "}
                 {sortConfig.key === "volume" &&
                   (sortConfig.direction === "asc" ? "↑" : "↓")}
               </th>
-              <th style={{ ...styles.th, width: "12%" }}>DATE OF COLLECTION</th>
-              <th style={{ ...styles.th, width: "12%" }}>EXPIRATION DATE</th>
+              <th style={{ ...styles.th, width: "10%" }}>DATE OF COLLECTION</th>
+              <th style={{ ...styles.th, width: "10%" }}>EXPIRATION DATE</th>
               <th
-                style={{ ...styles.th, width: "8%", cursor: "pointer" }}
+                style={{ ...styles.th, width: "7%", cursor: "pointer" }}
                 onClick={() => handleSort("status")}
               >
                 STATUS{" "}
                 {sortConfig.key === "status" &&
                   (sortConfig.direction === "asc" ? "↑" : "↓")}
               </th>
-              <th style={{ ...styles.th, width: "13%" }}>CREATED AT</th>
-              <th style={{ ...styles.th, width: "13%" }}>MODIFIED AT</th>
+              <th
+                style={{ ...styles.th, width: "7%", cursor: "pointer" }}
+                onClick={() => handleSort("source")}
+              >
+                SOURCE{" "}
+                {sortConfig.key === "source" &&
+                  (sortConfig.direction === "asc" ? "↑" : "↓")}
+              </th>
+              <th style={{ ...styles.th, width: "12%" }}>CREATED AT</th>
+              <th style={{ ...styles.th, width: "12%" }}>MODIFIED AT</th>
             </tr>
           </thead>
           <tbody style={styles.tbody}>
             {displayData.length === 0 ? (
               <tr>
                 <td
-                  colSpan="10"
+                  colSpan="11"
                   style={{ ...styles.td, textAlign: "center", padding: "40px" }}
                 >
                   No blood stock records found
@@ -1785,6 +1801,7 @@ const RedBloodCell = () => {
                   <td style={styles.td}>
                     <span style={styles.statusBadge}>{item.status}</span>
                   </td>
+                  <td style={styles.td}>{item.source}</td>
                   <td style={styles.td}>{item.created}</td>
                   <td style={styles.td}>{item.modified}</td>
                 </tr>
@@ -1955,7 +1972,7 @@ const RedBloodCell = () => {
             </div>
 
             <div style={styles.modalContent}>
-            <div style={styles.barcodeSection}>
+              <div style={styles.barcodeSection}>
                 <img
                   src="/src/assets/scanner.gif"
                   alt="Barcode Scanner"
@@ -1970,6 +1987,7 @@ const RedBloodCell = () => {
                 <div style={styles.tableHeaderCell}>Volume (mL)</div>
                 <div style={styles.tableHeaderCell}>Date of Collection</div>
                 <div style={styles.tableHeaderCell}>Expiration Date</div>
+                <div style={styles.tableHeaderCell}>Source</div>
               </div>
 
               <div style={styles.rowsContainer}>
@@ -2042,10 +2060,19 @@ const RedBloodCell = () => {
                       readOnly
                       disabled
                     />
+                    <select
+                      style={styles.fieldSelect}
+                      value={item.source}
+                      onChange={(e) =>
+                        handleStockItemChange(item.id, "source", e.target.value)
+                      }
+                    >
+                      <option value="Walk-In">Walk-In</option>
+                      <option value="Mobile">Mobile</option>
+                    </select>
                   </div>
                 ))}
               </div>
-
               <button
                 type="button"
                 style={{
@@ -2127,6 +2154,7 @@ const RedBloodCell = () => {
                 <div style={styles.tableHeaderCell}>Volume (mL)</div>
                 <div style={styles.tableHeaderCell}>Date of Collection</div>
                 <div style={styles.tableHeaderCell}>Expiration Date</div>
+                <div style={styles.tableHeaderCell}>Source</div>
               </div>
 
               <div style={styles.dataRow}>
@@ -2183,6 +2211,16 @@ const RedBloodCell = () => {
                   readOnly
                   disabled
                 />
+                <select
+                  style={styles.fieldSelect}
+                  value={editingItem.source || 'Walk-In'}
+                  onChange={(e) =>
+                    handleEditItemChange("source", e.target.value)
+                  }
+                >
+                  <option value="Walk-In">Walk-In</option>
+                  <option value="Mobile">Mobile</option>
+                </select>
               </div>
             </div>
 
@@ -2232,7 +2270,7 @@ const RedBloodCell = () => {
             </div>
 
             <div style={styles.modalContent}>
-            <div style={styles.barcodeSection}>
+              <div style={styles.barcodeSection}>
                 <img
                   src="/src/assets/scanner.gif"
                   alt="Barcode Scanner"
@@ -2572,82 +2610,85 @@ const RedBloodCell = () => {
             </div>
 
             <div style={styles.modalContent}>
-            <div
-              style={{
-                backgroundColor: "#f0f9ff",
-                border: "1px solid #0ea5e9",
-                borderRadius: "8px",
-                padding: "16px",
-                marginBottom: "24px",
-              }}
-            >
-              <h4
-                style={{
-                  fontSize: "16px",
-                  fontWeight: "600",
-                  color: "#1e40af",
-                  margin: "0 0 12px 0",
-                }}
-              >
-                Items to Release (
-                {selectedItems.filter((item) => item.found).length})
-              </h4>
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "2fr 1fr 1fr 1fr",
-                  gap: "12px",
-                  fontSize: "12px",
-                  fontWeight: "500",
-                  color: "#374151",
-                  marginBottom: "8px",
+                  backgroundColor: "#f0f9ff",
+                  border: "1px solid #0ea5e9",
+                  borderRadius: "8px",
+                  padding: "16px",
+                  marginBottom: "24px",
                 }}
               >
-                <div>Serial ID</div>
-                <div>Blood Type</div>
-                <div>RH Factor</div>
-                <div>Volume (mL)</div>
-              </div>
-              {selectedItems
-                .filter((item) => item.found)
-                .map((item, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "2fr 1fr 1fr 1fr",
-                      gap: "12px",
-                      fontSize: "12px",
-                      color: "#6b7280",
-                      padding: "8px 0",
-                      borderTop: index > 0 ? "1px solid #e5e7eb" : "none",
-                    }}
-                  >
-                    <div style={{ fontWeight: "500", color: "#374151" }}>
-                      {item.serialId}
-                    </div>
-                    <div>{item.bloodType}</div>
-                    <div>{item.rhFactor}</div>
-                    <div>{item.volume}</div>
-                  </div>
-                ))}
-              <div
-                style={{
-                  marginTop: "12px",
-                  paddingTop: "12px",
-                  borderTop: "1px solid #0ea5e9",
-                  fontSize: "14px",
-                  fontWeight: "600",
-                  color: "#1e40af",
-                }}
-              >
-                Total Volume:{" "}
+                <h4
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: "600",
+                    color: "#1e40af",
+                    margin: "0 0 12px 0",
+                  }}
+                >
+                  Items to Release (
+                  {selectedItems.filter((item) => item.found).length})
+                </h4>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "2fr 1fr 1fr 1fr",
+                    gap: "12px",
+                    fontSize: "12px",
+                    fontWeight: "500",
+                    color: "#374151",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <div>Serial ID</div>
+                  <div>Blood Type</div>
+                  <div>RH Factor</div>
+                  <div>Volume (mL)</div>
+                </div>
                 {selectedItems
                   .filter((item) => item.found)
-                  .reduce((sum, item) => sum + parseInt(item.volume || 0), 0)}{" "}
-                mL
+                  .map((item, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "2fr 1fr 1fr 1fr",
+                        gap: "12px",
+                        fontSize: "12px",
+                        color: "#6b7280",
+                        padding: "8px 0",
+                        borderTop: index > 0 ? "1px solid #e5e7eb" : "none",
+                      }}
+                    >
+                      <div style={{ fontWeight: "500", color: "#374151" }}>
+                        {item.serialId}
+                      </div>
+                      <div>{item.bloodType}</div>
+                      <div>{item.rhFactor}</div>
+                      <div>{item.volume}</div>
+                    </div>
+                  ))}
+                <div
+                  style={{
+                    marginTop: "12px",
+                    paddingTop: "12px",
+                    borderTop: "1px solid #0ea5e9",
+                    fontSize: "14px",
+                    fontWeight: "600",
+                    color: "#1e40af",
+                  }}
+                >
+                  Total Volume:{" "}
+                  {selectedItems
+                    .filter((item) => item.found)
+                    .reduce(
+                      (sum, item) => sum + parseInt(item.volume || 0),
+                      0
+                    )}{" "}
+                  mL
+                </div>
               </div>
-            </div>
 
               <div style={styles.filterContainer}>
                 <div style={styles.formGroup}>
@@ -2710,7 +2751,7 @@ const RedBloodCell = () => {
               </div>
 
               <div style={styles.filterContainer}>
-              <div style={styles.formGroup}>
+                <div style={styles.formGroup}>
                   <label style={styles.label}>Contact Number</label>
                   <input
                     type="tel"
@@ -2719,11 +2760,16 @@ const RedBloodCell = () => {
                     onChange={(e) => {
                       const value = e.target.value;
                       // Remove +63 prefix if present to get the actual input
-                      const numberPart = value.replace('+63', '').replace(/\D/g, '');
+                      const numberPart = value
+                        .replace("+63", "")
+                        .replace(/\D/g, "");
                       // Limit to 10 digits
                       const limitedNumber = numberPart.slice(0, 10);
                       // Add +63 prefix back
-                      handleReleaseDataChange("contactNumber", limitedNumber ? `+63${limitedNumber}` : '+63');
+                      handleReleaseDataChange(
+                        "contactNumber",
+                        limitedNumber ? `+63${limitedNumber}` : "+63"
+                      );
                     }}
                     placeholder="+63"
                     maxLength={13}
@@ -2780,11 +2826,15 @@ const RedBloodCell = () => {
               </div>
 
               <div style={styles.filterContainer}>
-              <div style={styles.formGroup}>
+                <div style={styles.formGroup}>
                   <label style={styles.label}>Request Reference Number</label>
                   <input
                     type="text"
-                    style={{...styles.fieldInput, backgroundColor: '#f9fafb', cursor: 'not-allowed'}}
+                    style={{
+                      ...styles.fieldInput,
+                      backgroundColor: "#f9fafb",
+                      cursor: "not-allowed",
+                    }}
                     value={releaseData.requestReference}
                     readOnly
                     disabled
