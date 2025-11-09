@@ -26,6 +26,7 @@ const Plasma = () => {
   const [filterConfig, setFilterConfig] = useState({ field: "", value: "" });
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
   const [stockItems, setStockItems] = useState([
     {
       id: 1,
@@ -36,6 +37,7 @@ const Plasma = () => {
       collection: "",
       expiration: "",
       status: "Stored",
+      source: "Walk-In",
     },
   ]);
   const [releaseData, setReleaseData] = useState({
@@ -210,6 +212,7 @@ const Plasma = () => {
         collection: "",
         expiration: "",
         status: "Stored",
+        source: "Walk-In", 
       },
     ]);
   };
@@ -246,6 +249,7 @@ const Plasma = () => {
           collection: item.collection,
           expiration: item.expiration,
           status: item.status,
+          source: item.source, 
         };
         await window.electronAPI.addPlasmaStock(stockData);
       }
@@ -261,6 +265,7 @@ const Plasma = () => {
           collection: "",
           expiration: "",
           status: "Stored",
+          source: "Walk-In",
         },
       ]);
       await loadPlasmaData();
@@ -277,6 +282,39 @@ const Plasma = () => {
       setError(`Failed to add plasma stock: ${err.message}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteClick = () => {
+    setShowConfirmDeleteModal(true);
+  };
+  
+  const confirmDelete = async () => {
+    try {
+      if (!window.electronAPI) {
+        setError("Electron API not available");
+        return;
+      }
+  
+      const selectedIds = plasmaData
+        .filter((item) => item.selected)
+        .map((item) => item.id);
+      if (selectedIds.length === 0) return;
+  
+      await window.electronAPI.deletePlasmaStock(selectedIds);
+      setShowConfirmDeleteModal(false);
+      await loadPlasmaData();
+      clearAllSelection();
+      setError(null);
+  
+      setSuccessMessage({
+        title: "Deleted Successfully!",
+        description: `${selectedIds.length} plasma stock record(s) have been deleted.`,
+      });
+      setShowSuccessModal(true);
+    } catch (err) {
+      console.error("Error deleting items:", err);
+      setError("Failed to delete items");
     }
   };
 
@@ -311,13 +349,13 @@ const Plasma = () => {
         setError("Electron API not available");
         return;
       }
-
+  
       if (!editingItem.serial_id || !editingItem.collection) {
         setError("Please fill in all required fields");
         setSaving(false);
         return;
       }
-
+  
       const stockData = {
         serial_id: editingItem.serial_id,
         type: editingItem.type,
@@ -326,14 +364,22 @@ const Plasma = () => {
         collection: editingItem.collection,
         expiration: editingItem.expiration,
         status: editingItem.status,
+        source: editingItem.source, 
       };
-
+  
       await window.electronAPI.updatePlasmaStock(editingItem.id, stockData);
       setShowEditModal(false);
       setEditingItem(null);
       await loadPlasmaData();
       clearAllSelection();
       setError(null);
+  
+      // Show success modal
+      setSuccessMessage({
+        title: "Stock Updated Successfully!",
+        description: "The plasma stock information has been updated.",
+      });
+      setShowSuccessModal(true);
     } catch (err) {
       console.error("Error updating plasma stock:", err);
       setError(`Failed to update plasma stock: ${err.message}`);
@@ -424,6 +470,7 @@ const Plasma = () => {
         expiration: "",
         status: "Stored",
         found: false,
+        source: "Walk-In", 
       },
     ]);
   };
@@ -469,6 +516,7 @@ const Plasma = () => {
                       collection: stockData.collection,
                       expiration: stockData.expiration,
                       status: stockData.status,
+                      source: stockData.source, 
                       found: true,
                     }
                   : item
@@ -489,6 +537,7 @@ const Plasma = () => {
                       collection: firstMatch.collection,
                       expiration: firstMatch.expiration,
                       status: firstMatch.status,
+                      source: firstMatch.source,
                       found: true,
                     }
                   : item
@@ -508,6 +557,7 @@ const Plasma = () => {
                       collection: "",
                       expiration: "",
                       status: "Stored",
+                      source: "Walk-In", 
                       found: false,
                     }
                   : item
@@ -574,6 +624,7 @@ const Plasma = () => {
         collection: "",
         expiration: "",
         status: "Stored",
+        source: "Walk-In", 
         found: false,
       },
     ]);
@@ -646,6 +697,7 @@ const Plasma = () => {
             collection: "",
             expiration: "",
             status: "Stored",
+            source: "Walk-In", 
             found: false,
           },
         ]);
@@ -693,6 +745,7 @@ const Plasma = () => {
       volume: "Volume",
       status: "Status",
       created: "Sort by",
+      source: "Source",
     };
     return labels[sortConfig.key] || "Sort";
   };
@@ -1105,7 +1158,7 @@ const Plasma = () => {
     },
     tableHeader: {
       display: "grid",
-      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr",
       gap: "15px",
       marginBottom: "15px",
       padding: "0 5px",
@@ -1119,7 +1172,7 @@ const Plasma = () => {
     },
     dataRow: {
       display: "grid",
-      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr",
       gap: "15px",
       marginBottom: "15px",
       alignItems: "center",
@@ -1364,6 +1417,19 @@ const Plasma = () => {
     successOkButtonHover: {
       backgroundColor: "#ffb300",
     },
+    confirmButton: {
+      padding: "12px 48px",
+      backgroundColor: "#2563eb",
+      color: "white",
+      border: "none",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontSize: "16px",
+      fontWeight: "600",
+      fontFamily: "Barlow",
+      minWidth: "120px",
+      transition: "all 0.2s ease",
+    },
   };
 
   const [hoverStates, setHoverStates] = useState({});
@@ -1479,6 +1545,7 @@ const Plasma = () => {
                   { key: "rhFactor", label: "RH Factor" },
                   { key: "volume", label: "Volume" },
                   { key: "status", label: "Status" },
+                  { key: "source", label: "Source" },
                   { key: "created", label: "Sort by" },
                 ].map((item) => (
                   <div
@@ -1579,6 +1646,7 @@ const Plasma = () => {
                       <option value="rhFactor">RH Factor</option>
                       <option value="status">Status</option>
                       <option value="volume">Volume</option>
+                      <option value="source">Source</option>
                     </select>
                   </div>
                 </div>
@@ -1742,6 +1810,14 @@ const Plasma = () => {
                 {sortConfig.key === "status" &&
                   (sortConfig.direction === "asc" ? "↑" : "↓")}
               </th>
+              <th
+                style={{ ...styles.th, width: "7%", cursor: "pointer" }}
+                onClick={() => handleSort("source")}
+              >
+                SOURCE{" "}
+                {sortConfig.key === "source" &&
+                  (sortConfig.direction === "asc" ? "↑" : "↓")}
+              </th>
               <th style={{ ...styles.th, width: "13%" }}>CREATED AT</th>
               <th style={{ ...styles.th, width: "13%" }}>MODIFIED AT</th>
             </tr>
@@ -1782,6 +1858,7 @@ const Plasma = () => {
                   <td style={styles.td}>
                     <span style={styles.statusBadge}>{item.status}</span>
                   </td>
+                  <td style={styles.td}>{item.source}</td>
                   <td style={styles.td}>{item.created}</td>
                   <td style={styles.td}>{item.modified}</td>
                 </tr>
@@ -1856,7 +1933,7 @@ const Plasma = () => {
               ...styles.deleteButton,
               ...(hoverStates.delete ? styles.deleteButtonHover : {}),
             }}
-            onClick={handleDelete}
+            onClick={handleDeleteClick}
             onMouseEnter={() => handleMouseEnter("delete")}
             onMouseLeave={() => handleMouseLeave("delete")}
           >
@@ -1876,6 +1953,181 @@ const Plasma = () => {
             </svg>
             <span>Delete</span>
           </button>
+        </div>
+      )}
+
+      {/* Confirm Delete Modal */}
+      {showConfirmDeleteModal && (
+        <div
+          style={styles.modalOverlay}
+          onClick={() => setShowConfirmDeleteModal(false)}
+        >
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <div style={styles.modalTitleSection}>
+                <h3 style={styles.modalTitle}>Confirm Delete</h3>
+                <p style={styles.modalSubtitle}>Review items before deletion</p>
+              </div>
+              <button
+                style={{
+                  ...styles.modalCloseButton,
+                  ...(hoverStates.closeDeleteModal
+                    ? styles.modalCloseButtonHover
+                    : {}),
+                }}
+                onClick={() => setShowConfirmDeleteModal(false)}
+                onMouseEnter={() => handleMouseEnter("closeDeleteModal")}
+                onMouseLeave={() => handleMouseLeave("closeDeleteModal")}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={styles.modalContent}>
+              <div
+                style={{
+                  backgroundColor: "#fef2f2",
+                  border: "1px solid #ef4444",
+                  borderRadius: "8px",
+                  padding: "16px",
+                  marginBottom: "24px",
+                }}
+              >
+                <h4
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: "600",
+                    color: "#991b1b",
+                    margin: "0 0 12px 0",
+                  }}
+                >
+                  Items to Delete ({plasmaData.filter((item) => item.selected).length})
+                </h4>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
+                    gap: "12px",
+                    fontSize: "12px",
+                    fontWeight: "500",
+                    color: "#374151",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <div>Serial ID</div>
+                  <div>Blood Type</div>
+                  <div>RH Factor</div>
+                  <div>Volume (mL)</div>
+                  <div>Source</div>
+                </div>
+                {plasmaData
+                  .filter((item) => item.selected)
+                  .map((item, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
+                        gap: "12px",
+                        fontSize: "12px",
+                        color: "#6b7280",
+                        padding: "8px 0",
+                        borderTop: index > 0 ? "1px solid #e5e7eb" : "none",
+                      }}
+                    >
+                      <div style={{ fontWeight: "500", color: "#374151" }}>
+                        {item.serial_id}
+                      </div>
+                      <div>{item.type}</div>
+                      <div>{item.rhFactor}</div>
+                      <div>{item.volume}</div>
+                      <div>{item.source || 'Walk-In'}</div>
+                    </div>
+                  ))}
+                <div
+                  style={{
+                    marginTop: "12px",
+                    paddingTop: "12px",
+                    borderTop: "1px solid #ef4444",
+                    fontSize: "14px",
+                    fontWeight: "600",
+                    color: "#991b1b",
+                  }}
+                >
+                  Total Volume:{" "}
+                  {plasmaData
+                    .filter((item) => item.selected)
+                    .reduce((sum, item) => sum + parseInt(item.volume || 0), 0)}{" "}
+                  mL
+                </div>
+              </div>
+
+              <div
+                style={{
+                  backgroundColor: "#fef2f2",
+                  border: "1px solid #ef4444",
+                  borderRadius: "8px",
+                  padding: "16px",
+                  display: "flex",
+                  gap: "12px",
+                  alignItems: "flex-start",
+                }}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  fill="#ef4444"
+                  viewBox="0 0 20 20"
+                  style={{ flexShrink: 0, marginTop: "2px" }}
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <div>
+                  <p
+                    style={{
+                      fontSize: "14px",
+                      fontWeight: "600",
+                      color: "#991b1b",
+                      margin: "0 0 4px 0",
+                    }}
+                  >
+                    Confirm Delete Action
+                  </p>
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#7f1d1d",
+                      margin: 0,
+                      lineHeight: "1.5",
+                    }}
+                  >
+                    These items will be permanently deleted from the Plasma stock records. This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <button
+                type="button"
+                style={{
+                  ...styles.confirmButton,
+                  backgroundColor: "#ef4444",
+                  ...(hoverStates.confirmDelete ? { backgroundColor: "#dc2626" } : {}),
+                }}
+                onClick={confirmDelete}
+                onMouseEnter={() => handleMouseEnter("confirmDelete")}
+                onMouseLeave={() => handleMouseLeave("confirmDelete")}
+              >
+                Confirm Delete (
+                {plasmaData.filter((item) => item.selected).length} items)
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1967,6 +2219,7 @@ const Plasma = () => {
                 <div style={styles.tableHeaderCell}>Volume (mL)</div>
                 <div style={styles.tableHeaderCell}>Date of Collection</div>
                 <div style={styles.tableHeaderCell}>Expiration Date</div>
+                <div style={styles.tableHeaderCell}>Source</div>
               </div>
 
               <div style={styles.rowsContainer}>
@@ -2039,6 +2292,17 @@ const Plasma = () => {
                       readOnly
                       disabled
                     />
+
+                    <select
+                      style={styles.fieldSelect}
+                      value={item.source}
+                      onChange={(e) =>
+                        handleStockItemChange(item.id, "source", e.target.value)
+                      }
+                    >
+                      <option value="Walk-In">Walk-In</option>
+                      <option value="Mobile">Mobile</option>
+                    </select>
                   </div>
                 ))}
               </div>
@@ -2090,116 +2354,127 @@ const Plasma = () => {
       )}
 
       {/* Edit Stock Modal */}
-      {showEditModal && editingItem && (
-        <div
-          style={styles.modalOverlay}
-          onClick={() => setShowEditModal(false)}
-        >
-          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.modalHeader}>
-              <div style={styles.modalTitleSection}>
-                <h3 style={styles.modalTitle}>Plasma</h3>
-                <p style={styles.modalSubtitle}>Edit Stock</p>
-              </div>
-              <button
-                style={{
-                  ...styles.modalCloseButton,
-                  ...(hoverStates.closeEditModal
-                    ? styles.modalCloseButtonHover
-                    : {}),
-                }}
-                onClick={() => setShowEditModal(false)}
-                onMouseEnter={() => handleMouseEnter("closeEditModal")}
-                onMouseLeave={() => handleMouseLeave("closeEditModal")}
-              >
-                ×
-              </button>
-            </div>
-
-            <div style={styles.modalContent}>
-              <div style={styles.tableHeader}>
-                <div style={styles.tableHeaderCell}>Barcode Serial ID</div>
-                <div style={styles.tableHeaderCell}>Blood Type</div>
-                <div style={styles.tableHeaderCell}>Rh Factor</div>
-                <div style={styles.tableHeaderCell}>Volume (mL)</div>
-                <div style={styles.tableHeaderCell}>Date of Collection</div>
-                <div style={styles.tableHeaderCell}>Expiration Date</div>
-              </div>
-
-              <div style={styles.dataRow}>
-                <input
-                  type="text"
-                  style={styles.fieldInput}
-                  value={editingItem.serial_id}
-                  onChange={(e) =>
-                    handleEditItemChange("serial_id", e.target.value)
-                  }
-                  placeholder="Enter Serial ID"
-                />
-                <select
-                  style={styles.fieldSelect}
-                  value={editingItem.type}
-                  onChange={(e) => handleEditItemChange("type", e.target.value)}
+        {showEditModal && editingItem && (
+          <div
+            style={styles.modalOverlay}
+            onClick={() => setShowEditModal(false)}
+          >
+            <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+              <div style={styles.modalHeader}>
+                <div style={styles.modalTitleSection}>
+                  <h3 style={styles.modalTitle}>Plasma</h3>
+                  <p style={styles.modalSubtitle}>Edit Stock</p>
+                </div>
+                <button
+                  style={{
+                    ...styles.modalCloseButton,
+                    ...(hoverStates.closeEditModal
+                      ? styles.modalCloseButtonHover
+                      : {}),
+                  }}
+                  onClick={() => setShowEditModal(false)}
+                  onMouseEnter={() => handleMouseEnter("closeEditModal")}
+                  onMouseLeave={() => handleMouseLeave("closeEditModal")}
                 >
-                  <option value="O">O</option>
-                  <option value="A">A</option>
-                  <option value="B">B</option>
-                  <option value="AB">AB</option>
-                </select>
-                <select
-                  style={styles.fieldSelect}
-                  value={editingItem.rhFactor}
-                  onChange={(e) =>
-                    handleEditItemChange("rhFactor", e.target.value)
-                  }
-                >
-                  <option value="+">+</option>
-                  <option value="-">-</option>
-                </select>
-                <input
-                  type="number"
-                  style={styles.fieldInput}
-                  value={editingItem.volume}
-                  onChange={(e) =>
-                    handleEditItemChange("volume", e.target.value)
-                  }
-                  min="1"
-                />
-                <input
-                  type="date"
-                  style={styles.fieldInput}
-                  value={editingItem.collection}
-                  onChange={(e) =>
-                    handleEditItemChange("collection", e.target.value)
-                  }
-                />
-                <input
-                  type="date"
-                  style={styles.fieldInputDisabled}
-                  value={editingItem.expiration}
-                  readOnly
-                  disabled
-                />
+                  ×
+                </button>
               </div>
-            </div>
 
-            <div style={styles.modalFooter}>
-              <button
-                type="button"
-                style={{
-                  ...styles.saveButton,
-                  ...(hoverStates.saveEdit ? styles.saveButtonHover : {}),
-                }}
-                onClick={handleSaveEdit}
-                onMouseEnter={() => handleMouseEnter("saveEdit")}
-                onMouseLeave={() => handleMouseLeave("saveEdit")}
-              >
-                Save Changes
-              </button>
+              <div style={styles.modalContent}>
+                <div style={styles.tableHeader}>
+                  <div style={styles.tableHeaderCell}>Barcode Serial ID</div>
+                  <div style={styles.tableHeaderCell}>Blood Type</div>
+                  <div style={styles.tableHeaderCell}>Rh Factor</div>
+                  <div style={styles.tableHeaderCell}>Volume (mL)</div>
+                  <div style={styles.tableHeaderCell}>Date of Collection</div>
+                  <div style={styles.tableHeaderCell}>Expiration Date</div>
+                  <div style={styles.tableHeaderCell}>Source</div>
+                </div>
+
+                <div style={styles.dataRow}>
+                  <input
+                    type="text"
+                    style={styles.fieldInput}
+                    value={editingItem.serial_id}
+                    onChange={(e) =>
+                      handleEditItemChange("serial_id", e.target.value)
+                    }
+                    placeholder="Enter Serial ID"
+                  />
+                  <select
+                    style={styles.fieldSelect}
+                    value={editingItem.type}
+                    onChange={(e) => handleEditItemChange("type", e.target.value)}
+                  >
+                    <option value="O">O</option>
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="AB">AB</option>
+                  </select>
+                  <select
+                    style={styles.fieldSelect}
+                    value={editingItem.rhFactor}
+                    onChange={(e) =>
+                      handleEditItemChange("rhFactor", e.target.value)
+                    }
+                  >
+                    <option value="+">+</option>
+                    <option value="-">-</option>
+                  </select>
+                  <input
+                    type="number"
+                    style={styles.fieldInput}
+                    value={editingItem.volume}
+                    onChange={(e) =>
+                      handleEditItemChange("volume", e.target.value)
+                    }
+                    min="1"
+                  />
+                  <input
+                    type="date"
+                    style={styles.fieldInput}
+                    value={editingItem.collection}
+                    onChange={(e) =>
+                      handleEditItemChange("collection", e.target.value)
+                    }
+                  />
+                  <input
+                    type="date"
+                    style={styles.fieldInputDisabled}
+                    value={editingItem.expiration}
+                    readOnly
+                    disabled
+                  />
+                  <select
+                    style={styles.fieldSelect}
+                    value={editingItem.source || 'Walk-In'} 
+                    onChange={(e) =>
+                      handleEditItemChange("source", e.target.value)  
+                    }
+                  >
+                    <option value="Walk-In">Walk-In</option>
+                    <option value="Mobile">Mobile</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={styles.modalFooter}>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.saveButton,
+                    ...(hoverStates.saveEdit ? styles.saveButtonHover : {}),
+                  }}
+                  onClick={handleSaveEdit}
+                  onMouseEnter={() => handleMouseEnter("saveEdit")}
+                  onMouseLeave={() => handleMouseLeave("saveEdit")}
+                >
+                  Save Changes
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Release Stock Modal */}
       {showReleaseModal && (
@@ -2400,7 +2675,7 @@ const Plasma = () => {
                       readOnly
                       disabled
                     />
-
+                
                     <span
                       style={{
                         padding: "4px 8px",

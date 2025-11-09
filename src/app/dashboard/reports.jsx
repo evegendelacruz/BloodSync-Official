@@ -20,18 +20,18 @@ const Reports = () => {
     try {
       setLoading(true);
       setError(null);
-
+  
       if (!window.electronAPI) {
         throw new Error("Electron API not available");
       }
-
+  
       // Get all reports from database
       const reports = await window.electronAPI.getAllBloodReports();
-      
-      // If no reports exist, generate them for current year
+  
+      // If no reports exist, generate them for ALL years with data
       if (reports.length === 0) {
-        const currentYear = new Date().getFullYear();
-        await window.electronAPI.generateAllQuarterlyReports(currentYear);
+        console.log("No reports found, generating all historical reports...");
+        await window.electronAPI.generateAllHistoricalReports();
         const newReports = await window.electronAPI.getAllBloodReports();
         setReportData(formatReportData(newReports));
       } else {
@@ -44,12 +44,13 @@ const Reports = () => {
       setLoading(false);
     }
   };
+  
 
   const formatReportData = (reports) => {
-    return reports.map(report => {
+    return reports.map((report) => {
       // Parse month labels - it comes as a JSON string from the database
       let monthLabels;
-      if (typeof report.monthLabels === 'string') {
+      if (typeof report.monthLabels === "string") {
         try {
           monthLabels = JSON.parse(report.monthLabels);
         } catch (e) {
@@ -60,36 +61,22 @@ const Reports = () => {
       } else {
         monthLabels = getQuarterMonthLabels(report.quarter);
       }
-      
+
       const quarterNumber = getQuarterNumber(report.quarter);
-      
-      
-      // Parse month data from JSONB
-      const month1Data = typeof report.month1Data === 'string' 
-      ? JSON.parse(report.month1Data) 
-      : report.month1Data || {};
-      const month2Data = typeof report.month2Data === 'string' 
-      ? JSON.parse(report.month2Data) 
-      : report.month2Data || {};
-      const month3Data = typeof report.month3Data === 'string' 
-      ? JSON.parse(report.month3Data) 
-      : report.month3Data || {};
 
-      // Calculate percentage contribution of each month to the total
-      const month1Total = month1Data.total || 0;
-      const month2Total = month2Data.total || 0;
-      const month3Total = month3Data.total || 0;
-      const grandTotal = report.total || 0;
-
-      // Calculate each month's percentage contribution
-      const month1TotalPct = grandTotal > 0 ? ((month1Total / grandTotal) * 100).toFixed(1) : "0.0";
-      const month2TotalPct = grandTotal > 0 ? ((month2Total / grandTotal) * 100).toFixed(1) : "0.0";
-      const month3TotalPct = grandTotal > 0 ? ((month3Total / grandTotal) * 100).toFixed(1) : "0.0";
-
-      // Add the calculated percentages to monthly data
-      month1Data.totalPct = month1TotalPct;
-      month2Data.totalPct = month2TotalPct;
-      month3Data.totalPct = month3TotalPct;
+      // Parse month data from JSONB - preserve mobile/walkIn structure
+      const month1Data =
+        typeof report.month1Data === "string"
+          ? JSON.parse(report.month1Data)
+          : report.month1Data || { mobile: {}, walkIn: {} };
+      const month2Data =
+        typeof report.month2Data === "string"
+          ? JSON.parse(report.month2Data)
+          : report.month2Data || { mobile: {}, walkIn: {} };
+      const month3Data =
+        typeof report.month3Data === "string"
+          ? JSON.parse(report.month3Data)
+          : report.month3Data || { mobile: {}, walkIn: {} };
 
       return {
         id: report.id,
@@ -112,25 +99,78 @@ const Reports = () => {
           "AB-": report.abNegative || 0,
         },
         percentages: {
-          "O+": report.oPositivePct ? Number(report.oPositivePct).toFixed(1) : "0.0",
-          "O-": report.oNegativePct ? Number(report.oNegativePct).toFixed(1) : "0.0",
-          "A+": report.aPositivePct ? Number(report.aPositivePct).toFixed(1) : "0.0",
-          "A-": report.aNegativePct ? Number(report.aNegativePct).toFixed(1) : "0.0",
-          "B+": report.bPositivePct ? Number(report.bPositivePct).toFixed(1) : "0.0",
-          "B-": report.bNegativePct ? Number(report.bNegativePct).toFixed(1) : "0.0",
-          "AB+": report.abPositivePct ? Number(report.abPositivePct).toFixed(1) : "0.0",
-          "AB-": report.abNegativePct ? Number(report.abNegativePct).toFixed(1) : "0.0",
+          "O+": report.oPositivePct
+            ? Number(report.oPositivePct).toFixed(1)
+            : "0.0",
+          "O-": report.oNegativePct
+            ? Number(report.oNegativePct).toFixed(1)
+            : "0.0",
+          "A+": report.aPositivePct
+            ? Number(report.aPositivePct).toFixed(1)
+            : "0.0",
+          "A-": report.aNegativePct
+            ? Number(report.aNegativePct).toFixed(1)
+            : "0.0",
+          "B+": report.bPositivePct
+            ? Number(report.bPositivePct).toFixed(1)
+            : "0.0",
+          "B-": report.bNegativePct
+            ? Number(report.bNegativePct).toFixed(1)
+            : "0.0",
+          "AB+": report.abPositivePct
+            ? Number(report.abPositivePct).toFixed(1)
+            : "0.0",
+          "AB-": report.abNegativePct
+            ? Number(report.abNegativePct).toFixed(1)
+            : "0.0",
         },
         monthlyData: {
-          month1: month1Data,
-          month2: month2Data,
-          month3: month3Data,
+          mobile: {
+            month1: month1Data.mobile || {
+              counts: {},
+              percentages: {},
+              total: 0,
+              totalPct: "0.0",
+            },
+            month2: month2Data.mobile || {
+              counts: {},
+              percentages: {},
+              total: 0,
+              totalPct: "0.0",
+            },
+            month3: month3Data.mobile || {
+              counts: {},
+              percentages: {},
+              total: 0,
+              totalPct: "0.0",
+            },
+          },
+          walkIn: {
+            month1: month1Data.walkIn || {
+              counts: {},
+              percentages: {},
+              total: 0,
+              totalPct: "0.0",
+            },
+            month2: month2Data.walkIn || {
+              counts: {},
+              percentages: {},
+              total: 0,
+              totalPct: "0.0",
+            },
+            month3: month3Data.walkIn || {
+              counts: {},
+              percentages: {},
+              total: 0,
+              totalPct: "0.0",
+            },
+          },
         },
         total: report.total || 0,
       };
     });
   };
-  
+
   const getQuarterMonthLabels = (quarter) => {
     const quarterMap = {
       "1st Quarter": ["Jan", "Feb", "Mar"],
@@ -212,13 +252,13 @@ const Reports = () => {
       const selectedIds = reportData
         .filter((item) => item.selected)
         .map((item) => item.id);
-      
+
       if (selectedIds.length === 0) return;
 
       const confirmed = window.confirm(
         `Are you sure you want to delete ${selectedIds.length} report(s)?`
       );
-      
+
       if (!confirmed) return;
 
       await window.electronAPI.deleteReports(selectedIds);
@@ -243,8 +283,9 @@ const Reports = () => {
         setError("Electron API not available");
         return;
       }
-
-      await window.electronAPI.refreshCurrentYearReports();
+  
+      // Regenerate all historical reports
+      await window.electronAPI.generateAllHistoricalReports();
       await loadReportData();
       setError(null);
     } catch (err) {
@@ -257,17 +298,17 @@ const Reports = () => {
 
   const generateReportPDF = () => {
     if (!previewReport) return;
-  
+
     const doc = new jsPDF({
       orientation: "portrait",
       unit: "in",
       format: [8.5, 13],
     });
-  
+
     const dohMainLogo = "./assets/doh-main-logo.jpg";
     const dohPurpleLogo = "./assets/doh-purple-logo.png";
     const bagongPilipinasLogo = "./assets/bagong-pilipinas-logo.png";
-  
+
     try {
       doc.addImage(dohMainLogo, "JPEG", 0.5, 0.3, 1.0, 1.0);
       doc.addImage(dohPurpleLogo, "PNG", 1.7, 0.3, 0.97, 0.97);
@@ -275,14 +316,14 @@ const Reports = () => {
     } catch (e) {
       console.error("Error loading logos:", e);
     }
-  
+
     const textStartX = 4.25;
     const textStartY = 0.4;
-  
+
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.text("DEPARTMENT OF HEALTH", textStartX, textStartY);
-  
+
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.text(
@@ -290,7 +331,7 @@ const Reports = () => {
       textStartX,
       textStartY + 0.16
     );
-  
+
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7.5);
     doc.text(
@@ -298,7 +339,7 @@ const Reports = () => {
       textStartX,
       textStartY + 0.32
     );
-  
+
     doc.setFontSize(6.5);
     doc.text(
       "PABX (088) 8587123/ (088) 858 4000/ (088) 855 0430/ (+63) 917-148-3298/",
@@ -310,7 +351,7 @@ const Reports = () => {
       textStartX,
       textStartY + 0.57
     );
-  
+
     doc.setTextColor(0, 0, 0);
     doc.text("Email address: ", textStartX, textStartY + 0.68);
     const emailLabelWidth = doc.getTextWidth("Email address: ");
@@ -320,7 +361,7 @@ const Reports = () => {
       textStartX + emailLabelWidth,
       textStartY + 0.68
     );
-  
+
     doc.setTextColor(0, 0, 0);
     doc.text("Website: ", textStartX, textStartY + 0.79);
     const websiteLabelWidth = doc.getTextWidth("Website: ");
@@ -330,135 +371,247 @@ const Reports = () => {
       textStartX + websiteLabelWidth,
       textStartY + 0.79
     );
-  
+
     doc.setTextColor(0, 0, 0);
-    doc.setFont("helvetica", "normal");
+    doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.text(`Center for Health Development for: __________ Qtr: ${previewReport.quarterNumber} Year: ${previewReport.year}`, 0.5, 1.65);
-  
+    doc.text(
+      "Name of Blood Service Facility: __________________________________________________________",
+      0.5,
+      1.8 // Changed from 1.5 - added margin-top
+    );
+
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text(
+      "Center for Health Development for: ________________________________________ Qtr:",
+      0.5,
+      2.1 // Changed from 1.75 - added margin-top
+    );
+
+    // Add underlined quarter number
+    const qtrLabelWidth = doc.getTextWidth(
+      "Center for Health Development for: ________________________________________ Qtr:"
+    );
+    doc.setFont("helvetica", "normal");
+    const qtrText = previewReport.quarterNumber;
+    doc.text(qtrText, 0.5 + qtrLabelWidth + 0.05, 2.11); // Updated Y position
+    const qtrNumWidth = doc.getTextWidth(qtrText);
+    doc.setLineWidth(0.01);
+    doc.line(
+      0.5 + qtrLabelWidth + 0.05,
+      2.12, // Updated Y position for underline
+      0.5 + qtrLabelWidth + 0.05 + qtrNumWidth,
+      2.12 // Updated Y position for underline
+    );
+
+    // Add Year label and underlined year
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "bold");
+    doc.text("Year:", 0.5 + qtrLabelWidth + 0.05 + qtrNumWidth + 0.1, 2.11); // Updated Y position
+    const yearLabelWidth = doc.getTextWidth("Year:");
+    doc.setFont("helvetica", "normal");
+    const yearText = previewReport.year.toString();
+    doc.text(
+      yearText,
+      0.5 + qtrLabelWidth + 0.05 + qtrNumWidth + 0.1 + yearLabelWidth + 0.05,
+      2.1 // Updated Y position
+    );
+    const yearWidth = doc.getTextWidth(yearText);
+    doc.line(
+      0.5 + qtrLabelWidth + 0.05 + qtrNumWidth + 0.1 + yearLabelWidth + 0.05,
+      2.11, // Updated Y position for underline
+      0.5 +
+        qtrLabelWidth +
+        0.05 +
+        qtrNumWidth +
+        0.1 +
+        yearLabelWidth +
+        0.05 +
+        yearWidth,
+      2.12 // Updated Y position for underline
+    );
+
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.text(
       "BLOOD DONATIONS DOCUMENTATION REPORT (Screened/Tested)",
       4.25,
-      1.95,
+      2.5, // Changed from 1.95 - added margin-top
       { align: "center" }
     );
-  
+
     const monthLabels = previewReport.monthLabels || ["Jan", "Feb", "Mar"];
-    const totalPct = previewReport.total > 0 ? "100.0" : "0.0";
-  
-    // MODIFIED: Create mobileTableData with monthly distribution
+
+    // Get Mobile and Walk-In data separately
+    const mobileData = previewReport.monthlyData.mobile || {
+      month1: {},
+      month2: {},
+      month3: {},
+    };
+    const walkInData = previewReport.monthlyData.walkIn || {
+      month1: {},
+      month2: {},
+      month3: {},
+    };
+
+    // Calculate Mobile totals
+    const mobileTotal =
+      (mobileData.month1?.total || 0) +
+      (mobileData.month2?.total || 0) +
+      (mobileData.month3?.total || 0);
+    const mobileTotalPct = mobileTotal > 0 ? "100.0" : "0.0";
+    const mobileStatistics = {};
+    const mobilePercentages = {};
+    ["O+", "A+", "B+", "AB+", "O-", "A-", "B-", "AB-"].forEach((type) => {
+      const total =
+        (mobileData.month1?.counts?.[type] || 0) +
+        (mobileData.month2?.counts?.[type] || 0) +
+        (mobileData.month3?.counts?.[type] || 0);
+      mobileStatistics[type] = total;
+      mobilePercentages[type] =
+        mobileTotal > 0 ? ((total / mobileTotal) * 100).toFixed(1) : "0.0";
+    });
+
+    // Create mobileTableData with Mobile source data only
     const mobileTableData = [
-      ["O+",
-        previewReport.monthlyData.month1?.counts?.["O+"] || 0,
-        previewReport.monthlyData.month1?.percentages?.["O+"] || "0.0",
-        previewReport.monthlyData.month2?.counts?.["O+"] || 0,
-        previewReport.monthlyData.month2?.percentages?.["O+"] || "0.0",
-        previewReport.monthlyData.month3?.counts?.["O+"] || 0,
-        previewReport.monthlyData.month3?.percentages?.["O+"] || "0.0",
-        previewReport.statistics["O+"] || 0,
-        previewReport.percentages["O+"] || "0.0",
+      [
+        "O+",
+        mobileData.month1?.counts?.["O+"] || 0,
+        mobileData.month1?.percentages?.["O+"] || "0.0",
+        mobileData.month2?.counts?.["O+"] || 0,
+        mobileData.month2?.percentages?.["O+"] || "0.0",
+        mobileData.month3?.counts?.["O+"] || 0,
+        mobileData.month3?.percentages?.["O+"] || "0.0",
+        mobileStatistics["O+"] || 0,
+        mobilePercentages["O+"] || "0.0",
       ],
-      ["A+",
-        previewReport.monthlyData.month1?.counts?.["A+"] || 0,
-        previewReport.monthlyData.month1?.percentages?.["A+"] || "0.0",
-        previewReport.monthlyData.month2?.counts?.["A+"] || 0,
-        previewReport.monthlyData.month2?.percentages?.["A+"] || "0.0",
-        previewReport.monthlyData.month3?.counts?.["A+"] || 0,
-        previewReport.monthlyData.month3?.percentages?.["A+"] || "0.0",
-        previewReport.statistics["A+"] || 0,
-        previewReport.percentages["A+"] || "0.0",
+      [
+        "A+",
+        mobileData.month1?.counts?.["A+"] || 0,
+        mobileData.month1?.percentages?.["A+"] || "0.0",
+        mobileData.month2?.counts?.["A+"] || 0,
+        mobileData.month2?.percentages?.["A+"] || "0.0",
+        mobileData.month3?.counts?.["A+"] || 0,
+        mobileData.month3?.percentages?.["A+"] || "0.0",
+        mobileStatistics["A+"] || 0,
+        mobilePercentages["A+"] || "0.0",
       ],
-      ["B+",
-        previewReport.monthlyData.month1?.counts?.["B+"] || 0,
-        previewReport.monthlyData.month1?.percentages?.["B+"] || "0.0",
-        previewReport.monthlyData.month2?.counts?.["B+"] || 0,
-        previewReport.monthlyData.month2?.percentages?.["B+"] || "0.0",
-        previewReport.monthlyData.month3?.counts?.["B+"] || 0,
-        previewReport.monthlyData.month3?.percentages?.["B+"] || "0.0",
-        previewReport.statistics["B+"] || 0,
-        previewReport.percentages["B+"] || "0.0",
+      [
+        "B+",
+        mobileData.month1?.counts?.["B+"] || 0,
+        mobileData.month1?.percentages?.["B+"] || "0.0",
+        mobileData.month2?.counts?.["B+"] || 0,
+        mobileData.month2?.percentages?.["B+"] || "0.0",
+        mobileData.month3?.counts?.["B+"] || 0,
+        mobileData.month3?.percentages?.["B+"] || "0.0",
+        mobileStatistics["B+"] || 0,
+        mobilePercentages["B+"] || "0.0",
       ],
-      ["AB+",
-        previewReport.monthlyData.month1?.counts?.["AB+"] || 0,
-        previewReport.monthlyData.month1?.percentages?.["AB+"] || "0.0",
-        previewReport.monthlyData.month2?.counts?.["AB+"] || 0,
-        previewReport.monthlyData.month2?.percentages?.["AB+"] || "0.0",
-        previewReport.monthlyData.month3?.counts?.["AB+"] || 0,
-        previewReport.monthlyData.month3?.percentages?.["AB+"] || "0.0",
-        previewReport.statistics["AB+"] || 0,
-        previewReport.percentages["AB+"] || "0.0",
+      [
+        "AB+",
+        mobileData.month1?.counts?.["AB+"] || 0,
+        mobileData.month1?.percentages?.["AB+"] || "0.0",
+        mobileData.month2?.counts?.["AB+"] || 0,
+        mobileData.month2?.percentages?.["AB+"] || "0.0",
+        mobileData.month3?.counts?.["AB+"] || 0,
+        mobileData.month3?.percentages?.["AB+"] || "0.0",
+        mobileStatistics["AB+"] || 0,
+        mobilePercentages["AB+"] || "0.0",
       ],
-      ["O-",
-        previewReport.monthlyData.month1?.counts?.["O-"] || 0,
-        previewReport.monthlyData.month1?.percentages?.["O-"] || "0.0",
-        previewReport.monthlyData.month2?.counts?.["O-"] || 0,
-        previewReport.monthlyData.month2?.percentages?.["O-"] || "0.0",
-        previewReport.monthlyData.month3?.counts?.["O-"] || 0,
-        previewReport.monthlyData.month3?.percentages?.["O-"] || "0.0",
-        previewReport.statistics["O-"] || 0,
-        previewReport.percentages["O-"] || "0.0",
+      [
+        "O-",
+        mobileData.month1?.counts?.["O-"] || 0,
+        mobileData.month1?.percentages?.["O-"] || "0.0",
+        mobileData.month2?.counts?.["O-"] || 0,
+        mobileData.month2?.percentages?.["O-"] || "0.0",
+        mobileData.month3?.counts?.["O-"] || 0,
+        mobileData.month3?.percentages?.["O-"] || "0.0",
+        mobileStatistics["O-"] || 0,
+        mobilePercentages["O-"] || "0.0",
       ],
-      ["A-",
-        previewReport.monthlyData.month1?.counts?.["A-"] || 0,
-        previewReport.monthlyData.month1?.percentages?.["A-"] || "0.0",
-        previewReport.monthlyData.month2?.counts?.["A-"] || 0,
-        previewReport.monthlyData.month2?.percentages?.["A-"] || "0.0",
-        previewReport.monthlyData.month3?.counts?.["A-"] || 0,
-        previewReport.monthlyData.month3?.percentages?.["A-"] || "0.0",
-        previewReport.statistics["A-"] || 0,
-        previewReport.percentages["A-"] || "0.0",
+      [
+        "A-",
+        mobileData.month1?.counts?.["A-"] || 0,
+        mobileData.month1?.percentages?.["A-"] || "0.0",
+        mobileData.month2?.counts?.["A-"] || 0,
+        mobileData.month2?.percentages?.["A-"] || "0.0",
+        mobileData.month3?.counts?.["A-"] || 0,
+        mobileData.month3?.percentages?.["A-"] || "0.0",
+        mobileStatistics["A-"] || 0,
+        mobilePercentages["A-"] || "0.0",
       ],
-      ["B-",
-        previewReport.monthlyData.month1?.counts?.["B-"] || 0,
-        previewReport.monthlyData.month1?.percentages?.["B-"] || "0.0",
-        previewReport.monthlyData.month2?.counts?.["B-"] || 0,
-        previewReport.monthlyData.month2?.percentages?.["B-"] || "0.0",
-        previewReport.monthlyData.month3?.counts?.["B-"] || 0,
-        previewReport.monthlyData.month3?.percentages?.["B-"] || "0.0",
-        previewReport.statistics["B-"] || 0,
-        previewReport.percentages["B-"] || "0.0",
+      [
+        "B-",
+        mobileData.month1?.counts?.["B-"] || 0,
+        mobileData.month1?.percentages?.["B-"] || "0.0",
+        mobileData.month2?.counts?.["B-"] || 0,
+        mobileData.month2?.percentages?.["B-"] || "0.0",
+        mobileData.month3?.counts?.["B-"] || 0,
+        mobileData.month3?.percentages?.["B-"] || "0.0",
+        mobileStatistics["B-"] || 0,
+        mobilePercentages["B-"] || "0.0",
       ],
-      ["AB-",
-        previewReport.monthlyData.month1?.counts?.["AB-"] || 0,
-        previewReport.monthlyData.month1?.percentages?.["AB-"] || "0.0",
-        previewReport.monthlyData.month2?.counts?.["AB-"] || 0,
-        previewReport.monthlyData.month2?.percentages?.["AB-"] || "0.0",
-        previewReport.monthlyData.month3?.counts?.["AB-"] || 0,
-        previewReport.monthlyData.month3?.percentages?.["AB-"] || "0.0",
-        previewReport.statistics["AB-"] || 0,
-        previewReport.percentages["AB-"] || "0.0",
+      [
+        "AB-",
+        mobileData.month1?.counts?.["AB-"] || 0,
+        mobileData.month1?.percentages?.["AB-"] || "0.0",
+        mobileData.month2?.counts?.["AB-"] || 0,
+        mobileData.month2?.percentages?.["AB-"] || "0.0",
+        mobileData.month3?.counts?.["AB-"] || 0,
+        mobileData.month3?.percentages?.["AB-"] || "0.0",
+        mobileStatistics["AB-"] || 0,
+        mobilePercentages["AB-"] || "0.0",
       ],
       ["Others", "0", "0.0", "0", "0.0", "0", "0.0", "0", "0.0"],
       [
         "Sub-Total",
-        previewReport.monthlyData.month1?.total || 0,
-        previewReport.monthlyData.month1?.totalPct || "0.0",
-        previewReport.monthlyData.month2?.total || 0,
-        previewReport.monthlyData.month2?.totalPct || "0.0",
-        previewReport.monthlyData.month3?.total || 0,
-        previewReport.monthlyData.month3?.totalPct || "0.0",
-        previewReport.total || 0,
-        totalPct,
+        mobileData.month1?.total || 0,
+        mobileData.month1?.totalPct || "0.0",
+        mobileData.month2?.total || 0,
+        mobileData.month2?.totalPct || "0.0",
+        mobileData.month3?.total || 0,
+        mobileData.month3?.totalPct || "0.0",
+        mobileTotal || 0,
+        mobileTotalPct,
       ],
     ];
-  
+
     autoTable(doc, {
-      startY: 2.2,
+      startY: 2.8, // Changed from 2.2 - added margin-top
       head: [
         [
-          { content: "SOURCES", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-          { content: "REPORTING MONTHS", colSpan: 6, styles: { halign: "center" } },
-          { content: "TOTAL", colSpan: 2, styles: { halign: "center" } },
+          {
+            content: "SOURCES",
+            rowSpan: 2,
+            styles: { halign: "center", valign: "middle", fontWeight: "bold" },
+          },
+          {
+            content: "REPORTING MONTHS",
+            colSpan: 6,
+            styles: { halign: "center", fontWeight: "bold" },
+          },
+          { content: "TOTAL", colSpan: 2, styles: { halign: "center", fontWeight: "bold" } },
         ],
         [
-          monthLabels[0], "%", monthLabels[1], "%", monthLabels[2], "%", "No.", "%"
+          monthLabels[0],
+          "%",
+          monthLabels[1],
+          "%",
+          monthLabels[2],
+          "%",
+          "No.",
+          "%",
         ],
       ],
       body: [
         [
-          { content: "Mobile Blood Donations", colSpan: 9, styles: { fontStyle: "bold", fillColor: [240, 240, 240] } }
+          {
+            content: "Mobile Blood Donations",
+            colSpan: 9,
+            styles: { fontStyle: "bold", fillColor: [240, 240, 240], halign: "center", valign: "middle", textColor: [0, 0, 0] },
+          },
         ],
         ...mobileTableData,
       ],
@@ -468,6 +621,7 @@ const Reports = () => {
         cellPadding: 0.04,
         lineColor: [0, 0, 0],
         lineWidth: 0.01,
+        textColor: [0, 0, 0]
       },
       headStyles: {
         fillColor: [201, 201, 201],
@@ -477,137 +631,185 @@ const Reports = () => {
         textColor: [0, 0, 0],
       },
       columnStyles: {
-        0: { cellWidth: 1.2, halign: "left" },
-        1: { cellWidth: 0.7, halign: "center" },
-        2: { cellWidth: 0.5, halign: "center" },
-        3: { cellWidth: 0.7, halign: "center" },
-        4: { cellWidth: 0.5, halign: "center" },
-        5: { cellWidth: 0.7, halign: "center" },
-        6: { cellWidth: 0.5, halign: "center" },
-        7: { cellWidth: 0.7, halign: "center" },
-        8: { cellWidth: 0.5, halign: "center" },
+        0: { cellWidth: 1.59, halign: "left", textColor: [0, 0, 0] },     
+        1: { cellWidth: 0.89, halign: "center", textColor: [0, 0, 0] },    
+        2: { cellWidth: 0.59, halign: "center", textColor: [0, 0, 0] },    
+        3: { cellWidth: 0.89, halign: "center", textColor: [0, 0, 0] },   
+        4: { cellWidth: 0.59, halign: "center", textColor: [0, 0, 0] },   
+        5: { cellWidth: 0.89, halign: "center", textColor: [0, 0, 0] },   
+        6: { cellWidth: 0.59, halign: "center", textColor: [0, 0, 0] },    
+        7: { cellWidth: 0.89, halign: "center", textColor: [0, 0, 0] },   
+        8: { cellWidth: 0.59, halign: "center", textColor: [0, 0, 0] },  
       },
       margin: { left: 0.5, right: 0.5 },
-      didParseCell: function(data) {
-        if (data.section === 'body' && data.row.index === mobileTableData.length) {
-          data.cell.styles.fontStyle = 'bold';
+      didParseCell: function (data) {
+        if (
+          data.section === "body" &&
+          data.row.index === mobileTableData.length
+        ) {
+          data.cell.styles.fontStyle = "bold";
         }
-      }
+      },
     });
-  
-    // MODIFIED: Create walkinTableData with monthly distribution (same as mobile)
+
+    // Calculate Walk-In totals
+    const walkInTotal =
+      (walkInData.month1?.total || 0) +
+      (walkInData.month2?.total || 0) +
+      (walkInData.month3?.total || 0);
+    const walkInTotalPct = walkInTotal > 0 ? "100.0" : "0.0";
+    const walkInStatistics = {};
+    const walkInPercentages = {};
+    ["O+", "A+", "B+", "AB+", "O-", "A-", "B-", "AB-"].forEach((type) => {
+      const total =
+        (walkInData.month1?.counts?.[type] || 0) +
+        (walkInData.month2?.counts?.[type] || 0) +
+        (walkInData.month3?.counts?.[type] || 0);
+      walkInStatistics[type] = total;
+      walkInPercentages[type] =
+        walkInTotal > 0 ? ((total / walkInTotal) * 100).toFixed(1) : "0.0";
+    });
+
+    // Create walkinTableData with Walk-In source data only
     const walkinTableData = [
-      ["O+",
-        previewReport.monthlyData.month1?.counts?.["O+"] || 0,
-        previewReport.monthlyData.month1?.percentages?.["O+"] || "0.0",
-        previewReport.monthlyData.month2?.counts?.["O+"] || 0,
-        previewReport.monthlyData.month2?.percentages?.["O+"] || "0.0",
-        previewReport.monthlyData.month3?.counts?.["O+"] || 0,
-        previewReport.monthlyData.month3?.percentages?.["O+"] || "0.0",
-        previewReport.statistics["O+"] || 0,
-        previewReport.percentages["O+"] || "0.0",
+      [
+        "O+",
+        walkInData.month1?.counts?.["O+"] || 0,
+        walkInData.month1?.percentages?.["O+"] || "0.0",
+        walkInData.month2?.counts?.["O+"] || 0,
+        walkInData.month2?.percentages?.["O+"] || "0.0",
+        walkInData.month3?.counts?.["O+"] || 0,
+        walkInData.month3?.percentages?.["O+"] || "0.0",
+        walkInStatistics["O+"] || 0,
+        walkInPercentages["O+"] || "0.0",
       ],
-      ["A+",
-        previewReport.monthlyData.month1?.counts?.["A+"] || 0,
-        previewReport.monthlyData.month1?.percentages?.["A+"] || "0.0",
-        previewReport.monthlyData.month2?.counts?.["A+"] || 0,
-        previewReport.monthlyData.month2?.percentages?.["A+"] || "0.0",
-        previewReport.monthlyData.month3?.counts?.["A+"] || 0,
-        previewReport.monthlyData.month3?.percentages?.["A+"] || "0.0",
-        previewReport.statistics["A+"] || 0,
-        previewReport.percentages["A+"] || "0.0",
+      [
+        "A+",
+        walkInData.month1?.counts?.["A+"] || 0,
+        walkInData.month1?.percentages?.["A+"] || "0.0",
+        walkInData.month2?.counts?.["A+"] || 0,
+        walkInData.month2?.percentages?.["A+"] || "0.0",
+        walkInData.month3?.counts?.["A+"] || 0,
+        walkInData.month3?.percentages?.["A+"] || "0.0",
+        walkInStatistics["A+"] || 0,
+        walkInPercentages["A+"] || "0.0",
       ],
-      ["B+",
-        previewReport.monthlyData.month1?.counts?.["B+"] || 0,
-        previewReport.monthlyData.month1?.percentages?.["B+"] || "0.0",
-        previewReport.monthlyData.month2?.counts?.["B+"] || 0,
-        previewReport.monthlyData.month2?.percentages?.["B+"] || "0.0",
-        previewReport.monthlyData.month3?.counts?.["B+"] || 0,
-        previewReport.monthlyData.month3?.percentages?.["B+"] || "0.0",
-        previewReport.statistics["B+"] || 0,
-        previewReport.percentages["B+"] || "0.0",
+      [
+        "B+",
+        walkInData.month1?.counts?.["B+"] || 0,
+        walkInData.month1?.percentages?.["B+"] || "0.0",
+        walkInData.month2?.counts?.["B+"] || 0,
+        walkInData.month2?.percentages?.["B+"] || "0.0",
+        walkInData.month3?.counts?.["B+"] || 0,
+        walkInData.month3?.percentages?.["B+"] || "0.0",
+        walkInStatistics["B+"] || 0,
+        walkInPercentages["B+"] || "0.0",
       ],
-      ["AB+",
-        previewReport.monthlyData.month1?.counts?.["AB+"] || 0,
-        previewReport.monthlyData.month1?.percentages?.["AB+"] || "0.0",
-        previewReport.monthlyData.month2?.counts?.["AB+"] || 0,
-        previewReport.monthlyData.month2?.percentages?.["AB+"] || "0.0",
-        previewReport.monthlyData.month3?.counts?.["AB+"] || 0,
-        previewReport.monthlyData.month3?.percentages?.["AB+"] || "0.0",
-        previewReport.statistics["AB+"] || 0,
-        previewReport.percentages["AB+"] || "0.0",
+      [
+        "AB+",
+        walkInData.month1?.counts?.["AB+"] || 0,
+        walkInData.month1?.percentages?.["AB+"] || "0.0",
+        walkInData.month2?.counts?.["AB+"] || 0,
+        walkInData.month2?.percentages?.["AB+"] || "0.0",
+        walkInData.month3?.counts?.["AB+"] || 0,
+        walkInData.month3?.percentages?.["AB+"] || "0.0",
+        walkInStatistics["AB+"] || 0,
+        walkInPercentages["AB+"] || "0.0",
       ],
-      ["O-",
-        previewReport.monthlyData.month1?.counts?.["O-"] || 0,
-        previewReport.monthlyData.month1?.percentages?.["O-"] || "0.0",
-        previewReport.monthlyData.month2?.counts?.["O-"] || 0,
-        previewReport.monthlyData.month2?.percentages?.["O-"] || "0.0",
-        previewReport.monthlyData.month3?.counts?.["O-"] || 0,
-        previewReport.monthlyData.month3?.percentages?.["O-"] || "0.0",
-        previewReport.statistics["O-"] || 0,
-        previewReport.percentages["O-"] || "0.0",
+      [
+        "O-",
+        walkInData.month1?.counts?.["O-"] || 0,
+        walkInData.month1?.percentages?.["O-"] || "0.0",
+        walkInData.month2?.counts?.["O-"] || 0,
+        walkInData.month2?.percentages?.["O-"] || "0.0",
+        walkInData.month3?.counts?.["O-"] || 0,
+        walkInData.month3?.percentages?.["O-"] || "0.0",
+        walkInStatistics["O-"] || 0,
+        walkInPercentages["O-"] || "0.0",
       ],
-      ["A-",
-        previewReport.monthlyData.month1?.counts?.["A-"] || 0,
-        previewReport.monthlyData.month1?.percentages?.["A-"] || "0.0",
-        previewReport.monthlyData.month2?.counts?.["A-"] || 0,
-        previewReport.monthlyData.month2?.percentages?.["A-"] || "0.0",
-        previewReport.monthlyData.month3?.counts?.["A-"] || 0,
-        previewReport.monthlyData.month3?.percentages?.["A-"] || "0.0",
-        previewReport.statistics["A-"] || 0,
-        previewReport.percentages["A-"] || "0.0",
+      [
+        "A-",
+        walkInData.month1?.counts?.["A-"] || 0,
+        walkInData.month1?.percentages?.["A-"] || "0.0",
+        walkInData.month2?.counts?.["A-"] || 0,
+        walkInData.month2?.percentages?.["A-"] || "0.0",
+        walkInData.month3?.counts?.["A-"] || 0,
+        walkInData.month3?.percentages?.["A-"] || "0.0",
+        walkInStatistics["A-"] || 0,
+        walkInPercentages["A-"] || "0.0",
       ],
-      ["B-",
-        previewReport.monthlyData.month1?.counts?.["B-"] || 0,
-        previewReport.monthlyData.month1?.percentages?.["B-"] || "0.0",
-        previewReport.monthlyData.month2?.counts?.["B-"] || 0,
-        previewReport.monthlyData.month2?.percentages?.["B-"] || "0.0",
-        previewReport.monthlyData.month3?.counts?.["B-"] || 0,
-        previewReport.monthlyData.month3?.percentages?.["B-"] || "0.0",
-        previewReport.statistics["B-"] || 0,
-        previewReport.percentages["B-"] || "0.0",
+      [
+        "B-",
+        walkInData.month1?.counts?.["B-"] || 0,
+        walkInData.month1?.percentages?.["B-"] || "0.0",
+        walkInData.month2?.counts?.["B-"] || 0,
+        walkInData.month2?.percentages?.["B-"] || "0.0",
+        walkInData.month3?.counts?.["B-"] || 0,
+        walkInData.month3?.percentages?.["B-"] || "0.0",
+        walkInStatistics["B-"] || 0,
+        walkInPercentages["B-"] || "0.0",
       ],
-      ["AB-",
-        previewReport.monthlyData.month1?.counts?.["AB-"] || 0,
-        previewReport.monthlyData.month1?.percentages?.["AB-"] || "0.0",
-        previewReport.monthlyData.month2?.counts?.["AB-"] || 0,
-        previewReport.monthlyData.month2?.percentages?.["AB-"] || "0.0",
-        previewReport.monthlyData.month3?.counts?.["AB-"] || 0,
-        previewReport.monthlyData.month3?.percentages?.["AB-"] || "0.0",
-        previewReport.statistics["AB-"] || 0,
-        previewReport.percentages["AB-"] || "0.0",
+      [
+        "AB-",
+        walkInData.month1?.counts?.["AB-"] || 0,
+        walkInData.month1?.percentages?.["AB-"] || "0.0",
+        walkInData.month2?.counts?.["AB-"] || 0,
+        walkInData.month2?.percentages?.["AB-"] || "0.0",
+        walkInData.month3?.counts?.["AB-"] || 0,
+        walkInData.month3?.percentages?.["AB-"] || "0.0",
+        walkInStatistics["AB-"] || 0,
+        walkInPercentages["AB-"] || "0.0",
       ],
       ["Others", "0", "0.0", "0", "0.0", "0", "0.0", "0", "0.0"],
       [
         "Sub-Total",
-        previewReport.monthlyData.month1?.total || 0,
-        previewReport.monthlyData.month1?.totalPct || "0.0",
-        previewReport.monthlyData.month2?.total || 0,
-        previewReport.monthlyData.month2?.totalPct || "0.0",
-        previewReport.monthlyData.month3?.total || 0,
-        previewReport.monthlyData.month3?.totalPct || "0.0",
-        previewReport.total || 0,
-        totalPct,
+        walkInData.month1?.total || 0,
+        walkInData.month1?.totalPct || "0.0",
+        walkInData.month2?.total || 0,
+        walkInData.month2?.totalPct || "0.0",
+        walkInData.month3?.total || 0,
+        walkInData.month3?.totalPct || "0.0",
+        walkInTotal || 0,
+        walkInTotalPct,
       ],
     ];
-  
+
     const finalY = doc.lastAutoTable.finalY + 0.2;
-  
+
     autoTable(doc, {
       startY: finalY,
       head: [
         [
-          { content: "SOURCES", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-          { content: "REPORTING MONTHS", colSpan: 6, styles: { halign: "center" } },
-          { content: "TOTAL", colSpan: 2, styles: { halign: "center" } },
+          {
+            content: "SOURCES",
+            rowSpan: 2,
+            styles: { halign: "center", valign: "middle", textColor: [0, 0, 0], fontWeight: "bold" },
+          },
+          {
+            content: "REPORTING MONTHS",
+            colSpan: 6,
+            styles: { halign: "center", textColor: [0, 0, 0], fontWeight: "bold" },
+          },
+          { content: "TOTAL", colSpan: 2, styles: { halign: "center", textColor: [0, 0, 0], fontWeight: "bold" } },
         ],
         [
-          monthLabels[0], "%", monthLabels[1], "%", monthLabels[2], "%", "No.", "%"
+          monthLabels[0],
+          "%",
+          monthLabels[1],
+          "%",
+          monthLabels[2],
+          "%",
+          "No.",
+          "%",
         ],
       ],
       body: [
         [
-          { content: "Walk-in Voluntary Blood Donations", colSpan: 9, styles: { fontStyle: "bold", fillColor: [240, 240, 240] } }
+          {
+            content: "Walk-in Voluntary Blood Donations",
+            colSpan: 9,
+            styles: { fontStyle: "bold", fillColor: [240, 240, 240], halign: "center", valign: "middle", textColor: [0, 0, 0] },
+          },
         ],
         ...walkinTableData,
       ],
@@ -626,31 +828,35 @@ const Reports = () => {
         textColor: [0, 0, 0],
       },
       columnStyles: {
-        0: { cellWidth: 1.2, halign: "left" },
-        1: { cellWidth: 0.7, halign: "center" },
-        2: { cellWidth: 0.5, halign: "center" },
-        3: { cellWidth: 0.7, halign: "center" },
-        4: { cellWidth: 0.5, halign: "center" },
-        5: { cellWidth: 0.7, halign: "center" },
-        6: { cellWidth: 0.5, halign: "center" },
-        7: { cellWidth: 0.7, halign: "center" },
-        8: { cellWidth: 0.5, halign: "center" },
+        0: { cellWidth: 1.59, halign: "left", textColor: [0, 0, 0] },     
+        1: { cellWidth: 0.89, halign: "center", textColor: [0, 0, 0] },    
+        2: { cellWidth: 0.59, halign: "center", textColor: [0, 0, 0] },    
+        3: { cellWidth: 0.89, halign: "center", textColor: [0, 0, 0] },   
+        4: { cellWidth: 0.59, halign: "center", textColor: [0, 0, 0] },   
+        5: { cellWidth: 0.89, halign: "center", textColor: [0, 0, 0] },   
+        6: { cellWidth: 0.59, halign: "center", textColor: [0, 0, 0] },    
+        7: { cellWidth: 0.89, halign: "center", textColor: [0, 0, 0] },   
+        8: { cellWidth: 0.59, halign: "center", textColor: [0, 0, 0] }, 
       },
       margin: { left: 0.5, right: 0.5 },
-      didParseCell: function(data) {
-        if (data.section === 'body' && data.row.index === walkinTableData.length) {
-          data.cell.styles.fontStyle = 'bold';
+      didParseCell: function (data) {
+        if (
+          data.section === "body" &&
+          data.row.index === walkinTableData.length
+        ) {
+          data.cell.styles.fontStyle = "bold";
         }
-      }
+      },
     });
-  
+
     doc.save(`Blood-Report-${previewReport.quarter}-${previewReport.year}.pdf`);
     setShowPreviewModal(false);
   };
 
   const selectedCount = reportData.filter((item) => item.selected).length;
   const allSelected =
-    filteredReports.length > 0 && filteredReports.every((item) => item.selected);
+    filteredReports.length > 0 &&
+    filteredReports.every((item) => item.selected);
   const someSelected =
     filteredReports.some((item) => item.selected) && !allSelected;
 
@@ -782,11 +988,7 @@ const Reports = () => {
       fontWeight: "400",
       cursor: "pointer",
     },
-    checkbox: {
-      width: "16px",
-      height: "16px",
-      cursor: "pointer",
-    },
+    
     actionBar: {
       position: "fixed",
       bottom: "20px",
@@ -1000,11 +1202,13 @@ const Reports = () => {
       border: "1px solid #000",
       padding: "6px",
       textAlign: "center",
+      color: "#000",
     },
     reportTableCellLeft: {
       border: "1px solid #000",
       padding: "6px",
       textAlign: "left",
+      color: "#000",
     },
   };
 
@@ -1073,19 +1277,6 @@ const Reports = () => {
         <table style={styles.table}>
           <thead style={styles.thead}>
             <tr>
-              <th style={{ ...styles.th, width: "4%" }}>
-                <input
-                  type="checkbox"
-                  style={styles.checkbox}
-                  checked={allSelected}
-                  ref={(input) => {
-                    if (input) {
-                      input.indeterminate = someSelected;
-                    }
-                  }}
-                  onChange={toggleAllSelection}
-                />
-              </th>
               <th style={{ ...styles.th, width: "18%" }}>DOCUMENT ID</th>
               <th style={{ ...styles.th, width: "16%" }}>QUARTER</th>
               <th style={{ ...styles.th, width: "10%" }}>YEAR</th>
@@ -1097,7 +1288,10 @@ const Reports = () => {
           <tbody style={styles.tbody}>
             {filteredReports.length === 0 ? (
               <tr>
-                <td colSpan="7" style={{ ...styles.td, textAlign: "center", padding: "40px" }}>
+                <td
+                  colSpan="7"
+                  style={{ ...styles.td, textAlign: "center", padding: "40px" }}
+                >
                   No reports found
                 </td>
               </tr>
@@ -1110,14 +1304,7 @@ const Reports = () => {
                     ...(report.selected ? styles.trSelected : {}),
                   }}
                 >
-                  <td style={styles.td}>
-                    <input
-                      type="checkbox"
-                      style={styles.checkbox}
-                      checked={report.selected}
-                      onChange={() => toggleRowSelection(report.id)}
-                    />
-                  </td>
+            
                   <td style={styles.td}>{report.docId}</td>
                   <td style={styles.td}>{report.quarter}</td>
                   <td style={styles.td}>{report.year}</td>
@@ -1268,7 +1455,9 @@ const Reports = () => {
                       marginTop: "-15px",
                     }}
                   />
-                  <div style={{ flex: 1, paddingTop: "8px", paddingLeft: "10px" }}>
+                  <div
+                    style={{ flex: 1, paddingTop: "8px", paddingLeft: "10px" }}
+                  >
                     <div
                       style={{
                         fontSize: "11px",
@@ -1306,7 +1495,8 @@ const Reports = () => {
                         lineHeight: "1.4",
                       }}
                     >
-                      PABX (088) 8587123/ (088) 858 4000/ (088) 855 0430/ (+63) 917-148-3298/
+                      PABX (088) 8587123/ (088) 858 4000/ (088) 855 0430/ (+63)
+                      917-148-3298/
                     </div>
                     <div
                       style={{
@@ -1316,7 +1506,8 @@ const Reports = () => {
                         lineHeight: "1.4",
                       }}
                     >
-                      (+63) 968-882-4092/ (088) 858-7132/ (088) 858-2639/ (088)-1601
+                      (+63) 968-882-4092/ (088) 858-7132/ (088) 858-2639/
+                      (088)-1601
                     </div>
                     <div
                       style={{
@@ -1327,7 +1518,9 @@ const Reports = () => {
                       }}
                     >
                       Email address:{" "}
-                      <span style={{ color: "#0073e6" }}>pacd@ro10.doh.gov.ph</span>
+                      <span style={{ color: "#0073e6" }}>
+                        pacd@ro10.doh.gov.ph
+                      </span>
                     </div>
                     <div
                       style={{
@@ -1338,13 +1531,37 @@ const Reports = () => {
                       }}
                     >
                       Website:{" "}
-                      <span style={{ color: "#0073e6" }}>http://www.ro10.doh.gov.ph</span>
+                      <span style={{ color: "#0073e6" }}>
+                        http://www.ro10.doh.gov.ph
+                      </span>
                     </div>
                   </div>
                 </div>
 
-                <div style={{ fontSize: "10px", marginBottom: "10px" }}>
-                  Center for Health Development for: __________ Qtr: _____ Year: {previewReport.year}
+                <div
+                  style={{
+                    fontSize: "10px",
+                    marginBottom: "25px",
+                    fontWeight: "bold",
+                  }}
+                >
+                  Name of Blood Service Facility:
+                  ____________________________________________________________________________
+                </div>
+
+                <div style={{ fontSize: "10px", marginBottom: "30px" }}>
+                  <span style={{ fontWeight: "bold" }}>
+                    Center for Health Development for:
+                    __________________________________________________________
+                    Qtr:{" "}
+                  </span>
+                  <span style={{ textDecoration: "underline" }}>
+                    {previewReport.quarterNumber}
+                  </span>
+                  <span style={{ fontWeight: "bold" }}> Year: </span>
+                  <span style={{ textDecoration: "underline" }}>
+                    {previewReport.year}
+                  </span>
                 </div>
 
                 <div
@@ -1361,16 +1578,28 @@ const Reports = () => {
                 <table style={styles.reportTable}>
                   <thead>
                     <tr>
-                      <th style={styles.reportTableHeader} rowSpan="2">SOURCES</th>
-                      <th style={styles.reportTableHeader} colSpan="6">REPORTING MONTHS</th>
-                      <th style={styles.reportTableHeader} colSpan="2">TOTAL</th>
+                      <th style={styles.reportTableHeader} rowSpan="2">
+                        SOURCES
+                      </th>
+                      <th style={styles.reportTableHeader} colSpan="6">
+                        REPORTING MONTHS
+                      </th>
+                      <th style={styles.reportTableHeader} colSpan="2">
+                        TOTAL
+                      </th>
                     </tr>
                     <tr>
-                      <th style={styles.reportTableHeader}>Jan</th>
+                      <th style={styles.reportTableHeader}>
+                        {previewReport.monthLabels[0]}
+                      </th>
                       <th style={styles.reportTableHeader}>%</th>
-                      <th style={styles.reportTableHeader}>Feb</th>
+                      <th style={styles.reportTableHeader}>
+                        {previewReport.monthLabels[1]}
+                      </th>
                       <th style={styles.reportTableHeader}>%</th>
-                      <th style={styles.reportTableHeader}>Mar</th>
+                      <th style={styles.reportTableHeader}>
+                        {previewReport.monthLabels[2]}
+                      </th>
                       <th style={styles.reportTableHeader}>%</th>
                       <th style={styles.reportTableHeader}>No.</th>
                       <th style={styles.reportTableHeader}>%</th>
@@ -1378,32 +1607,56 @@ const Reports = () => {
                   </thead>
                   <tbody>
                     <tr>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold", backgroundColor: "#f0f0f0" }} colSpan="9">
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                          backgroundColor: "#f0f0f0",
+                        }}
+                        colSpan="9"
+                      >
                         Mobile Blood Donations
                       </td>
                     </tr>
-                    {["O+", "A+", "B+", "AB+", "O-", "A-", "B-", "AB-"].map((type) => {
-                      const month1 = previewReport.monthlyData.month1?.counts?.[type] || 0;
-                      const month1Pct = previewReport.monthlyData.month1?.percentages?.[type] || "0.0";
-                      const month2 = previewReport.monthlyData.month2?.counts?.[type] || 0;
-                      const month2Pct = previewReport.monthlyData.month2?.percentages?.[type] || "0.0";
-                      const month3 = previewReport.monthlyData.month3?.counts?.[type] || 0;
-                      const month3Pct = previewReport.monthlyData.month3?.percentages?.[type] || "0.0";
-                      
-                      return (
-                        <tr key={type}>
-                          <td style={styles.reportTableCellLeft}>{type}</td>
-                          <td style={styles.reportTableCell}>{month1}</td>
-                          <td style={styles.reportTableCell}>{month1Pct}</td>
-                          <td style={styles.reportTableCell}>{month2}</td>
-                          <td style={styles.reportTableCell}>{month2Pct}</td>
-                          <td style={styles.reportTableCell}>{month3}</td>
-                          <td style={styles.reportTableCell}>{month3Pct}</td>
-                          <td style={styles.reportTableCell}>{previewReport.statistics[type] || 0}</td>
-                          <td style={styles.reportTableCell}>{previewReport.percentages[type] || "0.0"}</td>
-                        </tr>
-                      );
-                    })}
+                    {["O+", "A+", "B+", "AB+", "O-", "A-", "B-", "AB-"].map(
+                      (type) => {
+                        const mobileData = previewReport.monthlyData
+                          ?.mobile || { month1: {}, month2: {}, month3: {} };
+                        const month1 = mobileData.month1?.counts?.[type] || 0;
+                        const month1Pct =
+                          mobileData.month1?.percentages?.[type] || "0.0";
+                        const month2 = mobileData.month2?.counts?.[type] || 0;
+                        const month2Pct =
+                          mobileData.month2?.percentages?.[type] || "0.0";
+                        const month3 = mobileData.month3?.counts?.[type] || 0;
+                        const month3Pct =
+                          mobileData.month3?.percentages?.[type] || "0.0";
+
+                        const total = month1 + month2 + month3;
+                        const mobileTotal =
+                          (mobileData.month1?.total || 0) +
+                          (mobileData.month2?.total || 0) +
+                          (mobileData.month3?.total || 0);
+                        const totalPct =
+                          mobileTotal > 0
+                            ? ((total / mobileTotal) * 100).toFixed(1)
+                            : "0.0";
+
+                        return (
+                          <tr key={type}>
+                            <td style={styles.reportTableCellLeft}>{type}</td>
+                            <td style={styles.reportTableCell}>{month1}</td>
+                            <td style={styles.reportTableCell}>{month1Pct}</td>
+                            <td style={styles.reportTableCell}>{month2}</td>
+                            <td style={styles.reportTableCell}>{month2Pct}</td>
+                            <td style={styles.reportTableCell}>{month3}</td>
+                            <td style={styles.reportTableCell}>{month3Pct}</td>
+                            <td style={styles.reportTableCell}>{total}</td>
+                            <td style={styles.reportTableCell}>{totalPct}</td>
+                          </tr>
+                        );
+                      }
+                    )}
                     <tr>
                       <td style={styles.reportTableCellLeft}>Others</td>
                       <td style={styles.reportTableCell}>0</td>
@@ -1416,32 +1669,122 @@ const Reports = () => {
                       <td style={styles.reportTableCell}>0.0</td>
                     </tr>
                     <tr>
-                      <td style={{ ...styles.reportTableCellLeft, fontWeight: "bold" }}>Sub-Total</td>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold" }}>{previewReport.monthlyData.month1?.total || 0}</td>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold" }}>{previewReport.monthlyData.month1?.totalPct || "0.0"}</td>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold" }}>{previewReport.monthlyData.month2?.total || 0}</td>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold" }}>{previewReport.monthlyData.month2?.totalPct || "0.0"}</td>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold" }}>{previewReport.monthlyData.month3?.total || 0}</td>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold" }}>{previewReport.monthlyData.month3?.totalPct || "0.0"}</td>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold" }}>{previewReport.total || 0}</td>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold" }}>{previewReport.total > 0 ? "100.0" : "0.0"}</td>
+                      <td
+                        style={{
+                          ...styles.reportTableCellLeft,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        Sub-Total
+                      </td>
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {previewReport.monthlyData?.mobile?.month1?.total || 0}
+                      </td>
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {previewReport.monthlyData?.mobile?.month1?.totalPct ||
+                          "0.0"}
+                      </td>
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {previewReport.monthlyData?.mobile?.month2?.total || 0}
+                      </td>
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {previewReport.monthlyData?.mobile?.month2?.totalPct ||
+                          "0.0"}
+                      </td>
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {previewReport.monthlyData?.mobile?.month3?.total || 0}
+                      </td>
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {previewReport.monthlyData?.mobile?.month3?.totalPct ||
+                          "0.0"}
+                      </td>
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {(previewReport.monthlyData?.mobile?.month1?.total ||
+                          0) +
+                          (previewReport.monthlyData?.mobile?.month2?.total ||
+                            0) +
+                          (previewReport.monthlyData?.mobile?.month3?.total ||
+                            0)}
+                      </td>
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {(previewReport.monthlyData?.mobile?.month1?.total ||
+                          0) +
+                          (previewReport.monthlyData?.mobile?.month2?.total ||
+                            0) +
+                          (previewReport.monthlyData?.mobile?.month3?.total ||
+                            0) >
+                        0
+                          ? "100.0"
+                          : "0.0"}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
-
                 <table style={{ ...styles.reportTable, marginTop: "30px" }}>
                   <thead>
                     <tr>
-                      <th style={styles.reportTableHeader} rowSpan="2">SOURCES</th>
-                      <th style={styles.reportTableHeader} colSpan="6">REPORTING MONTHS</th>
-                      <th style={styles.reportTableHeader} colSpan="2">TOTAL</th>
+                      <th style={styles.reportTableHeader} rowSpan="2">
+                        SOURCES
+                      </th>
+                      <th style={styles.reportTableHeader} colSpan="6">
+                        REPORTING MONTHS
+                      </th>
+                      <th style={styles.reportTableHeader} colSpan="2">
+                        TOTAL
+                      </th>
                     </tr>
                     <tr>
-                      <th style={styles.reportTableHeader}>{previewReport.monthLabels[0]}</th>
+                      <th style={styles.reportTableHeader}>
+                        {previewReport.monthLabels[0]}
+                      </th>
                       <th style={styles.reportTableHeader}>%</th>
-                      <th style={styles.reportTableHeader}>{previewReport.monthLabels[1]}</th>
+                      <th style={styles.reportTableHeader}>
+                        {previewReport.monthLabels[1]}
+                      </th>
                       <th style={styles.reportTableHeader}>%</th>
-                      <th style={styles.reportTableHeader}>{previewReport.monthLabels[2]}</th>
+                      <th style={styles.reportTableHeader}>
+                        {previewReport.monthLabels[2]}
+                      </th>
                       <th style={styles.reportTableHeader}>%</th>
                       <th style={styles.reportTableHeader}>No.</th>
                       <th style={styles.reportTableHeader}>%</th>
@@ -1449,32 +1792,55 @@ const Reports = () => {
                   </thead>
                   <tbody>
                     <tr>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold", backgroundColor: "#f0f0f0" }} colSpan="9">
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                          backgroundColor: "#f0f0f0",
+                        }}
+                        colSpan="9"
+                      >
                         Walk-in Voluntary Blood Donations
                       </td>
                     </tr>
-                    {["O+", "A+", "B+", "AB+", "O-", "A-", "B-", "AB-"].map((type) => {
-                      const month1 = previewReport.monthlyData.month1?.counts?.[type] || 0;
-                      const month1Pct = previewReport.monthlyData.month1?.percentages?.[type] || "0.0";
-                      const month2 = previewReport.monthlyData.month2?.counts?.[type] || 0;
-                      const month2Pct = previewReport.monthlyData.month2?.percentages?.[type] || "0.0";
-                      const month3 = previewReport.monthlyData.month3?.counts?.[type] || 0;
-                      const month3Pct = previewReport.monthlyData.month3?.percentages?.[type] || "0.0";
-                      
-                      return (
-                        <tr key={type}>
-                          <td style={styles.reportTableCellLeft}>{type}</td>
-                          <td style={styles.reportTableCell}>{month1}</td>
-                          <td style={styles.reportTableCell}>{month1Pct}</td>
-                          <td style={styles.reportTableCell}>{month2}</td>
-                          <td style={styles.reportTableCell}>{month2Pct}</td>
-                          <td style={styles.reportTableCell}>{month3}</td>
-                          <td style={styles.reportTableCell}>{month3Pct}</td>
-                          <td style={styles.reportTableCell}>{previewReport.statistics[type] || 0}</td>
-                          <td style={styles.reportTableCell}>{previewReport.percentages[type] || "0.0"}</td>
-                        </tr>
-                      );
-                    })}
+                    {["O+", "A+", "B+", "AB+", "O-", "A-", "B-", "AB-"].map(
+                      (type) => {
+                        const walkInData = previewReport.monthlyData
+                          ?.walkIn || { month1: {}, month2: {}, month3: {} };
+                        const month1 = walkInData.month1?.counts?.[type] || 0;
+                        const month1Pct =
+                          walkInData.month1?.percentages?.[type] || "0.0";
+                        const month2 = walkInData.month2?.counts?.[type] || 0;
+                        const month2Pct =
+                          walkInData.month2?.percentages?.[type] || "0.0";
+                        const month3 = walkInData.month3?.counts?.[type] || 0;
+                        const month3Pct =
+                          walkInData.month3?.percentages?.[type] || "0.0";
+
+                        const total = month1 + month2 + month3;
+                        const walkInTotal =
+                          (walkInData.month1?.total || 0) +
+                          (walkInData.month2?.total || 0) +
+                          (walkInData.month3?.total || 0);
+                        const totalPct =
+                          walkInTotal > 0
+                            ? ((total / walkInTotal) * 100).toFixed(1)
+                            : "0.0";
+                        return (
+                          <tr key={type}>
+                            <td style={styles.reportTableCellLeft}>{type}</td>
+                            <td style={styles.reportTableCell}>{month1}</td>
+                            <td style={styles.reportTableCell}>{month1Pct}</td>
+                            <td style={styles.reportTableCell}>{month2}</td>
+                            <td style={styles.reportTableCell}>{month2Pct}</td>
+                            <td style={styles.reportTableCell}>{month3}</td>
+                            <td style={styles.reportTableCell}>{month3Pct}</td>
+                            <td style={styles.reportTableCell}>{total}</td>
+                            <td style={styles.reportTableCell}>{totalPct}</td>
+                          </tr>
+                        );
+                      }
+                    )}
                     <tr>
                       <td style={styles.reportTableCellLeft}>Others</td>
                       <td style={styles.reportTableCell}>0</td>
@@ -1487,15 +1853,94 @@ const Reports = () => {
                       <td style={styles.reportTableCell}>0.0</td>
                     </tr>
                     <tr>
-                      <td style={{ ...styles.reportTableCellLeft, fontWeight: "bold" }}>Sub-Total</td>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold" }}>{previewReport.monthlyData.month1?.total || 0}</td>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold" }}>{previewReport.monthlyData.month1?.totalPct || "0.0"}</td>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold" }}>{previewReport.monthlyData.month2?.total || 0}</td>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold" }}>{previewReport.monthlyData.month2?.totalPct || "0.0"}</td>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold" }}>{previewReport.monthlyData.month3?.total || 0}</td>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold" }}>{previewReport.monthlyData.month3?.totalPct || "0.0"}</td>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold" }}>{previewReport.total || 0}</td>
-                      <td style={{ ...styles.reportTableCell, fontWeight: "bold" }}>{previewReport.total > 0 ? "100.0" : "0.0"}</td>
+                      <td
+                        style={{
+                          ...styles.reportTableCellLeft,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        Sub-Total
+                      </td>
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {previewReport.monthlyData?.walkIn?.month1?.total || 0}
+                      </td>
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {previewReport.monthlyData?.walkIn?.month1?.totalPct ||
+                          "0.0"}
+                      </td>
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {previewReport.monthlyData?.walkIn?.month2?.total || 0}
+                      </td>
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {previewReport.monthlyData?.walkIn?.month2?.totalPct ||
+                          "0.0"}
+                      </td>
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {previewReport.monthlyData?.walkIn?.month3?.total || 0}
+                      </td>
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {previewReport.monthlyData?.walkIn?.month3?.totalPct ||
+                          "0.0"}
+                      </td>
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {(previewReport.monthlyData?.walkIn?.month1?.total ||
+                          0) +
+                          (previewReport.monthlyData?.walkIn?.month2?.total ||
+                            0) +
+                          (previewReport.monthlyData?.walkIn?.month3?.total ||
+                            0)}
+                      </td>
+                      <td
+                        style={{
+                          ...styles.reportTableCell,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {(previewReport.monthlyData?.walkIn?.month1?.total ||
+                          0) +
+                          (previewReport.monthlyData?.walkIn?.month2?.total ||
+                            0) +
+                          (previewReport.monthlyData?.walkIn?.month3?.total ||
+                            0) >
+                        0
+                          ? "100.0"
+                          : "0.0"}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -1509,10 +1954,7 @@ const Reports = () => {
               >
                 Cancel
               </button>
-              <button
-                style={styles.downloadButton}
-                onClick={generateReportPDF}
-              >
+              <button style={styles.downloadButton} onClick={generateReportPDF}>
                 <svg
                   width="16"
                   height="16"
