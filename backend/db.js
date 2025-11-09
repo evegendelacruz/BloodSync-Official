@@ -1364,29 +1364,32 @@ const dbService = {
   async getAllDonorRecords() {
     try {
       const query = `
-      SELECT 
-        dr_id as id,
-        dr_donor_id as "donorId",
-        dr_first_name as "firstName",
-        dr_middle_name as "middleName",
-        dr_last_name as "lastName",
-        dr_gender as gender,
-        TO_CHAR(dr_birthdate, 'MM/DD/YYYY') as birthdate,
-        dr_age as age,
-        dr_blood_type as "bloodType",
-        dr_rh_factor as "rhFactor",
-        dr_contact_number as "contactNumber",
-        dr_address as address,
-        TO_CHAR(dr_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
-        CASE 
-          WHEN dr_modified_at IS NOT NULL 
-          THEN TO_CHAR(dr_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
-          ELSE '-'
-        END as modified
-      FROM donor_records 
-      ORDER BY dr_created_at DESC
-    `;
-
+        SELECT 
+          dr_id as id,
+          dr_donor_id as "donorId",
+          dr_first_name as "firstName",
+          dr_middle_name as "middleName",
+          dr_last_name as "lastName",
+          dr_gender as gender,
+          TO_CHAR(dr_birthdate, 'MM/DD/YYYY') as birthdate,
+          dr_age as age,
+          dr_blood_type as "bloodType",
+          dr_rh_factor as "rhFactor",
+          dr_contact_number as "contactNumber",
+          dr_address as address,
+          dr_status as status,
+          TO_CHAR(dr_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
+          CASE 
+            WHEN dr_modified_at IS NOT NULL 
+            THEN TO_CHAR(dr_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
+            ELSE '-'
+          END as modified,
+          COALESCE(TO_CHAR(dr_recent_donation, 'MM/DD/YYYY'), 'No donations') as "recentDonation",
+          COALESCE(dr_donation_count, 0) as "donationCount"
+        FROM donor_records 
+        ORDER BY dr_created_at DESC
+      `;
+  
       const result = await pool.query(query);
       return result.rows.map((row) => ({
         ...row,
@@ -1397,19 +1400,20 @@ const dbService = {
       throw error;
     }
   },
+  
 
   // Add new donor record
   async addDonorRecord(donorData) {
     try {
       const query = `
-      INSERT INTO donor_records (
-        dr_donor_id, dr_first_name, dr_middle_name, dr_last_name,
-        dr_gender, dr_birthdate, dr_age, dr_blood_type, dr_rh_factor,
-        dr_contact_number, dr_address, dr_created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
-      RETURNING dr_id
-    `;
-
+        INSERT INTO donor_records (
+          dr_donor_id, dr_first_name, dr_middle_name, dr_last_name,
+          dr_gender, dr_birthdate, dr_age, dr_blood_type, dr_rh_factor,
+          dr_contact_number, dr_address, dr_status, dr_recent_donation, dr_donation_count, dr_created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+        RETURNING dr_id
+      `;
+  
       const values = [
         donorData.donorId,
         donorData.firstName,
@@ -1422,8 +1426,11 @@ const dbService = {
         donorData.rhFactor,
         donorData.contactNumber,
         donorData.address,
+        donorData.status || "Non-Reactive",  
+        donorData.recentDonation ? new Date(donorData.recentDonation) : null,
+        parseInt(donorData.donationCount) || 0,
       ];
-
+  
       const result = await pool.query(query, values);
       return result.rows[0];
     } catch (error) {
@@ -1436,22 +1443,25 @@ const dbService = {
   async updateDonorRecord(id, donorData) {
     try {
       const query = `
-      UPDATE donor_records SET
-        dr_donor_id = $2,
-        dr_first_name = $3,
-        dr_middle_name = $4,
-        dr_last_name = $5,
-        dr_gender = $6,
-        dr_birthdate = $7,
-        dr_age = $8,
-        dr_blood_type = $9,
-        dr_rh_factor = $10,
-        dr_contact_number = $11,
-        dr_address = $12,
-        dr_modified_at = NOW()
-      WHERE dr_id = $1
-    `;
-
+        UPDATE donor_records SET
+          dr_donor_id = $2,
+          dr_first_name = $3,
+          dr_middle_name = $4,
+          dr_last_name = $5,
+          dr_gender = $6,
+          dr_birthdate = $7,
+          dr_age = $8,
+          dr_blood_type = $9,
+          dr_rh_factor = $10,
+          dr_contact_number = $11,
+          dr_address = $12,
+          dr_status = $13,
+          dr_recent_donation = $14,
+          dr_donation_count = $15,
+          dr_modified_at = NOW()
+        WHERE dr_id = $1
+      `;
+  
       const values = [
         id,
         donorData.donorId,
@@ -1465,8 +1475,11 @@ const dbService = {
         donorData.rhFactor,
         donorData.contactNumber,
         donorData.address,
+        donorData.status || "Non-Reactive",
+        donorData.recentDonation ? new Date(donorData.recentDonation) : null,
+        parseInt(donorData.donationCount) || 0,
       ];
-
+  
       await pool.query(query, values);
       return true;
     } catch (error) {
@@ -1491,38 +1504,42 @@ const dbService = {
   async searchDonorRecords(searchTerm) {
     try {
       const query = `
-      SELECT 
-        dr_id as id,
-        dr_donor_id as "donorId",
-        dr_first_name as "firstName",
-        dr_middle_name as "middleName",
-        dr_last_name as "lastName",
-        dr_gender as gender,
-        TO_CHAR(dr_birthdate, 'MM/DD/YYYY') as birthdate,
-        dr_age as age,
-        dr_blood_type as "bloodType",
-        dr_rh_factor as "rhFactor",
-        dr_contact_number as "contactNumber",
-        dr_address as address,
-        TO_CHAR(dr_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
-        CASE 
-          WHEN dr_modified_at IS NOT NULL 
-          THEN TO_CHAR(dr_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
-          ELSE '-'
-        END as modified
-      FROM donor_records 
-      WHERE 
-        dr_donor_id ILIKE $1 OR 
-        dr_first_name ILIKE $1 OR 
-        dr_middle_name ILIKE $1 OR
-        dr_last_name ILIKE $1 OR
-        dr_gender ILIKE $1 OR
-        dr_blood_type ILIKE $1 OR
-        dr_contact_number ILIKE $1 OR
-        dr_address ILIKE $1
-      ORDER BY dr_created_at DESC
-    `;
-
+        SELECT 
+          dr_id as id,
+          dr_donor_id as "donorId",
+          dr_first_name as "firstName",
+          dr_middle_name as "middleName",
+          dr_last_name as "lastName",
+          dr_gender as gender,
+          TO_CHAR(dr_birthdate, 'MM/DD/YYYY') as birthdate,
+          dr_age as age,
+          dr_blood_type as "bloodType",
+          dr_rh_factor as "rhFactor",
+          dr_contact_number as "contactNumber",
+          dr_address as address,
+          dr_status as status,
+          TO_CHAR(dr_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
+          CASE 
+            WHEN dr_modified_at IS NOT NULL 
+            THEN TO_CHAR(dr_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
+            ELSE '-'
+          END as modified,
+          COALESCE(TO_CHAR(dr_recent_donation, 'MM/DD/YYYY'), 'No donations') as "recentDonation",
+          COALESCE(dr_donation_count, 0) as "donationCount"
+        FROM donor_records 
+        WHERE 
+          dr_donor_id ILIKE $1 OR 
+          dr_first_name ILIKE $1 OR 
+          dr_middle_name ILIKE $1 OR
+          dr_last_name ILIKE $1 OR
+          dr_gender ILIKE $1 OR
+          dr_blood_type ILIKE $1 OR
+          dr_contact_number ILIKE $1 OR
+          dr_address ILIKE $1
+          dr_status ILIKE $1
+        ORDER BY dr_created_at DESC
+      `;
+  
       const result = await pool.query(query, [`%${searchTerm}%`]);
       return result.rows.map((row) => ({
         ...row,
