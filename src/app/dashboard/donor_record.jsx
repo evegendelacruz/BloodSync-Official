@@ -18,6 +18,10 @@ const DonorRecord = () => {
   const [successMessage, setSuccessMessage] = useState({ title: "", description: "" });
   const sortDropdownRef = useRef(null);
   const filterDropdownRef = useRef(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
+  const [editingDonor, setEditingDonor] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     donorId: "",
     firstName: "",
@@ -147,6 +151,10 @@ const DonorRecord = () => {
   };
 
   const displayData = getSortedAndFilteredData();
+  const selectedCount = displayData.filter((item) => item.selected).length;
+  const allSelected = displayData.length > 0 && displayData.every((item) => item.selected);
+  const someSelected = displayData.some((item) => item.selected) && !allSelected;
+  const singleSelected = selectedCount === 1;
 
   const getSortLabel = () => {
     const labels = {
@@ -188,6 +196,10 @@ const DonorRecord = () => {
     );
   };
 
+  const handleDeleteClick = () => {
+    setShowConfirmDeleteModal(true);
+  };
+  
   const handleDelete = async () => {
     try {
       if (!window.electronAPI) {
@@ -196,11 +208,18 @@ const DonorRecord = () => {
       }
       const selectedIds = donorData.filter((item) => item.selected).map((item) => item.id);
       if (selectedIds.length === 0) return;
-      const confirmed = window.confirm(`Are you sure you want to delete ${selectedIds.length} donor(s)?`);
-      if (!confirmed) return;
+      
       await window.electronAPI.deleteDonorRecords(selectedIds);
+      setShowConfirmDeleteModal(false);
       await loadDonorData();
+      clearAllSelection();
       setError(null);
+  
+      setSuccessMessage({
+        title: "Deleted Successfully!",
+        description: `${selectedIds.length} donor record(s) have been deleted.`,
+      });
+      setShowSuccessModal(true);
     } catch (err) {
       console.error("Error deleting donors:", err);
       setError("Failed to delete donors");
@@ -222,6 +241,123 @@ const DonorRecord = () => {
       }
       return updated;
     });
+  };
+
+  const handleEditClick = () => {
+    const selected = donorData.find((item) => item.selected);
+    if (selected) {
+      const formatDate = (date) => {
+        if (!date) return "";
+        const d = new Date(date);
+        const adjustedDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+        return adjustedDate.toISOString().split("T")[0];
+      };
+  
+      setEditingDonor({
+        ...selected,
+        birthdate: formatDate(selected.birthdate),
+      });
+      setShowEditModal(true);
+    }
+  };
+
+  const handleEditDonorChange = (field, value) => {
+    const updated = { ...editingDonor, [field]: value };
+    if (field === "birthdate" && value) {
+      const birthDate = new Date(value);
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      updated.age = age.toString();
+    }
+    setEditingDonor(updated);
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    try {
+      setSaving(true);
+      if (!window.electronAPI) {
+        setError("Electron API not available");
+        return;
+      }
+  
+      if (!editingDonor.firstName?.trim()) {
+        setError("First Name is required");
+        setSaving(false);
+        return;
+      }
+      if (!editingDonor.lastName?.trim()) {
+        setError("Last Name is required");
+        setSaving(false);
+        return;
+      }
+      if (!editingDonor.gender) {
+        setError("Gender is required");
+        setSaving(false);
+        return;
+      }
+      if (!editingDonor.birthdate) {
+        setError("Birthdate is required");
+        setSaving(false);
+        return;
+      }
+      if (!editingDonor.bloodType) {
+        setError("Blood Type is required");
+        setSaving(false);
+        return;
+      }
+      if (!editingDonor.rhFactor) {
+        setError("RH Factor is required");
+        setSaving(false);
+        return;
+      }
+      if (!editingDonor.contactNumber?.trim()) {
+        setError("Contact Number is required");
+        setSaving(false);
+        return;
+      }
+      if (!editingDonor.address?.trim()) {
+        setError("Address/Barangay is required");
+        setSaving(false);
+        return;
+      }
+  
+      const donorUpdateData = {
+        donorId: editingDonor.donorId,
+        firstName: editingDonor.firstName,
+        middleName: editingDonor.middleName,
+        lastName: editingDonor.lastName,
+        gender: editingDonor.gender,
+        birthdate: editingDonor.birthdate,
+        age: editingDonor.age,
+        bloodType: editingDonor.bloodType,
+        rhFactor: editingDonor.rhFactor,
+        contactNumber: editingDonor.contactNumber,
+        address: editingDonor.address,
+      };
+  
+      await window.electronAPI.updateDonorRecord(editingDonor.id, donorUpdateData);
+      setShowEditModal(false);
+      setEditingDonor(null);
+      await loadDonorData();
+      clearAllSelection();
+      setError(null);
+  
+      setSuccessMessage({
+        title: "Donor Updated Successfully!",
+        description: "The donor record information has been updated.",
+      });
+      setShowSuccessModal(true);
+    } catch (err) {
+      console.error("Error updating donor:", err);
+      setError(`Failed to update donor: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleBarangaySearch = (value) => {
@@ -333,11 +469,7 @@ const DonorRecord = () => {
     await generateDonorId();
   };
 
-  const selectedCount = displayData.filter((item) => item.selected).length;
-  const allSelected = displayData.length > 0 && displayData.every((item) => item.selected);
-  const someSelected = displayData.some((item) => item.selected) && !allSelected;
-
-  if (loading) {
+  if (loading || saving) {
     return (
       <div style={{ padding: "24px", backgroundColor: "#f9fafb", minHeight: "100vh", fontFamily: "Barlow" }}>
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: "40px", fontSize: "16px", color: "#6b7280" }}>
@@ -592,13 +724,15 @@ const DonorRecord = () => {
               {selectedCount} {selectedCount === 1 ? "item" : "items"} selected
             </span>
           </div>
-          <button style={{ display: "flex", alignItems: "center", gap: "8px", padding: "12px 16px", backgroundColor: "#4a5568", color: "white", border: "none", cursor: "pointer", fontSize: "14px", borderRight: "1px solid #2d3748" }}>
-            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-            <span>Edit</span>
-          </button>
-          <button style={{ display: "flex", alignItems: "center", gap: "8px", padding: "12px 16px", backgroundColor: "#4a5568", color: "white", border: "none", cursor: "pointer", fontSize: "14px" }} onClick={handleDelete}>
+          {singleSelected && (
+            <button style={{ display: "flex", alignItems: "center", gap: "8px", padding: "12px 16px", backgroundColor: "#4a5568", color: "white", border: "none", cursor: "pointer", fontSize: "14px", borderRight: "1px solid #2d3748" }} onClick={handleEditClick}>
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              <span>Edit</span>
+            </button>
+          )}
+          <button style={{ display: "flex", alignItems: "center", gap: "8px", padding: "12px 16px", backgroundColor: "#4a5568", color: "white", border: "none", cursor: "pointer", fontSize: "14px" }} onClick={handleDeleteClick}>
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
@@ -606,7 +740,6 @@ const DonorRecord = () => {
           </button>
         </div>
       )}
-
       {showAddModal && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0, 0, 0, 0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000 }} onClick={() => setShowAddModal(false)}>
           <div style={{ backgroundColor: "white", borderRadius: "12px", width: "95%", maxWidth: "950px", maxHeight: "85vh", overflow: "hidden", boxShadow: "0 20px 25px rgba(0, 0, 0, 0.25)" }} onClick={(e) => e.stopPropagation()}>
@@ -707,6 +840,151 @@ const DonorRecord = () => {
 
             <div style={{ padding: "16px 30px", borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "center", backgroundColor: "white" }}>
               <button style={{ padding: "12px 48px", backgroundColor: "#FFC200", color: "black", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "16px", fontWeight: "600", fontFamily: "Barlow" }} onClick={handleAddDonor}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Delete Modal */}
+      {showConfirmDeleteModal && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0, 0, 0, 0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000 }} onClick={() => setShowConfirmDeleteModal(false)}>
+          <div style={{ backgroundColor: "white", borderRadius: "12px", width: "95%", maxWidth: "900px", maxHeight: "90vh", overflow: "hidden", boxShadow: "0 20px 25px rgba(0, 0, 0, 0.25)", display: "flex", flexDirection: "column", fontFamily: "Barlow" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 30px", borderBottom: "1px solid #e5e7eb", backgroundColor: "white" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                <h3 style={{ fontSize: "20px", fontWeight: "600", color: "#165C3C", margin: 0, fontFamily: "Barlow" }}>Confirm Delete</h3>
+                <p style={{ fontSize: "14px", color: "#6b7280", margin: 0, fontFamily: "Barlow" }}>Review donors before deletion</p>
+              </div>
+              <button style={{ background: "none", border: "none", fontSize: "20px", color: "#6b7280", cursor: "pointer", padding: "4px", display: "flex", alignItems: "center", justifyContent: "center", width: "28px", height: "28px", borderRadius: "4px" }} onClick={() => setShowConfirmDeleteModal(false)}>×</button>
+            </div>
+
+            <div style={{ flex: 1, padding: "30px", overflowY: "auto" }}>
+              <div style={{ backgroundColor: "#fef2f2", border: "1px solid #ef4444", borderRadius: "8px", padding: "16px", marginBottom: "24px" }}>
+                <h4 style={{ fontSize: "16px", fontWeight: "600", color: "#991b1b", margin: "0 0 12px 0" }}>
+                  Donors to Delete ({donorData.filter((item) => item.selected).length})
+                </h4>
+                <div style={{ display: "grid", gridTemplateColumns: "2fr 2fr 2fr 1fr 1fr", gap: "12px", fontSize: "12px", fontWeight: "500", color: "#374151", marginBottom: "8px" }}>
+                  <div>Donor ID</div>
+                  <div>Full Name</div>
+                  <div>Address</div>
+                  <div>Blood Type</div>
+                  <div>Contact</div>
+                </div>
+                {donorData.filter((item) => item.selected).map((item, index) => (
+                  <div key={index} style={{ display: "grid", gridTemplateColumns: "2fr 2fr 2fr 1fr 1fr", gap: "12px", fontSize: "12px", color: "#6b7280", padding: "8px 0", borderTop: index > 0 ? "1px solid #e5e7eb" : "none" }}>
+                    <div style={{ fontWeight: "500", color: "#374151" }}>{item.donorId}</div>
+                    <div>{`${item.firstName} ${item.middleName || ''} ${item.lastName}`.trim()}</div>
+                    <div>{item.address}</div>
+                    <div>{item.bloodType}{item.rhFactor}</div>
+                    <div>{item.contactNumber}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ backgroundColor: "#fef2f2", border: "1px solid #ef4444", borderRadius: "8px", padding: "16px", display: "flex", gap: "12px", alignItems: "flex-start" }}>
+                <svg width="20" height="20" fill="#ef4444" viewBox="0 0 20 20" style={{ flexShrink: 0, marginTop: "2px" }}>
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <div>
+                  <p style={{ fontSize: "14px", fontWeight: "600", color: "#991b1b", margin: "0 0 4px 0" }}>Confirm Delete Action</p>
+                  <p style={{ fontSize: "13px", color: "#7f1d1d", margin: 0, lineHeight: "1.5" }}>
+                    These donors will be permanently deleted from the records. This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: "20px 30px", borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "center", gap: "12px", backgroundColor: "white" }}>
+              <button type="button" style={{ padding: "12px 48px", backgroundColor: "#ef4444", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "16px", fontWeight: "600", fontFamily: "Barlow", minWidth: "120px" }} onClick={handleDelete}>
+                Confirm Delete ({donorData.filter((item) => item.selected).length} donors)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Donor Modal */}
+      {showEditModal && editingDonor && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0, 0, 0, 0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000 }} onClick={() => setShowEditModal(false)}>
+          <div style={{ backgroundColor: "white", borderRadius: "12px", width: "95%", maxWidth: "950px", maxHeight: "85vh", overflow: "hidden", boxShadow: "0 20px 25px rgba(0, 0, 0, 0.25)" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ padding: "20px 30px", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <h2 style={{ fontSize: "24px", fontWeight: "700", color: "#165C3C", margin: 0, fontFamily: "Barlow" }}>Donor Record</h2>
+                <p style={{ fontSize: "16px", color: "#6b7280", margin: "4px 0 0 0", fontFamily: "Barlow" }}>Edit Donor</p>
+              </div>
+              <button style={{ fontSize: "28px", color: "#6b7280", cursor: "pointer", border: "none", background: "none", padding: "0", width: "32px", height: "32px", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setShowEditModal(false)}>×</button>
+            </div>
+
+            <div style={{ padding: "24px 30px", maxHeight: "calc(85vh - 160px)", overflowY: "auto" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "16px", marginBottom: "16px" }}>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <label style={{ fontSize: "11px", fontWeight: "500", color: "#374151", marginBottom: "4px", fontFamily: "Barlow" }}>Donor ID</label>
+                  <input type="text" style={{ padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "11px", fontFamily: "Barlow", outline: "none", backgroundColor: "#f9fafb", color: "#9ca3af", cursor: "not-allowed" }} value={editingDonor.donorId} readOnly disabled />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <label style={{ fontSize: "11px", fontWeight: "500", color: "#374151", marginBottom: "4px", fontFamily: "Barlow" }}>First Name *</label>
+                  <input type="text" style={{ padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "11px", fontFamily: "Barlow", outline: "none" }} value={editingDonor.firstName} onChange={(e) => handleEditDonorChange("firstName", e.target.value)} />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <label style={{ fontSize: "11px", fontWeight: "500", color: "#374151", marginBottom: "4px", fontFamily: "Barlow" }}>Middle Name (Optional)</label>
+                  <input type="text" style={{ padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "11px", fontFamily: "Barlow", outline: "none" }} value={editingDonor.middleName || ""} onChange={(e) => handleEditDonorChange("middleName", e.target.value)} />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <label style={{ fontSize: "11px", fontWeight: "500", color: "#374151", marginBottom: "4px", fontFamily: "Barlow" }}>Last Name *</label>
+                  <input type="text" style={{ padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "11px", fontFamily: "Barlow", outline: "none" }} value={editingDonor.lastName} onChange={(e) => handleEditDonorChange("lastName", e.target.value)} />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <label style={{ fontSize: "11px", fontWeight: "500", color: "#374151", marginBottom: "4px", fontFamily: "Barlow" }}>Gender *</label>
+                  <select style={{ padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "11px", fontFamily: "Barlow", outline: "none", cursor: "pointer", backgroundColor: "white" }} value={editingDonor.gender} onChange={(e) => handleEditDonorChange("gender", e.target.value)}>
+                    <option value="">Select</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                  </select>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <label style={{ fontSize: "11px", fontWeight: "500", color: "#374151", marginBottom: "4px", fontFamily: "Barlow" }}>Birthdate *</label>
+                  <input type="date" style={{ padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "11px", fontFamily: "Barlow", outline: "none" }} value={editingDonor.birthdate} onChange={(e) => handleEditDonorChange("birthdate", e.target.value)} />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <label style={{ fontSize: "11px", fontWeight: "500", color: "#374151", marginBottom: "4px", fontFamily: "Barlow" }}>Age (Auto-calculated)</label>
+                  <input type="text" style={{ padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "11px", fontFamily: "Barlow", outline: "none", backgroundColor: "#f9fafb", color: "#9ca3af", cursor: "not-allowed" }} value={editingDonor.age} readOnly disabled />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <label style={{ fontSize: "11px", fontWeight: "500", color: "#374151", marginBottom: "4px", fontFamily: "Barlow" }}>Blood Type *</label>
+                  <select style={{ padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "11px", fontFamily: "Barlow", outline: "none", cursor: "pointer", backgroundColor: "white" }} value={editingDonor.bloodType} onChange={(e) => handleEditDonorChange("bloodType", e.target.value)}>
+                    <option value="">Select</option>
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="AB">AB</option>
+                    <option value="O">O</option>
+                  </select>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <label style={{ fontSize: "11px", fontWeight: "500", color: "#374151", marginBottom: "4px", fontFamily: "Barlow" }}>RH Factor *</label>
+                  <select style={{ padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "11px", fontFamily: "Barlow", outline: "none", cursor: "pointer", backgroundColor: "white" }} value={editingDonor.rhFactor} onChange={(e) => handleEditDonorChange("rhFactor", e.target.value)}>
+                    <option value="">Select</option>
+                    <option value="+">+</option>
+                    <option value="-">-</option>
+                  </select>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <label style={{ fontSize: "11px", fontWeight: "500", color: "#374151", marginBottom: "4px", fontFamily: "Barlow" }}>Contact Number *</label>
+                  <input type="tel" style={{ padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "11px", fontFamily: "Barlow", outline: "none" }} value={editingDonor.contactNumber} onChange={(e) => handleEditDonorChange("contactNumber", e.target.value)} placeholder="09XXXXXXXXX" />
+                </div>
+                <div style={{ position: "relative", gridColumn: "1 / -1" }}>
+                  <label style={{ fontSize: "11px", fontWeight: "500", color: "#374151", marginBottom: "4px", display: "block", fontFamily: "Barlow" }}>Barangay *</label>
+                  <input 
+                    type="text" 
+                    style={{ padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "11px", fontFamily: "Barlow", outline: "none", width: "100%", boxSizing: "border-box" }} 
+                    value={editingDonor.address} 
+                    onChange={(e) => handleEditDonorChange("address", e.target.value)}
+                    placeholder="Type to search barangay..." 
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: "16px 30px", borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "center", backgroundColor: "white" }}>
+              <button style={{ padding: "12px 48px", backgroundColor: "#FFC200", color: "black", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "16px", fontWeight: "600", fontFamily: "Barlow" }} onClick={handleSaveEdit}>Save Changes</button>
             </div>
           </div>
         </div>
