@@ -730,6 +730,15 @@ ipcMain.handle('refresh-current-year-reports', async () => {
     throw error;
   }
 });
+
+ipcMain.handle('generate-all-historical-reports', async () => {
+  try {
+    return await dbService.generateAllHistoricalReports();
+  } catch (error) {
+    console.error('Error generating all historical reports:', error);
+    throw error;
+  }
+});
 }; 
 
 // Electron app lifecycle
