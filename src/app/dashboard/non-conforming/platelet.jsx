@@ -29,6 +29,7 @@ const PlateletNC = () => {
       expiration: "",
       status: "Stored",
       category: "",
+      source: "Walk-In",
       found: false,
     },
   ]);
@@ -69,6 +70,7 @@ const PlateletNC = () => {
       expiration: "",
       status: "Stored",
       category: "",
+      source: "Walk-In",
       found: false,
     },
   ]);
@@ -238,6 +240,7 @@ const PlateletNC = () => {
                       expiration: stockData.expiration,
                       status: stockData.status,
                       category: stockData.category,
+                      source: stockData.source,
                       found: true,
                     }
                   : item
@@ -261,6 +264,7 @@ const PlateletNC = () => {
                         expiration: plateletMatch.expiration,
                         status: plateletMatch.status,
                         category: plateletMatch.category,
+                        source: plateletMatch.source,
                         found: true,
                       }
                     : item
@@ -281,6 +285,7 @@ const PlateletNC = () => {
                         expiration: "",
                         status: "Stored",
                         category: "",
+                        source: "Walk-In",
                         found: false,
                       }
                     : item
@@ -302,6 +307,7 @@ const PlateletNC = () => {
                       expiration: "",
                       status: "Stored",
                       category: "",
+                      source: "Walk-In",
                       found: false,
                     }
                   : item
@@ -370,6 +376,7 @@ const PlateletNC = () => {
                       expiration: ncData.expiration,
                       status: ncData.status,
                       category: ncData.category,
+                      source: ncData.source,
                       found: true,
                     }
                   : item
@@ -393,6 +400,7 @@ const PlateletNC = () => {
                         expiration: plateletMatch.expiration,
                         status: plateletMatch.status,
                         category: plateletMatch.category,
+                        source: plateletMatch.source,
                         found: true,
                       }
                     : item
@@ -413,6 +421,7 @@ const PlateletNC = () => {
                         expiration: "",
                         status: "Stored",
                         category: "",
+                        source: "Walk-In",
                         found: false,
                       }
                     : item
@@ -434,6 +443,7 @@ const PlateletNC = () => {
                       expiration: "",
                       status: "Stored",
                       category: "",
+                      source: "Walk-In",
                       found: false,
                     }
                   : item
@@ -474,6 +484,7 @@ const PlateletNC = () => {
         expiration: "",
         status: "Stored",
         category: "",
+        source: "Walk-In", 
         found: false,
       },
     ]);
@@ -541,6 +552,7 @@ const PlateletNC = () => {
           expiration: "",
           status: "Stored",
           category: "",
+          source: "Walk-In",
           found: false,
         }]);
         setDiscardFormData({
@@ -590,6 +602,7 @@ const PlateletNC = () => {
         expiration: "",
         status: "Stored",
         category: "",
+        source: "Walk-In", 
         found: false,
       },
     ]);
@@ -638,6 +651,7 @@ const PlateletNC = () => {
             expiration: "",
             status: "Stored",
             category: "",
+            source: "Walk-In",
             found: false,
           },
         ]);
@@ -709,6 +723,7 @@ const PlateletNC = () => {
         expiration: editingItem.expiration,
         status: "Non-Conforming",
         category: editingItem.category,
+        source: editingItem.source,
       };
 
       await window.electronAPI.updatePlateletNonConforming(editingItem.id, ncData);
@@ -830,6 +845,7 @@ const PlateletNC = () => {
       volume: "Volume",
       status: "Status",
       category: "Category",
+      source: "Walk-In",
       created: "Sort by",
     };
     return labels[sortConfig.key] || "Sort";
@@ -1219,7 +1235,7 @@ const PlateletNC = () => {
     },
     tableHeader: {
       display: "grid",
-      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
       gap: "15px",
       marginBottom: "15px",
       padding: "0 5px",
@@ -1233,7 +1249,7 @@ const PlateletNC = () => {
     },
     dataRow: {
       display: "grid",
-      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
       gap: "6px",
       marginBottom: "15px",
       alignItems: "center",
@@ -1630,6 +1646,7 @@ const PlateletNC = () => {
                   { key: "volume", label: "Volume" },
                   { key: "status", label: "Status" },
                   { key: "category", label: "Category" },
+                  { key: "source", label: "Walk-In" },
                   { key: "created", label: "Sort by" },
                 ].map((item) => (
                   <div
@@ -1731,6 +1748,7 @@ const PlateletNC = () => {
                       <option value="status">Status</option>
                       <option value="volume">Volume</option>
                       <option value="category">Category</option>
+                      <option value="source">Source</option>
                     </select>
                   </div>
                 </div>
@@ -1895,6 +1913,14 @@ const PlateletNC = () => {
                 {sortConfig.key === "category" &&
                   (sortConfig.direction === "asc" ? "↑" : "↓")}
               </th>
+              <th
+                  style={{ ...styles.th, width: "7%", cursor: "pointer" }}
+                  onClick={() => handleSort("source")}
+                >
+                  SOURCE{" "}
+                  {sortConfig.key === "source" &&
+                    (sortConfig.direction === "asc" ? "↑" : "↓")}
+                </th>
               <th style={{ ...styles.th, width: "15%" }}>CREATED AT</th>
               <th style={{ ...styles.th, width: "15%" }}>MODIFIED AT</th>
             </tr>
@@ -1936,6 +1962,7 @@ const PlateletNC = () => {
                     <span style={styles.statusBadge}>{item.status}</span>
                   </td>
                   <td style={styles.td}>{item.category}</td>
+                  <td style={styles.td}>{item.source || "Walk-In"}</td>
                   <td style={styles.td}>{item.created}</td>
                   <td style={styles.td}>{item.modified}</td>
                 </tr>
@@ -2348,6 +2375,21 @@ const PlateletNC = () => {
                       }}
                     >
                       {item.found ? item.category : "Not Found"}
+                    </span>
+
+                    <span
+                      style={{
+                        padding: "4px 8px",
+                        backgroundColor: item.found ? "#dbeafe" : "#f9fafb",
+                        color: item.found ? "#1e40af" : "#9ca3af",
+                        borderRadius: "12px",
+                        fontSize: "10px",
+                        fontWeight: "500",
+                        textAlign: "center",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {item.found ? item.source || "Walk-In" : "-"}
                     </span>
 
                     <button
@@ -2772,6 +2814,7 @@ const PlateletNC = () => {
                 <div style={styles.tableHeaderCell}>Date of Collection</div>
                 <div style={styles.tableHeaderCell}>Expiration Date</div>
                 <div style={styles.tableHeaderCell}>Category</div>
+                <div style={styles.tableHeaderCell}>Source</div>
                 <div style={styles.tableHeaderCell}>Action</div>
               </div>
 
@@ -2781,6 +2824,7 @@ const PlateletNC = () => {
                     key={item.id}
                     style={{
                       ...styles.dataRow,
+                      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
                       backgroundColor: item.found ? "#f0f9ff" : "#fef2f2",
                       padding: "8px 5px",
                       borderRadius: "4px",
@@ -2929,6 +2973,21 @@ const PlateletNC = () => {
                       {item.found ? item.category : "Not Found"}
                     </span>
 
+                    <span
+                      style={{
+                        padding: "4px 8px",
+                        backgroundColor: item.found ? "#dbeafe" : "#f9fafb",
+                        color: item.found ? "#1e40af" : "#9ca3af",
+                        borderRadius: "12px",
+                        fontSize: "10px",
+                        fontWeight: "500",
+                        textAlign: "center",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {item.found ? item.source || "Walk-In" : "-"}
+                    </span>
+
                     <button
                       type="button"
                       style={{
@@ -2945,18 +3004,9 @@ const PlateletNC = () => {
                         gap: "4px",
                         whiteSpace: "nowrap",
                         transition: "background-color 0.2s ease",
-                        ...(hoverStates[`removeRow-${index}`]
-                          ? { backgroundColor: "#dc2626" }
-                          : {}),
                       }}
                       onClick={() => removeRow(index)}
                       disabled={nonConformingItems.length === 1}
-                      onMouseEnter={() =>
-                        handleMouseEnter(`removeRow-${index}`)
-                      }
-                      onMouseLeave={() =>
-                        handleMouseLeave(`removeRow-${index}`)
-                      }
                     >
                       <svg
                         width="12"
@@ -2978,13 +3028,8 @@ const PlateletNC = () => {
 
               <button
                 type="button"
-                style={{
-                  ...styles.addRowButton,
-                  ...(hoverStates.addRow ? styles.addRowButtonHover : {}),
-                }}
+                style={styles.addRowButton}
                 onClick={addNewRow}
-                onMouseEnter={() => handleMouseEnter("addRow")}
-                onMouseLeave={() => handleMouseLeave("addRow")}
               >
                 <svg
                   width="16"
@@ -3038,13 +3083,8 @@ const PlateletNC = () => {
             <div style={styles.modalFooter}>
               <button
                 type="button"
-                style={{
-                  ...styles.saveButton,
-                  ...(hoverStates.saveStock ? styles.saveButtonHover : {}),
-                }}
+                style={styles.saveButton}
                 onClick={handleSaveAllStock}
-                onMouseEnter={() => handleMouseEnter("saveStock")}
-                onMouseLeave={() => handleMouseLeave("saveStock")}
               >
                 Save
               </button>
@@ -3080,15 +3120,18 @@ const PlateletNC = () => {
               </button>
             </div>
 
+            
             <div style={styles.modalContent}>
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr",
-                gap: "6px",
-                marginBottom: "15px",
-                padding: "0 5px",
-                alignItems: "center",
-              }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr",
+                  gap: "6px",
+                  marginBottom: "15px",
+                  padding: "0 5px",
+                  alignItems: "center",
+                }}
+              >
                 <div style={styles.tableHeaderCell}>Barcode Serial ID</div>
                 <div style={styles.tableHeaderCell}>Blood Type</div>
                 <div style={styles.tableHeaderCell}>Rh Factor</div>
@@ -3096,12 +3139,13 @@ const PlateletNC = () => {
                 <div style={styles.tableHeaderCell}>Date of Collection</div>
                 <div style={styles.tableHeaderCell}>Expiration Date</div>
                 <div style={styles.tableHeaderCell}>Category</div>
+                <div style={styles.tableHeaderCell}>Source</div>
               </div>
 
               <div
                 style={{
                   ...styles.dataRow,
-                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr",
+                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr",
                 }}
               >
                 <input
@@ -3164,6 +3208,16 @@ const PlateletNC = () => {
                   readOnly
                   disabled
                 />
+                <select
+                  style={styles.fieldSelect}
+                  value={editingItem.source || 'Walk-In'} 
+                  onChange={(e) =>
+                    handleEditItemChange("source", e.target.value)
+                  }
+                >
+                  <option value="Walk-In">Walk-In</option>
+                  <option value="Mobile">Mobile</option>
+                </select>
               </div>
             </div>
 

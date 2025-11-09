@@ -2,8 +2,15 @@ import React, { useState, useEffect, useRef } from "react";
 import { Trash2, Plus } from "lucide-react";
 
 const Loader = () => (
-  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-    <div style={{ fontSize: '18px', color: '#6b7280' }}>Loading...</div>
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      height: "100vh",
+    }}
+  >
+    <div style={{ fontSize: "18px", color: "#6b7280" }}>Loading...</div>
   </div>
 );
 
@@ -29,6 +36,7 @@ const RedBloodCellNC = () => {
       expiration: "",
       status: "Stored",
       category: "",
+      source: "Walk-In",
       found: false,
     },
   ]);
@@ -69,10 +77,10 @@ const RedBloodCellNC = () => {
       expiration: "",
       status: "Stored",
       category: "",
+      source: "Walk-In",
       found: false,
     },
   ]);
-
   const sortDropdownRef = useRef(null);
   const filterDropdownRef = useRef(null);
   const searchTimeoutsRef = useRef({});
@@ -203,28 +211,31 @@ const RedBloodCellNC = () => {
           i === index ? { ...item, [field]: value, found: false } : item
         )
       );
-  
+
       if (searchTimeoutsRef.current[index]) {
         clearTimeout(searchTimeoutsRef.current[index]);
       }
-  
+
       if (!value || value.trim() === "") {
         setError(null);
         return;
       }
-  
+
       searchTimeoutsRef.current[index] = setTimeout(async () => {
         try {
           if (!window.electronAPI) {
             setError("Electron API not available");
             return;
           }
-  
-          const stockData = await window.electronAPI.getBloodStockBySerialIdForNC(
-            value.trim()
-          );
-  
-          if (stockData && !Array.isArray(stockData) && stockData.category === 'Red Blood Cell') {
+
+          const stockData =
+            await window.electronAPI.getBloodStockBySerialIdForNC(value.trim());
+
+          if (
+            stockData &&
+            !Array.isArray(stockData) &&
+            stockData.category === "Red Blood Cell"
+          ) {
             setNonConformingItems((prev) =>
               prev.map((item, i) =>
                 i === index
@@ -238,6 +249,7 @@ const RedBloodCellNC = () => {
                       expiration: stockData.expiration,
                       status: stockData.status,
                       category: stockData.category,
+                      source: stockData.source,
                       found: true,
                     }
                   : item
@@ -245,8 +257,10 @@ const RedBloodCellNC = () => {
             );
             setError(null);
           } else if (Array.isArray(stockData) && stockData.length > 0) {
-            const rbcMatch = stockData.find(item => item.category === 'Red Blood Cell');
-            
+            const rbcMatch = stockData.find(
+              (item) => item.category === "Red Blood Cell"
+            );
+
             if (rbcMatch) {
               setNonConformingItems((prev) =>
                 prev.map((item, i) =>
@@ -261,6 +275,7 @@ const RedBloodCellNC = () => {
                         expiration: rbcMatch.expiration,
                         status: rbcMatch.status,
                         category: rbcMatch.category,
+                        source: rbcMatch.source,
                         found: true,
                       }
                     : item
@@ -280,13 +295,16 @@ const RedBloodCellNC = () => {
                         collection: "",
                         expiration: "",
                         status: "Stored",
+                        source: "Walk-In",
                         category: "",
                         found: false,
                       }
                     : item
                 )
               );
-              setError(`No Red Blood Cell stock found with serial ID: ${value.trim()}`);
+              setError(
+                `No Red Blood Cell stock found with serial ID: ${value.trim()}`
+              );
             }
           } else {
             setNonConformingItems((prev) =>
@@ -302,12 +320,15 @@ const RedBloodCellNC = () => {
                       expiration: "",
                       status: "Stored",
                       category: "",
+                      source: "Walk-In",
                       found: false,
                     }
                   : item
               )
             );
-            setError(`No Red Blood Cell stock found with serial ID: ${value.trim()}`);
+            setError(
+              `No Red Blood Cell stock found with serial ID: ${value.trim()}`
+            );
           }
         } catch (err) {
           console.error("Error fetching blood stock by serial ID:", err);
@@ -352,6 +373,7 @@ const RedBloodCellNC = () => {
             return;
           }
   
+          // FIXED: Use the correct API method for non-conforming discard
           const ncData = await window.electronAPI.getNonConformingBySerialIdForDiscard(
             value.trim()
           );
@@ -370,6 +392,7 @@ const RedBloodCellNC = () => {
                       expiration: ncData.expiration,
                       status: ncData.status,
                       category: ncData.category,
+                      source: ncData.source || "Walk-In",
                       found: true,
                     }
                   : item
@@ -377,8 +400,8 @@ const RedBloodCellNC = () => {
             );
             setError(null);
           } else if (Array.isArray(ncData) && ncData.length > 0) {
-            const rbcMatch = ncData.find(item => item.category === 'Red Blood Cell');
-            
+            const rbcMatch = ncData.find(item => item.category === "Red Blood Cell");
+  
             if (rbcMatch) {
               setDiscardItems((prev) =>
                 prev.map((item, i) =>
@@ -393,6 +416,7 @@ const RedBloodCellNC = () => {
                         expiration: rbcMatch.expiration,
                         status: rbcMatch.status,
                         category: rbcMatch.category,
+                        source: rbcMatch.source || "Walk-In",
                         found: true,
                       }
                     : item
@@ -413,6 +437,7 @@ const RedBloodCellNC = () => {
                         expiration: "",
                         status: "Stored",
                         category: "",
+                        source: "Walk-In",
                         found: false,
                       }
                     : item
@@ -434,6 +459,7 @@ const RedBloodCellNC = () => {
                       expiration: "",
                       status: "Stored",
                       category: "",
+                      source: "Walk-In",
                       found: false,
                     }
                   : item
@@ -459,7 +485,7 @@ const RedBloodCellNC = () => {
       );
     }
   };
-  
+
   const addNewDiscardRow = () => {
     const newId = Math.max(...discardItems.map((item) => item.id), 0) + 1;
     setDiscardItems((prev) => [
@@ -474,20 +500,23 @@ const RedBloodCellNC = () => {
         expiration: "",
         status: "Stored",
         category: "",
+        source: "Walk-In",
         found: false,
       },
     ]);
   };
-  
+
   const removeDiscardRow = (index) => {
     if (discardItems.length > 1) {
       setDiscardItems((prev) => prev.filter((_, i) => i !== index));
     }
   };
-  
+
   const handleDiscardProceed = async (e) => {
     e.preventDefault();
-    const validItems = discardItems.filter((item) => item.serialId && item.found);
+    const validItems = discardItems.filter(
+      (item) => item.serialId && item.found
+    );
     if (validItems.length === 0) {
       setError("Please select at least one valid item with a found serial ID");
       return;
@@ -496,7 +525,7 @@ const RedBloodCellNC = () => {
     setShowDiscardModal(false);
     setShowDiscardDetailsModal(true);
   };
-  
+
   const confirmDiscard = async () => {
     try {
       setSaving(true);
@@ -504,14 +533,21 @@ const RedBloodCellNC = () => {
         setError("Electron API not available");
         return;
       }
-      if (!discardFormData.responsiblePersonnel || !discardFormData.reasonForDiscarding || 
-          !discardFormData.authorizedBy || !discardFormData.dateOfDiscard || 
-          !discardFormData.timeOfDiscard || !discardFormData.methodOfDisposal) {
+      if (
+        !discardFormData.responsiblePersonnel ||
+        !discardFormData.reasonForDiscarding ||
+        !discardFormData.authorizedBy ||
+        !discardFormData.dateOfDiscard ||
+        !discardFormData.timeOfDiscard ||
+        !discardFormData.methodOfDisposal
+      ) {
         setError("Please fill in all required fields");
         setSaving(false);
         return;
       }
-      const validItems = discardItems.filter((item) => item.serialId && item.found);
+      const validItems = discardItems.filter(
+        (item) => item.serialId && item.found
+      );
       if (validItems.length === 0) {
         setError("No valid items to discard");
         setSaving(false);
@@ -527,22 +563,25 @@ const RedBloodCellNC = () => {
         methodOfDisposal: discardFormData.methodOfDisposal,
         remarks: discardFormData.remarks,
       };
-      const result = await window.electronAPI.discardNonConformingStock(discardData);
+      const result =
+        await window.electronAPI.discardNonConformingStock(discardData);
       if (result.success) {
         setShowDiscardDetailsModal(false);
         setShowDiscardModal(false);
-        setDiscardItems([{
-          id: 1,
-          serialId: "",
-          bloodType: "O",
-          rhFactor: "+",
-          volume: 100,
-          collection: "",
-          expiration: "",
-          status: "Stored",
-          category: "",
-          found: false,
-        }]);
+        setDiscardItems([
+          {
+            id: 1,
+            serialId: "",
+            bloodType: "O",
+            rhFactor: "+",
+            volume: 100,
+            collection: "",
+            expiration: "",
+            status: "Stored",
+            category: "",
+            found: false,
+          },
+        ]);
         setDiscardFormData({
           responsiblePersonnel: "",
           reasonForDiscarding: "",
@@ -590,6 +629,7 @@ const RedBloodCellNC = () => {
         expiration: "",
         status: "Stored",
         category: "",
+        source: "Walk-In",
         found: false,
       },
     ]);
@@ -683,12 +723,12 @@ const RedBloodCellNC = () => {
 
   const handleSaveEdit = async (e) => {
     e.preventDefault();
-    
+
     if (!editingItem.serial_id || !editingItem.collection) {
       setError("Please fill in all required fields");
       return;
     }
-    
+
     setShowEditConfirmModal(true);
   };
 
@@ -699,7 +739,7 @@ const RedBloodCellNC = () => {
         setError("Electron API not available");
         return;
       }
-
+  
       const ncData = {
         serial_id: editingItem.serial_id,
         type: editingItem.type,
@@ -709,8 +749,9 @@ const RedBloodCellNC = () => {
         expiration: editingItem.expiration,
         status: "Non-Conforming",
         category: editingItem.category,
+        source: editingItem.source 
       };
-
+  
       await window.electronAPI.updateNonConforming(editingItem.id, ncData);
       setShowEditConfirmModal(false);
       setShowEditModal(false);
@@ -718,7 +759,7 @@ const RedBloodCellNC = () => {
       await loadNonConformingData();
       clearAllSelection();
       setError(null);
-
+  
       setSuccessMessage({
         title: "Non-Conforming Record Updated!",
         description: "The non-conforming record has been successfully updated.",
@@ -737,9 +778,9 @@ const RedBloodCellNC = () => {
     const selectedIds = bloodData
       .filter((item) => item.selected)
       .map((item) => item.id);
-    
+
     if (selectedIds.length === 0) return;
-    
+
     setShowDeleteConfirmModal(true);
   };
 
@@ -831,6 +872,7 @@ const RedBloodCellNC = () => {
       status: "Status",
       category: "Category",
       created: "Sort by",
+      source: "Source",
     };
     return labels[sortConfig.key] || "Sort";
   };
@@ -1219,7 +1261,7 @@ const RedBloodCellNC = () => {
     },
     tableHeader: {
       display: "grid",
-      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
       gap: "15px",
       marginBottom: "15px",
       padding: "0 5px",
@@ -1731,6 +1773,8 @@ const RedBloodCellNC = () => {
                       <option value="status">Status</option>
                       <option value="volume">Volume</option>
                       <option value="category">Category</option>
+                      <option value="source">Source</option>
+                      
                     </select>
                   </div>
                 </div>
@@ -1796,8 +1840,11 @@ const RedBloodCellNC = () => {
               </div>
             )}
           </div>
-          
-          <button style={styles.releaseButton} onClick={() => setShowDiscardModal(true)}>
+
+          <button
+            style={styles.releaseButton}
+            onClick={() => setShowDiscardModal(true)}
+          >
             <Trash2 size={16} style={{ marginRight: "4px" }} />
             Discard
           </button>
@@ -1846,7 +1893,7 @@ const RedBloodCellNC = () => {
                 />
               </th>
               <th
-                style={{ ...styles.th, width: "10%", cursor: "pointer" }}
+                style={{ ...styles.th, width: "9%", cursor: "pointer" }}
                 onClick={() => handleSort("serial_id")}
               >
                 SERIAL ID{" "}
@@ -1870,17 +1917,17 @@ const RedBloodCellNC = () => {
                   (sortConfig.direction === "asc" ? "↑" : "↓")}
               </th>
               <th
-                style={{ ...styles.th, width: "8%", cursor: "pointer" }}
+                style={{ ...styles.th, width: "7%", cursor: "pointer" }}
                 onClick={() => handleSort("volume")}
               >
                 VOLUME (ML){" "}
                 {sortConfig.key === "volume" &&
                   (sortConfig.direction === "asc" ? "↑" : "↓")}
               </th>
-              <th style={{ ...styles.th, width: "12%" }}>DATE OF COLLECTION</th>
-              <th style={{ ...styles.th, width: "12%" }}>EXPIRATION DATE</th>
+              <th style={{ ...styles.th, width: "10%" }}>DATE OF COLLECTION</th>
+              <th style={{ ...styles.th, width: "10%" }}>EXPIRATION DATE</th>
               <th
-                style={{ ...styles.th, width: "12%", cursor: "pointer" }}
+                style={{ ...styles.th, width: "10%", cursor: "pointer" }}
                 onClick={() => handleSort("status")}
               >
                 STATUS{" "}
@@ -1888,22 +1935,30 @@ const RedBloodCellNC = () => {
                   (sortConfig.direction === "asc" ? "↑" : "↓")}
               </th>
               <th
-                style={{ ...styles.th, width: "12%", cursor: "pointer" }}
+                style={{ ...styles.th, width: "10%", cursor: "pointer" }}
                 onClick={() => handleSort("category")}
               >
                 CATEGORY{" "}
                 {sortConfig.key === "category" &&
                   (sortConfig.direction === "asc" ? "↑" : "↓")}
               </th>
-              <th style={{ ...styles.th, width: "15%" }}>CREATED AT</th>
-              <th style={{ ...styles.th, width: "15%" }}>MODIFIED AT</th>
+              <th
+                style={{ ...styles.th, width: "7%", cursor: "pointer" }}
+                onClick={() => handleSort("source")}
+              >
+                SOURCE{" "}
+                {sortConfig.key === "source" &&
+                  (sortConfig.direction === "asc" ? "↑" : "↓")}
+              </th>
+              <th style={{ ...styles.th, width: "11%" }}>CREATED AT</th>
+              <th style={{ ...styles.th, width: "11%" }}>MODIFIED AT</th>
             </tr>
           </thead>
           <tbody style={styles.tbody}>
             {displayData.length === 0 ? (
               <tr>
                 <td
-                  colSpan="11"
+                  colSpan="12"
                   style={{ ...styles.td, textAlign: "center", padding: "40px" }}
                 >
                   No non-conforming records found
@@ -1936,6 +1991,7 @@ const RedBloodCellNC = () => {
                     <span style={styles.statusBadge}>{item.status}</span>
                   </td>
                   <td style={styles.td}>{item.category}</td>
+                  <td style={styles.td}>{item.source}</td>
                   <td style={styles.td}>{item.created}</td>
                   <td style={styles.td}>{item.modified}</td>
                 </tr>
@@ -2121,7 +2177,9 @@ const RedBloodCellNC = () => {
           <div style={styles.confirmModal}>
             <h3 style={styles.confirmTitle}>Confirm Delete</h3>
             <p style={styles.confirmDescription}>
-              Are you sure you want to delete {selectedCount} non-conforming record{selectedCount > 1 ? 's' : ''}? This action cannot be undone.
+              Are you sure you want to delete {selectedCount} non-conforming
+              record{selectedCount > 1 ? "s" : ""}? This action cannot be
+              undone.
             </p>
             <div style={styles.confirmButtonGroup}>
               <button
@@ -2138,7 +2196,9 @@ const RedBloodCellNC = () => {
               <button
                 style={{
                   ...styles.deleteConfirmButton,
-                  ...(hoverStates.confirmDelete ? styles.deleteConfirmButtonHover : {}),
+                  ...(hoverStates.confirmDelete
+                    ? styles.deleteConfirmButtonHover
+                    : {}),
                 }}
                 onClick={confirmDelete}
                 onMouseEnter={() => handleMouseEnter("confirmDelete")}
@@ -2151,9 +2211,12 @@ const RedBloodCellNC = () => {
         </div>
       )}
 
-      {/* DISCARD MODAL - STEP 1: Item Selection */}
+      {/* DISCARD MODAL*/}
       {showDiscardModal && (
-        <div style={styles.modalOverlay} onClick={() => setShowDiscardModal(false)}>
+        <div
+          style={styles.modalOverlay}
+          onClick={() => setShowDiscardModal(false)}
+        >
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <div style={styles.modalTitleSection}>
@@ -2193,6 +2256,7 @@ const RedBloodCellNC = () => {
                 <div style={styles.tableHeaderCell}>Date of Collection</div>
                 <div style={styles.tableHeaderCell}>Expiration Date</div>
                 <div style={styles.tableHeaderCell}>Category</div>
+                <div style={styles.tableHeaderCell}>Source</div>
                 <div style={styles.tableHeaderCell}>Action</div>
               </div>
 
@@ -2202,6 +2266,8 @@ const RedBloodCellNC = () => {
                     key={item.id}
                     style={{
                       ...styles.dataRow,
+                      gridTemplateColumns:
+                        "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
                       backgroundColor: item.found ? "#f0f9ff" : "#fef2f2",
                       padding: "8px 5px",
                       borderRadius: "4px",
@@ -2334,22 +2400,37 @@ const RedBloodCellNC = () => {
                       readOnly
                       disabled
                     />
-
                     <span
-                      style={{
-                        padding: "4px 8px",
-                        backgroundColor: item.found ? "#dcfdf4" : "#fee2e2",
-                        color: item.found ? "#065f46" : "#991b1b",
-                        borderRadius: "12px",
-                        fontSize: "10px",
-                        fontWeight: "500",
-                        textAlign: "center",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {item.found ? item.category : "Not Found"}
-                    </span>
+                        style={{
+                          padding: "4px 8px",
+                          backgroundColor: item.found ? "#dcfdf4" : "#fee2e2",
+                          color: item.found ? "#065f46" : "#991b1b",
+                          borderRadius: "12px",
+                          fontSize: "10px",
+                          fontWeight: "500",
+                          textAlign: "center",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.found ? item.category : "Not Found"}
+                      </span>
 
+                      <span
+                        style={{
+                          padding: "4px 8px",
+                          backgroundColor: item.found ? "#dbeafe" : "#f9fafb",
+                          color: item.found ? "#1e40af" : "#9ca3af",
+                          borderRadius: "12px",
+                          fontSize: "10px",
+                          fontWeight: "500",
+                          textAlign: "center",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.found ? item.source || "Walk-In" : "-"}
+                      </span>
+
+                    
                     <button
                       type="button"
                       style={{
@@ -2366,18 +2447,18 @@ const RedBloodCellNC = () => {
                         gap: "4px",
                         whiteSpace: "nowrap",
                         transition: "background-color 0.2s ease",
-                        ...(hoverStates[`removeDiscardRow-${index}`]
+                        ...(hoverStates[`removeRow-${index}`]
                           ? { backgroundColor: "#dc2626" }
                           : {}),
                       }}
                       onClick={() => removeDiscardRow(index)}
-                      disabled={discardItems.length === 1}
-                      onMouseEnter={() =>
-                        handleMouseEnter(`removeDiscardRow-${index}`)
-                      }
-                      onMouseLeave={() =>
-                        handleMouseLeave(`removeDiscardRow-${index}`)
-                      }
+                        disabled={discardItems.length === 1}
+                        onMouseEnter={() =>
+                          handleMouseEnter(`removeDiscardRow-${index}`)
+                        }
+                        onMouseLeave={() =>
+                          handleMouseLeave(`removeDiscardRow-${index}`)
+                        }
                     >
                       <svg
                         width="12"
@@ -2401,7 +2482,9 @@ const RedBloodCellNC = () => {
                 type="button"
                 style={{
                   ...styles.addRowButton,
-                  ...(hoverStates.addDiscardRow ? styles.addRowButtonHover : {}),
+                  ...(hoverStates.addDiscardRow
+                    ? styles.addRowButtonHover
+                    : {}),
                 }}
                 onClick={addNewDiscardRow}
                 onMouseEnter={() => handleMouseEnter("addDiscardRow")}
@@ -2494,8 +2577,12 @@ const RedBloodCellNC = () => {
                     : {}),
                 }}
                 onClick={() => setShowDiscardDetailsModal(false)}
-                onMouseEnter={() => handleMouseEnter("closeDiscardDetailsModal")}
-                onMouseLeave={() => handleMouseLeave("closeDiscardDetailsModal")}
+                onMouseEnter={() =>
+                  handleMouseEnter("closeDiscardDetailsModal")
+                }
+                onMouseLeave={() =>
+                  handleMouseLeave("closeDiscardDetailsModal")
+                }
               >
                 ×
               </button>
@@ -2612,7 +2699,9 @@ const RedBloodCellNC = () => {
                     <option value="">Select classification</option>
                     <option value="Expired">Expired</option>
                     <option value="Reactive">Reactive</option>
-                    <option value="TTI (Transfusion Transmitted Infection)">TTI (Transfusion Transmitted Infection)</option>
+                    <option value="TTI (Transfusion Transmitted Infection)">
+                      TTI (Transfusion Transmitted Infection)
+                    </option>
                     <option value="Chylous">Chylous</option>
                     <option value="Under Volume">Under Volume</option>
                     <option value="Icteric">Icteric</option>
@@ -2685,7 +2774,9 @@ const RedBloodCellNC = () => {
                     <option value="">Select classification</option>
                     <option value="Incineration">Incineration</option>
                     <option value="Autoclaving">Autoclaving</option>
-                    <option value="Chemical Treatment">Chemical Treatment</option>
+                    <option value="Chemical Treatment">
+                      Chemical Treatment
+                    </option>
                     <option value="Other">Other</option>
                   </select>
                 </div>
@@ -2772,6 +2863,7 @@ const RedBloodCellNC = () => {
                 <div style={styles.tableHeaderCell}>Date of Collection</div>
                 <div style={styles.tableHeaderCell}>Expiration Date</div>
                 <div style={styles.tableHeaderCell}>Category</div>
+                <div style={styles.tableHeaderCell}>Source</div>
                 <div style={styles.tableHeaderCell}>Action</div>
               </div>
 
@@ -2781,6 +2873,7 @@ const RedBloodCellNC = () => {
                     key={item.id}
                     style={{
                       ...styles.dataRow,
+                      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
                       backgroundColor: item.found ? "#f0f9ff" : "#fef2f2",
                       padding: "8px 5px",
                       borderRadius: "4px",
@@ -2914,20 +3007,35 @@ const RedBloodCellNC = () => {
                       disabled
                     />
 
-                    <span
-                      style={{
-                        padding: "4px 8px",
-                        backgroundColor: item.found ? "#dcfdf4" : "#fee2e2",
-                        color: item.found ? "#065f46" : "#991b1b",
-                        borderRadius: "12px",
-                        fontSize: "10px",
-                        fontWeight: "500",
-                        textAlign: "center",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {item.found ? item.category : "Not Found"}
-                    </span>
+                      <span
+                        style={{
+                          padding: "4px 8px",
+                          backgroundColor: item.found ? "#dcfdf4" : "#fee2e2",
+                          color: item.found ? "#065f46" : "#991b1b",
+                          borderRadius: "12px",
+                          fontSize: "10px",
+                          fontWeight: "500",
+                          textAlign: "center",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.found ? item.category : "Not Found"}
+                      </span>
+
+                      <span
+                        style={{
+                          padding: "4px 8px",
+                          backgroundColor: item.found ? "#dbeafe" : "#f9fafb",
+                          color: item.found ? "#1e40af" : "#9ca3af",
+                          borderRadius: "12px",
+                          fontSize: "10px",
+                          fontWeight: "500",
+                          textAlign: "center",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.found ? item.source || "Walk-In" : "-"}
+                      </span>
 
                     <button
                       type="button"
@@ -2945,7 +3053,7 @@ const RedBloodCellNC = () => {
                         gap: "4px",
                         whiteSpace: "nowrap",
                         transition: "background-color 0.2s ease",
-                        ...(hoverStates[`removeRow-${index}`]
+                        ...(hoverStates[`removeDiscardRow-${index}`]
                           ? { backgroundColor: "#dc2626" }
                           : {}),
                       }}
@@ -3081,14 +3189,16 @@ const RedBloodCellNC = () => {
             </div>
 
             <div style={styles.modalContent}>
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr",
-                gap: "6px",
-                marginBottom: "15px",
-                padding: "0 5px",
-                alignItems: "center",
-              }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr",
+                  gap: "6px",
+                  marginBottom: "15px",
+                  padding: "0 5px",
+                  alignItems: "center",
+                }}
+              >
                 <div style={styles.tableHeaderCell}>Barcode Serial ID</div>
                 <div style={styles.tableHeaderCell}>Blood Type</div>
                 <div style={styles.tableHeaderCell}>Rh Factor</div>
@@ -3096,12 +3206,13 @@ const RedBloodCellNC = () => {
                 <div style={styles.tableHeaderCell}>Date of Collection</div>
                 <div style={styles.tableHeaderCell}>Expiration Date</div>
                 <div style={styles.tableHeaderCell}>Category</div>
+                <div style={styles.tableHeaderCell}>Source</div>
               </div>
 
               <div
                 style={{
                   ...styles.dataRow,
-                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr",
+                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr",
                 }}
               >
                 <input
@@ -3164,6 +3275,16 @@ const RedBloodCellNC = () => {
                   readOnly
                   disabled
                 />
+                <select
+                  style={styles.fieldSelect}
+                  value={editingItem.source || 'Walk-In'} 
+                  onChange={(e) =>
+                    handleEditItemChange("source", e.target.value)
+                  }
+                >
+                  <option value="Walk-In">Walk-In</option>
+                  <option value="Mobile">Mobile</option>
+                </select>
               </div>
             </div>
 
