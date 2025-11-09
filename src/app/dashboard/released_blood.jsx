@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { ArchiveRestore } from "lucide-react";
 import Loader from "../../components/Loader";
+import DeleteConfirmationModal from "../../components/DeleteConfirmationModal";
 
 const ReleasedBlood = () => {
   const [bloodData, setBloodData] = useState([]);
@@ -10,7 +11,7 @@ const ReleasedBlood = () => {
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showConfirmRestoreModal, setShowConfirmRestoreModal] = useState(false);
-  const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
+  const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState({
     title: "",
@@ -361,11 +362,14 @@ const ReleasedBlood = () => {
     }
   };
 
-  const handleDeleteClick = () => {
-    setShowConfirmDeleteModal(true);
+  const handleDelete = () => {
+    const selectedIds = bloodData.filter((item) => item.selected).map((item) => item.id);
+    if (selectedIds.length > 0) {
+      setDeleteModalOpen(true);
+    }
   };
 
-  const confirmDelete = async () => {
+  const handleConfirmDelete = async () => {
     try {
       if (!window.electronAPI) {
         setError("Electron API not available");
@@ -470,7 +474,6 @@ const ReleasedBlood = () => {
         // Don't fail the operation if logging fails
       }
 
-      setShowConfirmDeleteModal(false);
       await loadReleasedBloodData();
       clearAllSelection();
       setError(null);
@@ -483,6 +486,8 @@ const ReleasedBlood = () => {
     } catch (err) {
       console.error("Error deleting items:", err);
       setError("Failed to delete items");
+    } finally {
+      setDeleteModalOpen(false);
     }
   };
 
@@ -1753,7 +1758,7 @@ const ReleasedBlood = () => {
             </button>
           )}
           
-          <button style={styles.deleteButton} onClick={handleDeleteClick}>
+          <button style={styles.deleteButton} onClick={handleDelete}>
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
@@ -2416,180 +2421,13 @@ const ReleasedBlood = () => {
         </div>
       )}
 
-      {/* Confirm Delete Modal */}
-      {showConfirmDeleteModal && (
-        <div
-          style={styles.modalOverlay}
-          onClick={() => setShowConfirmDeleteModal(false)}
-        >
-          <div style={styles.restoreModal} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.modalHeader}>
-              <div style={styles.modalTitleSection}>
-                <h3 style={styles.modalTitle}>Confirm Delete</h3>
-                <p style={styles.modalSubtitle}>Review items before deletion</p>
-              </div>
-              <button
-                style={styles.modalCloseButton}
-                onClick={() => setShowConfirmDeleteModal(false)}
-              >
-                ×
-              </button>
-            </div>
-
-            <div style={styles.modalContent}>
-              <div
-                style={{
-                  backgroundColor: "#fef2f2",
-                  border: "1px solid #ef4444",
-                  borderRadius: "8px",
-                  padding: "16px",
-                  marginBottom: "24px",
-                }}
-              >
-                <h4
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: "600",
-                    color: "#991b1b",
-                    margin: "0 0 12px 0",
-                  }}
-                >
-                  Items to Delete ({bloodData.filter((item) => item.selected).length})
-                </h4>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
-                    gap: "12px",
-                    fontSize: "12px",
-                    fontWeight: "500",
-                    color: "#374151",
-                    marginBottom: "8px",
-                  }}
-                >
-                  <div>Serial ID</div>
-                  <div>Category</div>
-                  <div>Blood Type</div>
-                  <div>RH Factor</div>
-                  <div>Volume (mL)</div>
-                </div>
-                {bloodData
-                  .filter((item) => item.selected)
-                  .map((item, index) => (
-                    <div
-                      key={index}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
-                        gap: "12px",
-                        fontSize: "12px",
-                        color: "#6b7280",
-                        padding: "8px 0",
-                        borderTop: index > 0 ? "1px solid #e5e7eb" : "none",
-                      }}
-                    >
-                      <div style={{ fontWeight: "500", color: "#374151" }}>
-                        {item.serial_id}
-                      </div>
-                      <div>
-                        <span
-                          style={{
-                            padding: "2px 6px",
-                            ...getCategoryBadgeStyle(item.category),
-                            fontSize: "10px",
-                          }}
-                        >
-                          {getCategoryDisplayName(item.category)}
-                        </span>
-                      </div>
-                      <div>{item.type}</div>
-                      <div>{item.rhFactor}</div>
-                      <div>{item.volume}</div>
-                    </div>
-                  ))}
-                <div
-                  style={{
-                    marginTop: "12px",
-                    paddingTop: "12px",
-                    borderTop: "1px solid #ef4444",
-                    fontSize: "14px",
-                    fontWeight: "600",
-                    color: "#991b1b",
-                  }}
-                >
-                  Total Volume:{" "}
-                  {bloodData
-                    .filter((item) => item.selected)
-                    .reduce((sum, item) => sum + item.volume, 0)}{" "}
-                  mL
-                </div>
-              </div>
-
-              <div
-                style={{
-                  backgroundColor: "#fef2f2",
-                  border: "1px solid #ef4444",
-                  borderRadius: "8px",
-                  padding: "16px",
-                  display: "flex",
-                  gap: "12px",
-                  alignItems: "flex-start",
-                }}
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  fill="#ef4444"
-                  viewBox="0 0 20 20"
-                  style={{ flexShrink: 0, marginTop: "2px" }}
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <div>
-                  <p
-                    style={{
-                      fontSize: "14px",
-                      fontWeight: "600",
-                      color: "#991b1b",
-                      margin: "0 0 4px 0",
-                    }}
-                  >
-                    Confirm Delete Action
-                  </p>
-                  <p
-                    style={{
-                      fontSize: "13px",
-                      color: "#7f1d1d",
-                      margin: 0,
-                      lineHeight: "1.5",
-                    }}
-                  >
-                    These items will be permanently deleted from the Released Blood records. This action cannot be undone.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div style={styles.modalFooter}>
-              <button
-                type="button"
-                style={{
-                  ...styles.confirmButton,
-                  backgroundColor: "#ef4444",
-                }}
-                onClick={confirmDelete}
-              >
-                Confirm Delete (
-                {bloodData.filter((item) => item.selected).length} items)
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeleteConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={handleConfirmDelete}
+        itemCount={selectedCount}
+        itemName="released blood record"
+      />
     </div>
   );
 };

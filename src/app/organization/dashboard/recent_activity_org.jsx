@@ -234,6 +234,21 @@ const RecentActivityOrg = () => {
   // Group paginated activities by date
   const paginatedGroupedData = groupActivitiesByDate(paginatedActivities);
 
+  // Prevent duplicate date headers when a group is split across pages
+  if (currentPage > 1 && paginatedGroupedData.length > 0) {
+    const lastActivityOnPrevPage = allActivities[startIndex - 1];
+    const firstActivityOnThisPage = paginatedActivities[0];
+
+    if (lastActivityOnPrevPage && firstActivityOnThisPage) {
+      const prevDate = new Date(lastActivityOnPrevPage.created_at).toDateString();
+      const thisDate = new Date(firstActivityOnThisPage.created_at).toDateString();
+      if (prevDate === thisDate) {
+        // Mark the first group as a continuation so we can hide its header
+        paginatedGroupedData[0].isContinuation = true;
+      }
+    }
+  }
+
   const styles = {
     container: {
       padding: "24px",
@@ -797,7 +812,7 @@ const RecentActivityOrg = () => {
         ) : (
           paginatedGroupedData.map((dateGroup, dateIndex) => (
             <div key={dateGroup.date}>
-              <h3 style={styles.dateHeader}>{dateGroup.date}</h3>
+              {!dateGroup.isContinuation && <h3 style={styles.dateHeader}>{dateGroup.date}</h3>}
               <div style={styles.activityList}>
                 {dateGroup.activities.map((activity, activityIndex) => (
                   <div

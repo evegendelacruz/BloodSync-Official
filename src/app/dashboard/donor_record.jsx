@@ -3,6 +3,7 @@ import { Plus, Filter, Search } from "lucide-react";
 import Loader from "../../components/Loader";
 import SyncConfirmModal from "../../components/SyncConfirmModal";
 import SyncSuccessModal from "../../components/SyncSuccessModal";
+import DeleteConfirmationModal from "../../components/DeleteConfirmationModal";
 
 const DonorRecord = () => {
   const [donorData, setDonorData] = useState([]);
@@ -25,6 +26,7 @@ const DonorRecord = () => {
   const [showApproveSyncSuccessModal, setShowApproveSyncSuccessModal] = useState(false);
   const [showApproveLoader, setShowApproveLoader] = useState(false);
   const [approvedDonorCount, setApprovedDonorCount] = useState(0);
+  const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   const sortDropdownRef = useRef(null);
   const filterDropdownRef = useRef(null);
   const [formData, setFormData] = useState({
@@ -209,19 +211,27 @@ const DonorRecord = () => {
     );
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
+    const selectedIds = donorData.filter((item) => item.selected).map((item) => item.id);
+    if (selectedIds.length > 0) {
+      setDeleteModalOpen(true);
+    }
+  };
+
+const handleConfirmDelete = async () => {
     try {
       if (!window.electronAPI) {
         setError("Electron API not available");
         return;
       }
-      const selectedIds = donorData.filter((item) => item.selected).map((item) => item.id);
+
+      // Get full items
+      const selectedDonors = donorData.filter((item) => item.selected);
+      const selectedIds = selectedDonors.map((item) => item.id);
+      
       if (selectedIds.length === 0) return;
-      const confirmed = window.confirm(`Are you sure you want to delete ${selectedIds.length} donor(s)?`);
-      if (!confirmed) return;
 
       // Get donor information before deletion for activity log
-      const selectedDonors = donorData.filter((item) => item.selected);
       const donorIdsList = selectedDonors.map((donor) => donor.donorId);
 
       await window.electronAPI.deleteDonorRecords(selectedIds);
@@ -247,10 +257,22 @@ const DonorRecord = () => {
       }
 
       await loadDonorData();
+      clearAllSelection(); // <-- Added this from platelet.jsx for good practice
       setError(null);
+
+      // --- START: This is the new code you need ---
+      setSuccessMessage({
+        title: "Deleted Successfully!",
+        description: `${selectedIds.length} donor record(s) have been deleted.`,
+      });
+      setShowSuccessModal(true);
+      // --- END: This is the new code you need ---
+
     } catch (err) {
       console.error("Error deleting donors:", err);
       setError("Failed to delete donors");
+    } finally {
+      setDeleteModalOpen(false);
     }
   };
 
@@ -1013,6 +1035,14 @@ const DonorRecord = () => {
         isOpen={showApproveSyncSuccessModal}
         onClose={() => setShowApproveSyncSuccessModal(false)}
         donorCount={approvedDonorCount}
+      />
+
+      <DeleteConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={handleConfirmDelete}
+        itemCount={selectedCount}
+        itemName="donor record"
       />
 
       {showApproveLoader && <Loader />}

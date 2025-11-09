@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import Loader from "../../../components/Loader";
+import Loader from "../../../components/loader";
+import DeleteConfirmationModal from "../../../components/DeleteConfirmationModal";
 
 const RedBloodCell = () => {
   const [bloodData, setBloodData] = useState([]);
@@ -13,6 +14,7 @@ const RedBloodCell = () => {
   const [showReleaseModal, setShowReleaseModal] = useState(false);
   const [showReleaseDetailsModal, setShowReleaseDetailsModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState({
     title: "",
     description: "",
@@ -403,7 +405,16 @@ const RedBloodCell = () => {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
+    const selectedIds = bloodData.filter((item) => item.selected).map((item) => item.id);
+    if (selectedIds.length > 0) {
+      setDeleteModalOpen(true);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    setDeleteModalOpen(false);
+    setSaving(true);
     try {
       if (!window.electronAPI) {
         setError("Electron API not available");
@@ -415,11 +426,6 @@ const RedBloodCell = () => {
       const serialNumbers = selectedItems.map((item) => item.serial_id);
 
       if (selectedIds.length === 0) return;
-
-      const confirmed = window.confirm(
-        `Are you sure you want to delete ${selectedIds.length} item(s)?`
-      );
-      if (!confirmed) return;
 
       await window.electronAPI.deleteBloodStock(selectedIds);
 
@@ -446,9 +452,16 @@ const RedBloodCell = () => {
       await loadBloodData();
       clearAllSelection();
       setError(null);
+      setSuccessMessage({
+        title: "Deleted Successfully!",
+        description: `${selectedIds.length} blood stock record(s) have been deleted.`,
+      });
+      setShowSuccessModal(true);
     } catch (err) {
       console.error("Error deleting items:", err);
       setError("Failed to delete items");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -846,7 +859,9 @@ const RedBloodCell = () => {
       alignItems: "center",
       gap: "8px",
       padding: "8px 16px",
-      border: "1px solid #d1d5db",
+      borderWidth: "1px",
+      borderStyle: "solid",
+      borderColor: "#d1d5db",
       borderRadius: "6px",
       backgroundColor: "white",
       cursor: "pointer",
@@ -1962,6 +1977,14 @@ const RedBloodCell = () => {
           </button>
         </div>
       )}
+
+      <DeleteConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={handleConfirmDelete}
+        itemCount={selectedCount}
+        itemName="blood stock record"
+      />
 
       {/* SUCCESS MODAL */}
       {showSuccessModal && (

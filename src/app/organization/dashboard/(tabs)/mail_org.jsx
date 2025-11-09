@@ -77,7 +77,7 @@ const MailOrg = () => {
             avatarColor: '#165C3C',
             subject: 'Partnership Request Approved - Blood Drive at Community Center',
             preview: 'Your partnership request has been approved by the Regional Blood Center...',
-            body: 'Dear Partner,\n\nWe are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center.\n\nRequest Details:\nTitle: Blood Drive at Community Center\nRequestor: John Doe\nDate Submitted: 10/14/2025\nStatus: APPROVED\n\nNext Steps:\n- Our team will contact you shortly to coordinate the blood drive details.\n- Please prepare the necessary documentation and venue arrangements.\n- Check your calendar for the scheduled appointment.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team',
+            body: 'Dear Partner,\n\nWe are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center.\n\nNext Steps:\n- Our team will contact you shortly to coordinate the blood drive details.\n- Please prepare the necessary documentation and venue arrangements.\n- Check your calendar for the scheduled appointment.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team',
             timestamp: new Date(Date.now() - 2 * 60 * 60000),
             read: false,
             starred: false,
@@ -94,7 +94,7 @@ const MailOrg = () => {
             avatarColor: '#165C3C',
             subject: 'Partnership Request Declined - Blood Drive at School',
             preview: 'Your partnership request has been declined by the Regional Blood Center...',
-            body: 'Dear Partner,\n\nWe regret to inform you that your partnership request has been DECLINED by the Regional Blood Center.\n\nRequest Details:\nTitle: Blood Drive at School\nRequestor: Jane Smith\nDate Submitted: 10/13/2025\nStatus: DECLINED\n\nReason for Decline:\nThe proposed venue does not meet our safety and accessibility standards. Additionally, the requested date conflicts with another scheduled event in the area.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team',
+            body: 'Dear Partner,\n\nWe regret to inform you that your partnership request has been DECLINED by the Regional Blood Center.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team',
             timestamp: new Date(Date.now() - 1 * 24 * 60 * 60000),
             read: true,
             starred: false,
@@ -112,7 +112,7 @@ const MailOrg = () => {
             avatarColor: '#165C3C',
             subject: 'Partnership Request Under Review - Company Blood Drive',
             preview: 'Your partnership request is under review by the Regional Blood Center...',
-            body: 'Dear Partner,\n\nYour partnership request is currently UNDER REVIEW by the Regional Blood Center. We will notify you once a decision has been made.\n\nRequest Details:\nTitle: Company Blood Drive\nRequestor: ABC Corporation\nDate Submitted: 10/14/2025\nStatus: PENDING\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team',
+            body: 'Dear Partner,\n\nYour partnership request is currently UNDER REVIEW by the Regional Blood Center. We will notify you once a decision has been made.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team',
             timestamp: new Date(Date.now() - 30 * 60000),
             read: false,
             starred: true,
@@ -182,19 +182,11 @@ const MailOrg = () => {
       '',
       statusMessage[notification.status] || 'This is an update regarding your partnership request.',
       '',
-      'Request Details:',
-      `Title: ${notification.requestInfo?.title || notification.title}`,
-      `Requestor: ${notification.requestInfo?.requestor || 'N/A'}`,
-      `Date Submitted: ${new Date(notification.timestamp).toLocaleDateString('en-US')}`,
-      `Status: ${notification.status.toUpperCase()}`,
+
       ''
     ];
 
-    if (notification.status === 'declined' && notification.decline_reason) {
-      lines.push('Reason for Decline:');
-      lines.push(notification.decline_reason);
-      lines.push('');
-    }
+
 
     if (notification.status === 'approved') {
       lines.push('Next Steps:');
@@ -204,10 +196,7 @@ const MailOrg = () => {
       lines.push('');
     }
 
-    if (notification.appointmentId) {
-      lines.push(`Related Appointment ID: ${notification.appointmentId}`);
-      lines.push('');
-    }
+
 
     lines.push('If you have any questions, please contact us at admin@regionalbloodcenter.org');
     lines.push('');
@@ -712,6 +701,32 @@ const MailOrg = () => {
                 <p key={index}>{line || '\u00A0'}</p>
               ))}
             </div>
+
+              {/* --- ADD THIS NEW BLOCK (for Org inbox) --- */}
+            {selectedMail.requestInfo && (selectedMail.requestInfo.title || selectedMail.requestInfo.requestor) && (
+              <div className="request-details-box">
+                <h4 className="request-details-title">Request Details:</h4>
+                <div className="request-detail-item">
+                  <span className="request-detail-label">Title:</span>
+                  <span className="request-detail-value">{selectedMail.requestInfo.title}</span>
+                </div>
+                <div className="request-detail-item">
+                  <span className="request-detail-label">Requestor:</span>
+                  <span className="request-detail-value">{selectedMail.requestInfo.requestor} – ({selectedMail.requestInfo.organization})</span>
+                </div>
+                <div className="request-detail-item">
+                  <span className="request-detail-label">Date Submitted:</span>
+                  <span className="request-detail-value">
+                    {new Date(selectedMail.requestInfo.dateSubmitted).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: '2-digit',
+                      day: '2-digit'
+                    })}
+                  </span>
+                </div>
+              </div>
+            )}
+            {/* --- END OF NEW BLOCK --- */}
 
             {/* Decline Reason Display */}
             {selectedMail.status === 'declined' && selectedMail.declineReason && (
@@ -1290,6 +1305,48 @@ const MailOrg = () => {
         .mail-detail-body p {
           margin: 0 0 12px 0;
         }
+
+        /* --- ADD THIS NEW CSS --- */
+        .request-details-box {
+          margin-top: 24px;
+          margin-bottom: 24px;
+          padding: 20px;
+          background-color: #f8f9fa;
+          border-radius: 8px;
+          border: 1px solid #e5e7eb;
+        }
+
+        .request-details-title {
+          font-size: 16px;
+          font-weight: 600;
+          color: #111827;
+          margin: 0 0 16px 0;
+          font-family: 'Barlow', sans-serif;
+        }
+
+        .request-detail-item {
+          display: grid;
+          grid-template-columns: 120px 1fr;
+          gap: 8px;
+          font-size: 14px;
+          font-family: 'Barlow', sans-serif;
+          margin-bottom: 10px;
+        }
+
+        .request-detail-item:last-child {
+          margin-bottom: 0;
+        }
+
+        .request-detail-label {
+          font-weight: 500;
+          color: #6b7280;
+        }
+
+        .request-detail-value {
+          font-weight: 500;
+          color: #374151;
+        }
+        /* --- END OF NEW CSS --- */
 
         .decline-reason-display {
           margin-top: 24px;

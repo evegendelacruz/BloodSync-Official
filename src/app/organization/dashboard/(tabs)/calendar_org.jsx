@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Filter, Search, Calendar, ChevronLeft, ChevronRight, Clock, MapPin, Users } from 'lucide-react';
 
-const CalendarOrg = () => {
+const CalendarPage = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -23,50 +23,72 @@ const CalendarOrg = () => {
   const loadAppointments = async () => {
     try {
       setIsLoading(true);
-      
+
       if (typeof window !== 'undefined' && window.electronAPI) {
-        // Get current user from localStorage
-        const currentUser = JSON.parse(localStorage.getItem('currentOrgUser'));
-        const organizationName = currentUser?.fullName;
+        // 1. Load regular appointments from organization DB
+        const appointmentsData = await window.electronAPI.getAllAppointments();
 
-        if (!organizationName) {
-          console.error("Organization name not found. User might not be logged in.");
-          setIsLoading(false);
-          return;
-        }
+        // 2. Load ALL partnership requests from RBC DB (pending, approved, declined)
+        //    (This is the part that was missing)
+        const partnershipRequests = await window.electronAPI.getAllPartnershipRequests(null);
+        
+        // 3. Transform partnership requests to appointment format
+        const partnershipAppointments = partnershipRequests.map(req => {
+          let appointmentStatus;
+          if (req.status === 'approved') {
+            // 'approved' from RBC side becomes 'scheduled' on Org side
+            appointmentStatus = 'scheduled'; 
+          } else if (req.status === 'declined') {
+            appointmentStatus = 'declined';
+          } else {
+            appointmentStatus = 'pending'; // 'pending' from RBC is 'pending' on Org
+          }
 
-        // Load ALL partnership requests from RBC DB
-        const partnershipRequests = await window.electronAPI.getAllPartnershipRequests();
+          return {
+            id: `partnership-${req.id}`,
+            partnershipRequestId: req.id,
+            title: `Blood Drive Partnership - ${req.organization_name}`,
+            date: req.event_date,
+            time: req.event_time,
+            type: 'blood-donation',
+            notes: `Partnership event with ${req.organization_name} (${req.organization_barangay})`,
+            status: appointmentStatus,
+            partnershipStatus: req.status, // Keep original partnership status for reference
+            contactInfo: {
+              lastName: req.organization_name,
+              email: req.contact_email,
+              phone: req.contact_phone,
+              address: req.event_address || req.organization_barangay,
+              type: 'organization'
+            }
+          };
+        });
 
-        // Filter for approved requests belonging to this organization
-        const organizationPartnerships = partnershipRequests.filter(req => 
-          req.organization_name === organizationName && req.status === 'approved'
-        );
+        // 4. Combine both appointment sources
+        setAppointments([...appointmentsData, ...partnershipAppointments]);
 
-        // Transform partnership requests to appointment format
-        const partnershipAppointments = organizationPartnerships.map(req => ({
-          id: `partnership-${req.id}`,
-          title: `Blood Drive Partnership - ${req.organization_name}`,
-          date: req.event_date,
-          time: req.event_time,
-          type: 'blood-drive',
-          notes: `Partnership event with ${req.organization_name} (${req.organization_barangay})`,
-          status: 'confirmed',
-          contactInfo: {
-            lastName: req.organization_name,
-            email: req.email,
-            phone: req.contact_number,
-            address: req.organization_address,
-            type: req.organization_type
-          },
-          partnershipStatus: req.status,
-          partnershipRequestId: req.id,
-        }));
-
-        setAppointments(partnershipAppointments);
       } else {
         console.warn('ElectronAPI not available - using sample data');
-        setAppointments([]); // No sample data in production
+        // Sample data for browser mode (your original sample data)
+        setAppointments([
+          {
+            id: 1,
+            title: 'Blood Drive Partnership - Santos',
+            date: '2025-10-21',
+            time: '10:00',
+            type: 'blood-donation',
+            notes: 'Partnership meeting for community blood drive',
+            status: 'confirmed',
+            contactInfo: {
+              lastName: 'Santos',
+              email: 'santos@sanroque.gov.ph',
+              phone: '+63 912 345 6789',
+              address: 'Barangay San Roque, Cagayan de Oro',
+              type: 'barangay'
+            }
+          },
+          // ... (rest of your original sample data) ...
+        ]);
       }
     } catch (error) {
       console.error('Error loading appointments:', error);
@@ -85,23 +107,24 @@ const CalendarOrg = () => {
     return `${hour12}:${minutes || '00'} ${ampm}`;
   };
 
-  const events = appointments
-    .filter(apt => apt.status === 'approved' || apt.status === 'confirmed')
-    .map(apt => ({
-      id: apt.id || apt.appointment_id,
-      title: apt.title || `Blood Drive Partnership - ${apt.contactInfo?.lastName || 'Unknown'}`,
-      date: apt.date,
-      time: formatTime(apt.time),
-      location: apt.contactInfo?.address || 'Location TBD',
-      type: 'blood-drive',
-      participants: 0,
-      status: apt.status === 'approved' ? 'confirmed' : apt.status
-    }));
+  const events = appointments.map(apt => ({
+    id: apt.id || apt.appointment_id,
+    title: apt.title || `Blood Drive Partnership - ${apt.contactInfo?.lastName || 'Unknown'}`,
+    date: apt.date,
+    time: formatTime(apt.time),
+    location: apt.contactInfo?.address || 'Location TBD',
+    type: apt.type || 'blood-drive',
+    participants: 0,
+    status: apt.status || 'scheduled',
+    partnershipStatus: apt.partnershipStatus, // Keep original partnership status
+    partnershipRequestId: apt.partnershipRequestId, // Keep partnership ID for reference
+    contactInfo: apt.contactInfo
+  }));
 
   const getMonthEvents = () => {
     const currentMonth = currentDate.getMonth();
     const currentYear = currentDate.getFullYear();
-    
+
     return events.filter(event => {
       const eventDate = new Date(event.date + 'T00:00:00');
       return eventDate.getMonth() === currentMonth && eventDate.getFullYear() === currentYear;
@@ -114,12 +137,12 @@ const CalendarOrg = () => {
     const firstDay = new Date(year, month, 1);
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const startingDayOfWeek = firstDay.getDay();
-    
+
     const prevMonth = new Date(year, month - 1, 0);
     const daysInPrevMonth = prevMonth.getDate();
-    
+
     const days = [];
-    
+
     // Previous month days
     for (let i = startingDayOfWeek - 1; i >= 0; i--) {
       const day = daysInPrevMonth - i;
@@ -130,18 +153,18 @@ const CalendarOrg = () => {
         events: []
       });
     }
-    
+
     // Current month days
     const today = new Date();
     const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
-    
+
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month, day);
       // Format date as YYYY-MM-DD in local timezone
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const dayEvents = events.filter(event => event.date === dateStr);
       const isToday = isCurrentMonth && day === today.getDate();
-      
+
       days.push({
         day,
         isCurrentMonth: true,
@@ -150,11 +173,11 @@ const CalendarOrg = () => {
         isToday
       });
     }
-    
+
     // Next month days to complete the grid
     const totalCells = Math.ceil((startingDayOfWeek + daysInMonth) / 7) * 7;
     const remainingCells = totalCells - (startingDayOfWeek + daysInMonth);
-    
+
     for (let day = 1; day <= remainingCells; day++) {
       days.push({
         day,
@@ -163,7 +186,7 @@ const CalendarOrg = () => {
         events: []
       });
     }
-    
+
     return days;
   };
 
@@ -172,6 +195,32 @@ const CalendarOrg = () => {
     newDate.setMonth(newDate.getMonth() + direction);
     setCurrentDate(newDate);
   };
+
+  // ADD THIS ENTIRE FUNCTION
+  const getEventStatusColor = (status, dateString) => {
+    // Check if event is finished (in the past)
+    if (dateString) {
+      const eventDate = new Date(dateString + 'T23:59:59'); // Set to end of day
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Set to start of today
+
+      // If the event date is before today AND it was confirmed/scheduled
+      if (eventDate < today && (status === 'confirmed' || status === 'scheduled')) {
+        return '#10b981'; // Green (Finished)
+      }
+    }
+    
+    // Original status logic
+    switch (status) {
+      case 'confirmed': return '#10b981'; // Green (Approved)
+      case 'scheduled': return '#3b82f6'; // Blue (Scheduled by org)
+      case 'pending': return '#f59e0b'; // Orange (Pending)
+      case 'cancelled': return '#ef4444'; // Red (Cancelled)
+      case 'declined': return '#ef4444'; // Red (Declined)
+      default: return '#6b7280'; // Gray (default)
+    }
+  };
+  // END OF NEW FUNCTION
 
   const getEventTypeColor = (type) => {
     switch (type) {
@@ -183,19 +232,48 @@ const CalendarOrg = () => {
     }
   };
 
+  // ADD THIS ENTIRE FUNCTION
+  const getEventDisplay = (status, dateString) => {
+    const eventDate = new Date(dateString + 'T00:00:00'); // Use T00:00:00 to avoid timezone issues
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Check for finished events (must be in the past AND approved/scheduled)
+    if (eventDate < today && (status === 'confirmed' || status === 'approved' || status === 'scheduled')) {
+      return { text: 'Finished', className: 'finished' };
+    }
+    
+    // Check for upcoming/pending
+    switch (status) {
+      case 'confirmed':
+      case 'approved':
+      case 'scheduled':
+        return { text: 'Upcoming', className: 'upcoming' };
+      case 'pending':
+        return { text: 'Pending', className: 'pending' };
+      case 'declined':
+      case 'cancelled':
+        return { text: 'Declined', className: 'declined' };
+      default:
+        // Fallback for any other status
+        return { text: status, className: 'default' };
+    }
+  };
+  // END OF NEW FUNCTION
+
   const formatDate = (dateStr) => {
     const date = new Date(dateStr + 'T00:00:00');
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
     });
   };
 
   const monthEvents = getMonthEvents();
 
   return (
-    <div className="calendar-org-content">
+    <div className="calendar-content">
       {/* Header */}
       <div className="calendar-header">
         <h1 className="calendar-title">Regional Blood Center</h1>
@@ -252,7 +330,7 @@ const CalendarOrg = () => {
                 </div>
               ))}
             </div>
-            
+
             <div className="calendar-days">
               {renderCalendarDays().map((day, index) => (
                 <div
@@ -264,13 +342,14 @@ const CalendarOrg = () => {
                   {day.events && day.events.length > 0 && (
                     <div className="events-container">
                       {day.events.map(event => {
-                        const colors = getEventTypeColor(event.type);
+                        // Use the new function to get color based on status and date
+                        const statusColor = getEventStatusColor(event.status, event.date);
                         return (
                           <div
                             key={event.id}
                             className="day-event"
                             style={{
-                              backgroundColor: colors.border
+                              backgroundColor: statusColor
                             }}
                             title={`${event.title} - ${event.time}`}
                             onClick={(e) => {
@@ -299,7 +378,7 @@ const CalendarOrg = () => {
             {isLoading ? (
               <div className="no-events">Loading appointments...</div>
             ) : monthEvents.length === 0 ? (
-              <div className="no-events">No confirmed appointments for this month</div>
+              <div className="no-events">No events for this month</div>
             ) : (
               monthEvents.map(event => {
                 const colors = getEventTypeColor(event.type);
@@ -307,15 +386,15 @@ const CalendarOrg = () => {
                   <div
                     key={event.id}
                     className="event-card"
-                    style={{ borderLeft: `4px solid ${colors.border}` }}
+                    style={{ borderLeft: `4px solid ${getEventStatusColor(event.status, event.date)}` }}
                   >
                     <div className="event-card-header">
                       <h4 className="event-title">{event.title}</h4>
-                      <span className={`event-status status-${event.status}`}>
-                        {event.status}
+                      <span className={`event-status status-${getEventDisplay(event.status, event.date).className}`}>
+                        {getEventDisplay(event.status, event.date).text}
                       </span>
                     </div>
-                    
+
                     <div className="event-details">
                       <div className="event-detail">
                         <Calendar size={14} />
@@ -350,21 +429,21 @@ const CalendarOrg = () => {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">{selectedEvent.title}</h3>
-              <button 
+              <button
                 className="modal-close"
                 onClick={() => setSelectedEvent(null)}
               >
                 ×
               </button>
             </div>
-            
+
             <div className="modal-body">
               <div className="modal-status">
                 <span className={`event-status status-${selectedEvent.status}`}>
                   {selectedEvent.status}
                 </span>
               </div>
-              
+
               <div className="modal-details">
                 <div className="modal-detail">
                   <Calendar size={16} />
@@ -390,8 +469,8 @@ const CalendarOrg = () => {
         </div>
       )}
 
-      <style jsx>{`
-        .calendar-org-content {
+      <style>{`
+        .calendar-content {
           padding: 24px;
           background-color: #f9fafb;
           min-height: auto;
@@ -731,15 +810,47 @@ const CalendarOrg = () => {
           color: #166534;
         }
 
+        .status-scheduled {
+          background-color: #dbeafe;
+          color: #1e40af;
+        }
+
         .status-pending {
           background-color: #fef3c7;
           color: #92400e;
+        }
+
+        .status-cancelled {
+          background-color: #fee2e2;
+          color: #991b1b;
         }
 
         .status-urgent {
           background-color: #fee2e2;
           color: #991b1b;
         }
+
+        /* --- ADD THESE NEW STYLES --- */
+        .status-upcoming {
+          background-color: #dbeafe; /* Blue */
+          color: #1e40af;
+        }
+
+        .status-finished {
+          background-color: #dcfce7; /* Green */
+          color: #166534;
+        }
+        
+        .status-declined {
+          background-color: #fee2e2; /* Red */
+          color: #991b1b;
+        }
+        
+        .status-default {
+          background-color: #f3f4f6; /* Gray */
+          color: #4b5563;
+        }
+        /* --- END OF NEW STYLES --- */
 
         .event-details {
           display: flex;
@@ -904,7 +1015,7 @@ const CalendarOrg = () => {
         }
 
         @media (max-width: 768px) {
-          .calendar-org-content {
+          .calendar-content {
             padding: 16px;
           }
 
@@ -960,4 +1071,4 @@ const CalendarOrg = () => {
   );
 };
 
-export default CalendarOrg;
+export default CalendarPage;

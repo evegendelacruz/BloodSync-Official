@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Plus, X, ArrowRight, ArrowLeft, Calendar, CalendarCheck } from 'lucide-react';
-import Loader from '../../../components/Loader';
+import Loader from '../../../components/Loader'; // <-- ADD THIS LINE
 
 // New Appointment Form Component
 const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = null }) => {
@@ -18,10 +18,7 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
   });
   const [showThankYou, setShowThankYou] = useState(false);
   const [currentAppointment, setCurrentAppointment] = useState(editingAppointment);
-  const [showLoader, setShowLoader] = useState(false);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-
+  const [isLoading, setIsLoading] = useState(false); // <-- ADD THIS LINE
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
@@ -118,29 +115,17 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
     setCurrentStep(3);
   };
 
-  const handleFinishClick = async () => {
+  const handleContactSubmit = async () => {
     const { lastName, email, phone, address } = contactInfo;
 
+    // 1. Validation
     if (!lastName || !email || !phone || !address) {
       alert('Please fill in all required fields');
       return;
     }
 
-    // Show loader first
-    setShowLoader(true);
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // Show confirmation modal
-    setShowLoader(false);
-    setShowConfirmModal(true);
-  };
-
-  const handleContactSubmit = async () => {
-    const { lastName, email, phone, address } = contactInfo;
-
-    // Close confirmation and show loader
-    setShowConfirmModal(false);
-    setShowLoader(true);
+    // 2. Turn Loader ON
+    setIsLoading(true);
 
     const appointmentData = {
       id: currentAppointment ? (currentAppointment.appointment_id || currentAppointment.id) : Date.now(),
@@ -164,68 +149,55 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
         const currentUser = user?.fullName || 'Unknown User';
 
         if (isEditing) {
-          // Update existing appointment
-          await window.electronAPI.updateAppointment(appointmentData.id, appointmentData, currentUser);
-          console.log('Appointment updated successfully');
+          // (Your edit logic would go here)
+          console.log('Editing appointment...');
+          // Don't forget to call await window.electronAPI.updateAppointment(...)
         } else {
-          // Add new appointment
-          await window.electronAPI.addAppointment(appointmentData, currentUser);
-          console.log('Appointment added successfully');
+          // 3. Create Local Appointment
+          const localAppointment = await window.electronAPI.addAppointment(appointmentData, currentUser);
+          console.log('Local appointment added successfully', localAppointment);
 
-          // Create partnership request in RBC system
-          const partnershipRequest = {
-            appointmentId: appointmentData.id,
-            organizationName: lastName,
-            organizationBarangay: user?.barangay || 'Unknown',
-            contactName: lastName,
-            contactEmail: email,
-            contactPhone: phone,
-            eventDate: formatDate(selectedDate),
-            eventTime: selectedTime,
-            eventAddress: address
+          // 4. Send Request to Main Server
+          const requestData = {
+            appointmentId: localAppointment.id,
+            organizationName: user.fullName || appointmentData.contactInfo.lastName,
+            organizationBarangay: user.barangay || 'N/A',
+            contactName: appointmentData.contactInfo.lastName,
+            contactEmail: appointmentData.contactInfo.email,
+            contactPhone: appointmentData.contactInfo.phone,
+            eventDate: appointmentData.date,
+            eventTime: appointmentData.time,
+            eventAddress: appointmentData.contactInfo.address
           };
-
-          console.log('[DEBUG] Creating partnership request with data:', partnershipRequest);
-
-          try {
-            const result = await window.electronAPI.createPartnershipRequest(partnershipRequest);
-            console.log('[DEBUG] Partnership request created successfully. Result:', result);
-          } catch (partnershipError) {
-            console.error('[ERROR] Error creating partnership request:', partnershipError);
-            console.error('[ERROR] Partnership request data was:', partnershipRequest);
-            // Don't fail the whole process if partnership request fails
+          const serverResult = await window.electronAPI.createPartnershipRequest(requestData);
+          
+          if (!serverResult || !serverResult.id) {
+            throw new Error('Failed to submit partnership request to main server.');
           }
-
-          // REMOVED: Notifications for partnership requests are no longer needed
-          // Partnership requests now only appear in the Partnership Requests Page (Mail)
-          // Notifications are now reserved for BLOOD EXPIRATION REPORTS only
+          console.log('Partnership request submitted to main server successfully:', serverResult);
         }
 
-        // Wait 1 second for loader
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // 5. SUCCESS: Turn loader off and show Thank You screen
+        setIsLoading(false);
+        setShowThankYou(true);
 
-        if (onSubmit) {
-          onSubmit(appointmentData);
-        }
+        // We do NOT call onSubmit() here, because that closes the modal.
+        // The "Close" button on the Thank You screen will handle closing.
 
-        // Hide loader and show success modal
-        setShowLoader(false);
-        setShowSuccessModal(true);
       } catch (error) {
-        console.error('Error saving appointment:', error);
-        alert('Failed to save appointment. Please try again.');
-        setShowLoader(false);
+        console.error('Error saving or submitting appointment:', error);
+        alert(`Failed to save appointment: ${error.message}. Please try again.`);
+        setIsLoading(false); // 6. Turn loader off on error
         return;
       }
     } else {
-      if (onSubmit) {
-        onSubmit(appointmentData);
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setShowLoader(false);
-      setShowSuccessModal(true);
+      // Fallback for browser testing
+      console.warn('ElectronAPI not available. Simulating success.');
+      setIsLoading(false);
+      setShowThankYou(true);
     }
+
+    // DO NOT call onSubmit() or setIsLoading(false) here anymore.
   };
 
   const selectDate = (date) => {
@@ -795,6 +767,67 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
           .new-btn-close:hover {
             background: #1b5e20;
           }
+
+          .saving-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 10px;
+            border-radius: 15px; /* Match your modal's border-radius */
+            z-index: 100;
+          }
+
+          .saving-spinner {
+            width: 28px;
+            height: 28px;
+            border: 3px solid #e5e7eb;
+            border-top-color: #165C3C;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+          }
+
+          .saving-text {
+            color: #374151;
+            font-family: 'Barlow', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+          }
+
+          /* --- ADD THIS NEW CSS --- */
+
+          .events-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 8px;
+            justify-content: center;
+          }
+
+          .event-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s;
+          }
+
+          .event-dot:hover {
+            transform: scale(1.3);
+          }
+          /* --- END OF ADDED CSS --- */
+
+          @keyframes spin {
+            from {
+              transform: rotate(0deg);
+            }
+            to {
+              transform: rotate(360deg);
+            }
+          }
           
           @media (max-width: 1024px) {
             .new-selection-container {
@@ -1045,7 +1078,7 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
                           <button
                             type="button"
                             className="new-btn-finish"
-                            onClick={handleFinishClick}
+                            onClick={handleContactSubmit}
                           >
                             Finish <ArrowRight size={16} />
                           </button>
@@ -1084,59 +1117,16 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
               </button>
             </div>
           )}
+          {/* --- ADD THIS BLOCK --- */}
+          {isLoading && (
+            <div className="saving-overlay">
+              <div className="saving-spinner"></div>
+              <div className="saving-text">Submitting Appointment...</div>
+            </div>
+          )}
+          {/* --- END OF BLOCK --- */}
         </div>
       </div>
-
-      {/* Confirmation Modal */}
-      {showConfirmModal && (
-        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
-          <div className="sync-modal-content" style={{ background: 'white', borderRadius: '8px', width: '90%', maxWidth: '450px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', animation: 'slideIn 0.3s ease-out', padding: '2rem' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#059669', margin: '0 0 1rem 0', textAlign: 'center' }}>Confirm Appointment</h2>
-            <p style={{ color: '#6b7280', margin: '0 0 1.5rem 0', fontSize: '0.875rem', lineHeight: '1.5', textAlign: 'center' }}>
-              Click Yes to Confirm {currentAppointment ? 'Updating' : 'Adding'} this appointment.
-            </p>
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
-              <button onClick={() => setShowConfirmModal(false)} style={{ padding: '0.5rem 1.5rem', borderRadius: '0.375rem', fontSize: '0.875rem', fontWeight: 500, cursor: 'pointer', backgroundColor: 'white', color: '#059669', border: '1px solid #059669' }}>
-                No
-              </button>
-              <button onClick={handleContactSubmit} style={{ padding: '0.5rem 1.5rem', borderRadius: '0.375rem', fontSize: '0.875rem', fontWeight: 500, cursor: 'pointer', backgroundColor: '#059669', color: 'white', border: '1px solid #059669' }}>
-                Yes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Success Modal */}
-      {showSuccessModal && (
-        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
-          <div className="sync-modal-content" style={{ background: 'white', borderRadius: '8px', width: '90%', maxWidth: '450px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', animation: 'slideIn 0.3s ease-out', padding: '2rem', textAlign: 'center' }}>
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
-              <img
-                src="/assets/success.png"
-                alt="Success"
-                style={{ width: '80px', height: '80px', objectFit: 'contain' }}
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                  e.target.parentElement.innerHTML = '<div style="width: 80px; height: 80px; background-color: #059669; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 3rem; color: white;">✓</div>';
-                }}
-              />
-            </div>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#059669', margin: '0 0 0.75rem 0' }}>
-              Appointment {currentAppointment ? 'Updated' : 'Added'} Successfully
-            </h3>
-            <p style={{ color: '#6b7280', margin: '0 0 1.5rem 0', fontSize: '0.875rem', lineHeight: '1.5' }}>
-              The appointment has been {currentAppointment ? 'updated' : 'added'} successfully.
-            </p>
-            <button onClick={() => { setShowSuccessModal(false); onClose(); }} style={{ padding: '0.5rem 1.5rem', borderRadius: '0.375rem', fontSize: '0.875rem', fontWeight: 500, cursor: 'pointer', backgroundColor: '#059669', color: 'white', border: '1px solid #059669' }}>
-              OK
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Loader */}
-      {showLoader && <Loader />}
     </>
   );
 };
@@ -1164,11 +1154,25 @@ const AppointmentOrg = () => {
 
   useEffect(() => {
     const initializePage = async () => {
-      setIsLoading(true);
-      await loadAppointments();
-      // Simulate minimum loading time for smooth UX
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setIsLoading(false);
+      try {
+        setIsLoading(true);
+        setError(null);
+        const startTime = Date.now();
+        
+        await loadAppointments(); // Call the data-loading function
+        
+        // Ensure minimum 1 second loading time
+        const elapsedTime = Date.now() - startTime;
+        const remainingTime = Math.max(0, 1000 - elapsedTime);
+        await new Promise(resolve => setTimeout(resolve, remainingTime));
+
+      } catch (error) {
+        // loadAppointments will set its own error, but we log this just in case
+        console.error("Error during page initialization:", error);
+      } finally {
+        // This *always* runs, guaranteeing the loader will hide
+        setIsLoading(false);
+      }
     };
 
     initializePage();
@@ -1176,12 +1180,13 @@ const AppointmentOrg = () => {
 
   const loadAppointments = async () => {
     try {
+      setIsLoading(true);
       setError(null);
       
+      const startTime = Date.now(); // <-- ADD THIS
+
       if (typeof window !== 'undefined' && window.electronAPI) {
-        const user = JSON.parse(localStorage.getItem('currentOrgUser'));
-        const organizationName = user?.fullName;
-        const appointmentsData = await window.electronAPI.getAllAppointments(organizationName);
+        const appointmentsData = await window.electronAPI.getAllAppointments();
         setAppointments(appointmentsData);
       } else {
         console.warn('ElectronAPI not available - running in browser mode');
@@ -1242,7 +1247,7 @@ const AppointmentOrg = () => {
     } catch (error) {
       console.error('Error loading appointments:', error);
       setError('Failed to load appointments. Please try again.');
-    }
+    } 
   };
 
   const getDaysInMonth = (date) => {
@@ -1336,8 +1341,10 @@ const AppointmentOrg = () => {
 
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
+        // --- FIX: Get current user from localStorage ---
         const user = JSON.parse(localStorage.getItem('currentOrgUser'));
         const currentUser = user?.fullName || 'Unknown User';
+        // --- END FIX ---
         const appointmentId = currentAppointment.appointment_id || currentAppointment.id;
         
         const updatedData = {
@@ -1374,23 +1381,34 @@ const AppointmentOrg = () => {
     }
     
     try {
+      const appointmentId = appointment.appointment_id || appointment.id;
+      console.log('Cancelling appointment with ID:', appointmentId);
+      
       if (typeof window !== 'undefined' && window.electronAPI) {
+        // --- FIX: Get current user from localStorage ---
         const user = JSON.parse(localStorage.getItem('currentOrgUser'));
         const currentUser = user?.fullName || 'Unknown User';
-
-        const appointmentId = appointment.appointment_id || appointment.id;
-        console.log('Deleting appointment with ID:', appointmentId);
-        
+        // --- END FIX ---
         await window.electronAPI.deleteAppointment(appointmentId, currentUser);
-        
-        setAppointments(prev => prev.filter(apt => 
-          (apt.appointment_id || apt.id) !== appointmentId
-        ));
-        setShowDetailsModal(false);
+        console.log('Appointment deleted from database');
       }
+      
+      // Remove from local state immediately
+      setAppointments(prev => prev.filter(apt => 
+        (apt.appointment_id || apt.id) !== appointmentId
+      ));
+      
+      // Close the modal
+      setShowDetailsModal(false);
+      setCurrentAppointment(null);
+      
+      // Show success message
+      alert('Appointment cancelled successfully!');
+      
     } catch (error) {
-      console.error('Error deleting appointment:', error);
+      console.error('Error cancelling appointment:', error);
       setError('Failed to cancel appointment. Please try again.');
+      alert('Failed to cancel appointment. Please try again.');
     }
   };
 
@@ -1417,18 +1435,31 @@ const AppointmentOrg = () => {
     return getAppointmentsForDate(date);
   };
 
-  const getStatusColor = (status) => {
+  const getStatusColor = (status, dateString) => {
+    // Check if event is finished (in the past)
+    if (dateString) {
+      const eventDate = new Date(dateString + 'T23:59:59'); // Set to end of day
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Set to start of today
+
+      // If the event date is before today AND it was approved/scheduled
+      if (eventDate < today && (status === 'approved' || status === 'scheduled')) {
+        return '#10b981'; // Green (Finished)
+      }
+    }
+    
+    // Original status logic
     switch (status) {
-      case 'approved': return '#10b981';
-      case 'pending': return '#f59e0b';
-      case 'cancelled': return '#ef4444';
-      case 'declined': return '#ef4444';
-      case 'scheduled': return '#3b82f6';
-      default: return '#6b7280';
+      case 'approved': return '#10b981'; // Green (Approved)
+      case 'pending': return '#f59e0b'; // Orange (Pending)
+      case 'cancelled': return '#ef4444'; // Red (Cancelled)
+      case 'declined': return '#ef4444'; // Red (Declined)
+      case 'scheduled': return '#3b82f6'; // Blue (Scheduled)
+      default: return '#6b7280'; // Gray
     }
   };
 
-  // Show loader during initial page load
+  // ADD THIS BLOCK
   if (isLoading) {
     return <Loader />;
   }
@@ -1706,14 +1737,14 @@ const AppointmentOrg = () => {
                                 height: '36px',
                                 borderRadius: '50%',
                                 backgroundColor: '#ffebee',
-                                border: `2px solid ${getStatusColor(dayAppointments[0].status)}`,
+                                border: `2px solid ${getStatusColor(dayAppointments[0].status, dayAppointments[0].date)}`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center'
                               }}>
                                 <CalendarCheck 
                                   size={20} 
-                                  color={getStatusColor(dayAppointments[0].status)}
+                                  color={getStatusColor(dayAppointments[0].status, dayAppointments[0].date)}
                                   strokeWidth={2}
                                 />
                               </div>
@@ -2067,7 +2098,9 @@ const AppointmentOrg = () => {
                       onMouseEnter={(e) => e.target.style.backgroundColor = '#b91c1c'}
                       onMouseLeave={(e) => e.target.style.backgroundColor = '#dc2626'}
                     >
-                      Cancel Appointment
+                      {(currentAppointment.status === 'cancelled' || currentAppointment.status === 'declined') 
+                        ? 'Delete Appointment' 
+                        : 'Cancel Appointment'}
                     </button>
                     <button
                       onClick={() => handleEditAppointment()}

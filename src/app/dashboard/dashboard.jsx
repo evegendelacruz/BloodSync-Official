@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Calendar, Mail, Bell, User, RefreshCw, MoreVertical, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Mail, Bell, User, RefreshCw, MoreVertical, CheckCircle, XCircle, Clock, Calendar, MapPin } from "lucide-react";
 import SidePanel from "../../components/SidePanel";
 import Loader from "../../components/Loader";
 
@@ -20,7 +20,7 @@ import PlasmaNC from "./non-conforming/plasma";
 import PlateletNC from "./non-conforming/platelet";
 import RedBloodCellNC from "./non-conforming/rbc";
 
-const DashboardContent = () => {
+const DashboardContent = ({ onNavigate }) => {
   const [bloodCounts, setBloodCounts] = useState({
     redBloodCell: 0,
     platelet: 0,
@@ -44,6 +44,7 @@ const DashboardContent = () => {
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [expiringStocks, setExpiringStocks] = useState([]);
   const [analyticsData, setAnalyticsData] = useState([]);
+  const [upcomingDrives, setUpcomingDrives] = useState([]); // <-- ADD THIS LINE
   const [loading, setLoading] = useState(true);
   const [hoveredPoint, setHoveredPoint] = useState(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
@@ -105,6 +106,32 @@ const DashboardContent = () => {
           console.error('Error fetching analytics:', analyticsError);
           setAnalyticsData([]);
         }
+
+        // --- ADD THIS NEW BLOCK ---
+        try {
+          // Fetch ALL partnership requests
+          const partnershipRequests = await window.electronAPI.getAllPartnershipRequests(null);
+          
+          const today = new Date();
+          today.setHours(0, 0, 0, 0); // Set to the beginning of today
+
+          // Filter for "Pending" events that are in the future (to match your calendar)
+          const upcoming = partnershipRequests
+            .filter(req => {
+              const eventDate = new Date(req.event_date + 'T00:00:00');
+              // This shows PENDING requests that are today or in the future
+              return (req.status === 'approved' || req.status === 'confirmed' || req.status === 'pending') && eventDate >= today;
+            })
+            .sort((a, b) => new Date(a.event_date) - new Date(b.event_date)) // Sort by the soonest date
+            .slice(0, 3); // Get the next 3 drives
+
+          setUpcomingDrives(upcoming);
+        } catch (driveError) {
+          console.error('Error fetching upcoming drives:', driveError);
+          setUpcomingDrives([]);
+        }
+        // --- END OF NEW BLOCK ---
+
       } catch (error) {
         console.error('Error fetching blood counts:', error);
       } finally {
@@ -152,6 +179,45 @@ const DashboardContent = () => {
 
     return { path: pathString, area: areaString, points, maxDonations };
   };
+
+  // --- ADD THIS ENTIRE FUNCTION ---
+  const getEventDisplay = (status, dateString) => {
+    const eventDate = new Date(dateString + 'T00:00:00'); 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Check for finished events (must be in the past AND approved/scheduled)
+    if (eventDate < today && (status === 'confirmed' || status === 'approved' || status === 'scheduled')) {
+      return { text: 'Finished', className: 'finished' };
+    }
+    
+    // Check for upcoming/pending
+    switch (status) {
+      case 'confirmed':
+      case 'approved':
+      case 'scheduled':
+        return { text: 'Upcoming', className: 'upcoming' };
+      case 'pending':
+        return { text: 'Pending', className: 'pending' }; // <-- This is what we want to show
+      case 'declined':
+      case 'cancelled':
+        return { text: 'Declined', className: 'declined' };
+      default:
+        return { text: status, className: 'default' };
+    }
+  };
+  // --- END OF NEW FUNCTION ---
+
+  // --- ADD THIS FUNCTION ---
+  const formatTime = (time) => {
+    if (!time) return '';
+    const [hours, minutes] = time.split(':');
+    const hour24 = parseInt(hours);
+    const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
+    const ampm = hour24 >= 12 ? 'PM' : 'AM';
+    return `${hour12}:${minutes || '00'} ${ampm}`;
+  };
+  // --- END OF NEW FUNCTION ---
 
   const chartData = generateChartPath();
 
@@ -408,6 +474,8 @@ const DashboardContent = () => {
       display: "flex",
       flexDirection: "column",
       gap: "0.75rem",
+      maxHeight: "150px", // <-- Set a max height
+      overflowY: "auto", // <-- Add a scrollbar when needed
     },
     driveItem: {
       padding: "0.75rem",
@@ -664,22 +732,154 @@ const DashboardContent = () => {
         {/* Upcoming Drive */}
         <div style={styles.dashboardCard}>
           <h3 style={styles.cardTitle}>Upcoming Drive</h3>
-          <p style={styles.cardSubtitle}>Month of March 2025</p>
+          <p style={styles.cardSubtitle}>Next 3 scheduled events</p>
           <div style={styles.upcomingDrives}>
-            <div style={styles.driveItem}>
-              <span style={styles.driveText}>CDO Scholarship Office: 2025-03-10</span>
-            </div>
-            <div style={styles.driveItem}>
-              <span style={styles.driveText}>Barangay Patag: 2025-03-11</span>
-            </div>
-            <div style={styles.seeMore}>
-              <button style={styles.seeMoreBtn}>See more ⌄</button>
-            </div>
+            
+            {/* --- REPLACLED BLOCK --- */}
+            {loading ? (
+              <div style={{ ...styles.driveText, color: '#6b7280' }}>Loading events...</div>
+            ) : upcomingDrives.length === 0 ? (
+              <div style={{ ...styles.driveText, color: '#6b7280', textAlign: 'center' }}>
+                No upcoming drives scheduled.
+              </div>
+            ) : (
+              upcomingDrives.map(event => {
+                const eventDisplay = getEventDisplay(event.status, event.event_date);
+                const eventDate = new Date(event.event_date + 'T00:00:00');
+                
+                return (
+                  <div
+                    key={event.id}
+                    className="event-card"
+                    style={{ borderLeftColor: getEventStatusColor(event.status, event.event_date) }}
+                  >
+                    <div className="event-card-header">
+                      <h4 className="event-title">{event.organization_name}</h4>
+                      <span className={`event-status status-${eventDisplay.className}`}>
+                        {eventDisplay.text}
+                      </span>
+                    </div>
+
+                    <div className="event-details">
+                      <div className="event-detail">
+                        <Calendar size={14} />
+                        <span>{eventDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                      </div>
+                      <div className="event-detail">
+                        <Clock size={14} />
+                        <span>{formatTime(event.event_time)}</span>
+                      </div>
+                      <div className="event-detail">
+                        <MapPin size={14} />
+                        <span>{event.event_address || event.organization_barangay}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+            {/* --- END OF REPLACED BLOCK --- */}
+
+          </div>
+          <div style={styles.seeMore}>
+            {/* This button now navigates to the calendar */}
+            <button 
+              style={styles.seeMoreBtn} 
+              onClick={() => onNavigate('calendar')}
+            >
+              See more ⌄
+            </button>
           </div>
         </div>
       </div>
 
       <style>{`
+        /* --- ADD THIS NEW CSS --- */
+        .event-card {
+          background: white;
+          border-radius: 10px;
+          padding: 20px;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          border: 1px solid #e5e7eb;
+          border-left-width: 4px;
+        }
+        
+        .event-card-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          margin-bottom: 16px;
+        }
+        
+        .event-title {
+          font-size: 16px;
+          font-weight: 600;
+          color: #111827;
+          margin: 0;
+          line-height: 1.4;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          flex: 1;
+          margin-right: 12px;
+        }
+
+        .event-status {
+          font-size: 11px;
+          font-weight: 600;
+          padding: 6px 10px;
+          border-radius: 16px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          white-space: nowrap;
+        }
+
+        .status-upcoming {
+          background-color: #dbeafe; /* Blue */
+          color: #1e40af;
+        }
+
+        .status-finished {
+          background-color: #dcfce7; /* Green */
+          color: #166534;
+        }
+        
+        .status-pending {
+          background-color: #fef3c7; /* Yellow/Orange */
+          color: #92400e;
+        }
+
+        .status-declined {
+          background-color: #fee2e2; /* Red */
+          color: #991b1b;
+        }
+        
+        .status-default {
+          background-color: #f3f4f6; /* Gray */
+          color: #4b5563;
+        }
+
+        .event-details {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .event-detail {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 13px;
+          color: #6b7280;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-weight: 500;
+        }
+
+        .event-detail svg {
+          color: #9ca3af;
+          flex-shrink: 0;
+        }
+        /* --- END OF NEW CSS --- */
+
         @keyframes fadeIn {
           from {
             opacity: 0;
@@ -1567,7 +1767,7 @@ const Dashboard = () => {
       case "recent-activity":
         return <RecentActivity />;
       default:
-        return <DashboardContent />;
+        return <DashboardContent onNavigate={handleNavigate} />;
     }
   };
 

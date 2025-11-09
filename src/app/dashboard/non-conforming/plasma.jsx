@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Trash2, Plus } from "lucide-react";
 import Loader from "../../../components/Loader";
+import DeleteConfirmationModal from "../../../components/DeleteConfirmationModal";
 
 const PlasmaNC = () => {
   const [bloodData, setBloodData] = useState([]);
@@ -44,7 +45,7 @@ const PlasmaNC = () => {
     description: "",
   });
   const [showEditConfirmModal, setShowEditConfirmModal] = useState(false);
-  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [sortConfig, setSortConfig] = useState({
     key: "created",
@@ -770,10 +771,10 @@ const PlasmaNC = () => {
           entity_type: 'non_conforming_plasma',
           entity_id: editingItem.serial_id,
           action_description: `${userName} updated non-conforming details for Serial Number ${editingItem.serial_id}`,
-          details: {
+          details: JSON.stringify({
             serialNumber: editingItem.serial_id,
             changes: ncData
-          }
+          })
         });
       } catch (logError) {
         console.error('Failed to log activity:', logError);
@@ -800,19 +801,20 @@ const PlasmaNC = () => {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     const selectedIds = bloodData
       .filter((item) => item.selected)
       .map((item) => item.id);
     
-    if (selectedIds.length === 0) return;
-    
-    setShowDeleteConfirmModal(true);
+    if (selectedIds.length > 0) {
+      setDeleteModalOpen(true);
+    }
   };
 
-  const confirmDelete = async () => {
+  const handleConfirmDelete = async () => {
+    setDeleteModalOpen(false);
+    setSaving(true);
     try {
-      setSaving(true);
       if (!window.electronAPI) {
         setError("Electron API not available");
         return;
@@ -835,16 +837,15 @@ const PlasmaNC = () => {
           entity_type: 'non_conforming_plasma',
           entity_id: selectedIds.join(','),
           action_description: `${userName} removed ${selectedIds.length} unit(s) from Non-Conforming (Serial Numbers: ${serialNumbers.slice(0, 3).join(', ')}${selectedIds.length > 3 ? '...' : ''})`,
-          details: {
+          details: JSON.stringify({
             serialNumbers: serialNumbers,
             count: selectedIds.length
-          }
+          })
         });
       } catch (logError) {
         console.error('Failed to log activity:', logError);
       }
 
-      setShowDeleteConfirmModal(false);
       await loadNonConformingData();
       clearAllSelection();
       setError(null);
@@ -857,7 +858,6 @@ const PlasmaNC = () => {
     } catch (err) {
       console.error("Error deleting items:", err);
       setError("Failed to delete items");
-      setShowDeleteConfirmModal(false);
     } finally {
       setSaving(false);
     }
@@ -1045,7 +1045,7 @@ const PlasmaNC = () => {
       top: "100%",
       left: 0,
       backgroundColor: "white",
-      border: "#8daef2",
+      border: "1px solid #8daef2",
       borderRadius: "6px",
       boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
       zIndex: 1000,
@@ -1522,86 +1522,6 @@ const PlasmaNC = () => {
     },
     successOkButtonHover: {
       backgroundColor: "#ffb300",
-    },
-    confirmModal: {
-      backgroundColor: "white",
-      borderRadius: "11px",
-      width: "90%",
-      maxWidth: "400px",
-      padding: "30px",
-      boxShadow: "0 20px 25px rgba(0, 0, 0, 0.25)",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      fontFamily: "Barlow",
-      gap: "20px",
-    },
-    confirmTitle: {
-      fontSize: "18px",
-      fontWeight: "600",
-      color: "#165C3C",
-      textAlign: "center",
-      margin: 0,
-    },
-    confirmDescription: {
-      fontSize: "14px",
-      color: "#6b7280",
-      textAlign: "center",
-      lineHeight: "1.5",
-      margin: 0,
-    },
-    confirmButtonGroup: {
-      display: "flex",
-      gap: "12px",
-      width: "100%",
-    },
-    cancelButton: {
-      flex: 1,
-      padding: "10px 20px",
-      backgroundColor: "#e5e7eb",
-      color: "#374151",
-      border: "none",
-      borderRadius: "6px",
-      cursor: "pointer",
-      fontSize: "14px",
-      fontWeight: "500",
-      fontFamily: "Barlow",
-      transition: "all 0.2s ease",
-    },
-    cancelButtonHover: {
-      backgroundColor: "#d1d5db",
-    },
-    confirmButton: {
-      flex: 1,
-      padding: "10px 20px",
-      backgroundColor: "#FFC200",
-      color: "black",
-      border: "none",
-      borderRadius: "6px",
-      cursor: "pointer",
-      fontSize: "14px",
-      fontWeight: "600",
-      fontFamily: "Barlow",
-      transition: "all 0.2s ease",
-    },
-    confirmButtonHover: {
-      backgroundColor: "#ffb300",
-    },
-    deleteConfirmButton: {
-      flex: 1,
-      padding: "10px 20px",
-      backgroundColor: "#ef4444",
-      color: "white",
-      border: "none",
-      borderRadius: "6px",
-      cursor: "pointer",
-      fontSize: "14px",
-      fontWeight: "600",
-      fontFamily: "Barlow",
-      transition: "all 0.2s ease",
-    },
-    deleteConfirmButtonHover: {
-      backgroundColor: "#dc2626",
     },
   };
 
@@ -2204,40 +2124,13 @@ const PlasmaNC = () => {
       )}
 
       {/* DELETE CONFIRMATION MODAL */}
-      {showDeleteConfirmModal && (
-        <div style={styles.successModalOverlay}>
-          <div style={styles.confirmModal}>
-            <h3 style={styles.confirmTitle}>Confirm Delete</h3>
-            <p style={styles.confirmDescription}>
-              Are you sure you want to delete {selectedCount} plasma non-conforming record{selectedCount > 1 ? 's' : ''}? This action cannot be undone.
-            </p>
-            <div style={styles.confirmButtonGroup}>
-              <button
-                style={{
-                  ...styles.cancelButton,
-                  ...(hoverStates.cancelDelete ? styles.cancelButtonHover : {}),
-                }}
-                onClick={() => setShowDeleteConfirmModal(false)}
-                onMouseEnter={() => handleMouseEnter("cancelDelete")}
-                onMouseLeave={() => handleMouseLeave("cancelDelete")}
-              >
-                Cancel
-              </button>
-              <button
-                style={{
-                  ...styles.deleteConfirmButton,
-                  ...(hoverStates.confirmDelete ? styles.deleteConfirmButtonHover : {}),
-                }}
-                onClick={confirmDelete}
-                onMouseEnter={() => handleMouseEnter("confirmDelete")}
-                onMouseLeave={() => handleMouseLeave("confirmDelete")}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeleteConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={handleConfirmDelete}
+        itemCount={selectedCount}
+        itemName="non-conforming record"
+      />
 
       {/* DISCARD MODAL - STEP 1: Item Selection */}
       {showDiscardModal && (
@@ -2570,7 +2463,7 @@ const PlasmaNC = () => {
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <div style={styles.modalTitleSection}>
-                <h3 style={styles.modalTitle}>Red Blood Cell</h3>
+                <h3 style={styles.modalTitle}>Plasma</h3>
                 <p style={styles.modalSubtitle}>Discard Stock - Details</p>
               </div>
               <button

@@ -410,6 +410,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       throw error;
     }
   },
+
+  // ADD THIS NEW FUNCTION
+  updateAppointmentStatus: async (appointmentId, status, userName = 'Central System Admin') => {
+    try {
+      return await ipcRenderer.invoke('db:updateAppointmentStatus', appointmentId, status, userName);
+    } catch (error) {
+      console.error('Preload Error - updateAppointmentStatus:', error);
+      throw error;
+    }
+  },
   
   deleteAppointments: async (ids, userName = 'Alaiza Rose Olores') => {
     try {
@@ -773,6 +783,48 @@ getPlasmaStockBySerialId: async (serialId) => {
   }
 },
 
+  // ========== REPORT METHODS ==========
+  getAllBloodReports: async () => {
+    try {
+      return await ipcRenderer.invoke('get-all-blood-reports');
+    } catch (error) {
+      console.error('Preload Error - getAllBloodReports:', error);
+      throw error;
+    }
+  },
+  generateAllQuarterlyReports: async (year) => {
+    try {
+      return await ipcRenderer.invoke('generate-all-quarterly-reports', year);
+    } catch (error) {
+      console.error('Preload Error - generateAllQuarterlyReports:', error);
+      throw error;
+    }
+  },
+  searchReports: async (searchTerm) => {
+    try {
+      return await ipcRenderer.invoke('search-reports', searchTerm);
+    } catch (error) {
+      console.error('Preload Error - searchReports:', error);
+      throw error;
+    }
+  },
+  deleteReports: async (ids) => {
+    try {
+      return await ipcRenderer.invoke('delete-reports', ids);
+    } catch (error) {
+      console.error('Preload Error - deleteReports:', error);
+      throw error;
+    }
+  },
+  refreshCurrentYearReports: async () => {
+    try {
+      return await ipcRenderer.invoke('refresh-current-year-reports');
+    } catch (error) {
+      console.error('Preload Error - refreshCurrentYearReports:', error);
+      throw error;
+    }
+  },
+
   // ========== USER AUTHENTICATION METHODS ==========
   registerUser: async (userData) => {
     try {
@@ -965,7 +1017,25 @@ deleteReleasedPlasmaStock: async (ids) => {
   }
 },
 
- // ========== DONOR RECORD METHODS ==========
+ // ========== DONOR RECORD METHODS ==========3
+ getAllDonorRecordsMain: async () => {
+    try {
+      return await ipcRenderer.invoke('db:getAllDonorRecordsMain');
+    } catch (error) {
+      console.error('Preload Error - getAllDonorRecordsMain:', error);
+      throw error;
+    }
+  },
+  
+getPendingSyncRequests: async () => {
+    try {
+      return await ipcRenderer.invoke('db:getPendingSyncRequests');
+    } catch (error) {
+      console.error('Preload Error - getPendingSyncRequests:', error);
+      throw error;
+    }
+  },
+
  getAllDonorRecords: async () => {
   return await ipcRenderer.invoke('db:getAllDonorRecords');
 },
@@ -984,6 +1054,8 @@ searchDonorRecords: async (searchTerm) => {
 generateNextDonorId: async () => {
   return await ipcRenderer.invoke('db:generateNextDonorId');
 },
+
+
 // ========== RESTORE BLOOD STOCK METHODS ==========
 restoreBloodStock: async (serialIds) => {
   try {
@@ -1105,187 +1177,209 @@ getNonConformingBySerialIdForDiscard: async (serialId) => {
     }
   },
   
+  // ========== PLASMA NON-CONFORMING METHODS ==========
+
+    getAllPlasmaNonConforming: async () => {
+      try {
+        return await ipcRenderer.invoke('db:getAllPlasmaNonConforming');
+      } catch (error) {
+        console.error('Preload Error - getAllPlasmaNonConforming:', error);
+        throw error;
+      }
+    },
+
+    getPlasmaStockBySerialIdForNC: async (serialId) => {
+      try {
+        return await ipcRenderer.invoke('db:getPlasmaStockBySerialIdForNC', serialId);
+      } catch (error) {
+        console.error('Preload Error - getPlasmaStockBySerialIdForNC:', error);
+        throw error;
+      }
+    },
+
+    transferPlasmaToNonConforming: async (serialIds) => {
+      try {
+        return await ipcRenderer.invoke('db:transferPlasmaToNonConforming', serialIds);
+      } catch (error) {
+        console.error('Preload Error - transferPlasmaToNonConforming:', error);
+        throw error;
+      }
+    },
+
+    updatePlasmaNonConforming: async (id, ncData) => {
+      try {
+        return await ipcRenderer.invoke('db:updatePlasmaNonConforming', id, ncData);
+      } catch (error) {
+        console.error('Preload Error - updatePlasmaNonConforming:', error);
+        throw error;
+      }
+    },
+
+    deletePlasmaNonConforming: async (ids) => {
+      try {
+        return await ipcRenderer.invoke('db:deletePlasmaNonConforming', ids);
+      } catch (error) {
+        console.error('Preload Error - deletePlasmaNonConforming:', error);
+        throw error;
+      }
+    },
+
+    searchPlasmaNonConforming: async (searchTerm) => {
+      try {
+        return await ipcRenderer.invoke('db:searchPlasmaNonConforming', searchTerm);
+      } catch (error) {
+        console.error('Preload Error - searchPlasmaNonConforming:', error);
+        throw error;
+      }
+    },
+
+    discardPlasmaNonConformingStock: async (discardData) => {
+      try {
+        return await ipcRenderer.invoke('db:discardPlasmaNonConformingStock', discardData);
+      } catch (error) {
+        console.error('Preload Error - discardPlasmaNonConformingStock:', error);
+        throw error;
+      }
+    },
+
+    getPlasmaNonConformingBySerialIdForDiscard: async (serialId) => {
+      try {
+        return await ipcRenderer.invoke('db:getPlasmaNonConformingBySerialIdForDiscard', serialId);
+      } catch (error) {
+        console.error('Preload Error - getPlasmaNonConformingBySerialIdForDiscard:', error);
+        throw error;
+      }
+    },
+
   // ========== PLATELET NON-CONFORMING METHODS ==========
 
-getAllPlateletNonConforming: async () => {
-  try {
-    return await ipcRenderer.invoke('db:getAllPlateletNonConforming');
-  } catch (error) {
-    console.error('Preload Error - getAllPlateletNonConforming:', error);
-    throw error;
-  }
-},
+  getAllPlateletNonConforming: async () => {
+    try {
+      return await ipcRenderer.invoke('db:getAllPlateletNonConforming');
+    } catch (error) {
+      console.error('Preload Error - getAllPlateletNonConforming:', error);
+      throw error;
+    }
+  },
 
-getPlateletStockBySerialIdForNC: async (serialId) => {
-  try {
-    return await ipcRenderer.invoke('db:getPlateletStockBySerialIdForNC', serialId);
-  } catch (error) {
-    console.error('Preload Error - getPlateletStockBySerialIdForNC:', error);
-    throw error;
-  }
-},
+  getPlateletStockBySerialIdForNC: async (serialId) => {
+    try {
+      return await ipcRenderer.invoke('db:getPlateletStockBySerialIdForNC', serialId);
+    } catch (error) {
+      console.error('Preload Error - getPlateletStockBySerialIdForNC:', error);
+      throw error;
+    }
+  },
 
-transferPlateletToNonConforming: async (serialIds) => {
-  try {
-    return await ipcRenderer.invoke('db:transferPlateletToNonConforming', serialIds);
-  } catch (error) {
-    console.error('Preload Error - transferPlateletToNonConforming:', error);
-    throw error;
-  }
-},
+  searchPlateletNonConforming: async (searchTerm) => {
+    try {
+      return await ipcRenderer.invoke('db:searchPlateletNonConforming', searchTerm);
+    } catch (error) {
+      console.error('Preload Error - searchPlateletNonConforming:', error);
+      throw error;
+    }
+  },
 
-    // Platelet Non-Conforming
-    getAllPlateletNonConforming: () => ipcRenderer.invoke('db:getAllPlateletNonConforming'),
-    getPlateletStockBySerialIdForNC: (serialId) => ipcRenderer.invoke('db:getPlateletStockBySerialIdForNC', serialId),
-    transferPlateletToNonConforming: (serialIds) => ipcRenderer.invoke('db:transferPlateletToNonConforming', serialIds),
-    updatePlateletNonConforming: (id, ncData) => ipcRenderer.invoke('db:updatePlateletNonConforming', id, ncData),
-    deletePlateletNonConforming: (ids) => ipcRenderer.invoke('db:deletePlateletNonConforming', ids),
-    searchPlateletNonConforming: (searchTerm) => ipcRenderer.invoke('db:searchPlateletNonConforming', searchTerm),
-    discardPlateletNonConformingStock: (discardData) => ipcRenderer.invoke('db:discardPlateletNonConformingStock', discardData),
-    getPlateletNonConformingBySerialIdForDiscard: (serialId) => ipcRenderer.invoke('db:getPlateletNonConformingBySerialIdForDiscard', serialId),
+  getPlateletNonConformingBySerialIdForDiscard: async (serialId) => {
+    try {
+      return await ipcRenderer.invoke('db:getPlateletNonConformingBySerialIdForDiscard', serialId);
+    } catch (error) {
+      console.error('Preload Error - getPlateletNonConformingBySerialIdForDiscard:', error);
+      throw error;
+    }
+  },
 
-      // ========== PLASMA NON-CONFORMING METHODS ==========
+  discardPlateletNonConformingStock: async (discardData) => {
+    try {
+      return await ipcRenderer.invoke('db:discardPlateletNonConformingStock', discardData);
+    } catch (error) {
+      console.error('Preload Error - discardPlateletNonConformingStock:', error);
+      throw error;
+    }
+  },
 
-      getAllPlasmaNonConforming: async () => {
-        try {
-          return await ipcRenderer.invoke('db:getAllPlasmaNonConforming');
-        } catch (error) {
-          console.error('Preload Error - getAllPlasmaNonConforming:', error);
-          throw error;
-        }
-      },
+  updatePlateletNonConforming: async (id, ncData) => {
+    try {
+      return await ipcRenderer.invoke('db:updatePlateletNonConforming', id, ncData);
+    } catch (error) {
+      console.error('Preload Error - updatePlateletNonConforming:', error);
+      throw error;
+    }
+  },
 
-      getPlasmaStockBySerialIdForNC: async (serialId) => {
-        try {
-          return await ipcRenderer.invoke('db:getPlasmaStockBySerialIdForNC', serialId);
-        } catch (error) {
-          console.error('Preload Error - getPlasmaStockBySerialIdForNC:', error);
-          throw error;
-        }
-      },
+  transferPlateletToNonConforming: async (serialIds) => {
+    try {
+      return await ipcRenderer.invoke('db:transferPlateletToNonConforming', serialIds);
+    } catch (error) {
+      console.error('Preload Error - transferPlateletToNonConforming:', error);
+      throw error;
+    }
+  },
 
-      transferPlasmaToNonConforming: async (serialIds) => {
-        try {
-          return await ipcRenderer.invoke('db:transferPlasmaToNonConforming', serialIds);
-        } catch (error) {
-          console.error('Preload Error - transferPlasmaToNonConforming:', error);
-          throw error;
-        }
-      },
-     // Plasma Non-Conforming
-     getAllPlasmaNonConforming: () => ipcRenderer.invoke('db:getAllPlasmaNonConforming'),
-     getPlasmaStockBySerialIdForNC: (serialId) => ipcRenderer.invoke('db:getPlasmaStockBySerialIdForNC', serialId),
-     transferPlasmaToNonConforming: (serialIds) => ipcRenderer.invoke('db:transferPlasmaToNonConforming', serialIds),
-     updatePlasmaNonConforming: (id, ncData) => ipcRenderer.invoke('db:updatePlasmaNonConforming', id, ncData),
-     deletePlasmaNonConforming: (ids) => ipcRenderer.invoke('db:deletePlasmaNonConforming', ids),
-     searchPlasmaNonConforming: (searchTerm) => ipcRenderer.invoke('db:searchPlasmaNonConforming', searchTerm),
-     discardPlasmaNonConformingStock: (discardData) => ipcRenderer.invoke('db:discardPlasmaNonConformingStock', discardData),
-     getPlasmaNonConformingBySerialIdForDiscard: (serialId) => ipcRenderer.invoke('db:getPlasmaNonConformingBySerialIdForDiscard', serialId),
+  deletePlateletNonConforming: async (ids) => {
+    try {
+      return await ipcRenderer.invoke('db:deletePlateletNonConforming', ids);
+    } catch (error) {
+      console.error('Preload Error - deletePlateletNonConforming:', error);
+      throw error;
+    }
+  },
 
-     // ========== DONOR RECORDS SYNC METHODS ==========
+  // ========== INVOICE METHODS (RELEASED & DISCARDED) ==========
 
-     // Request donor sync from organization to main system
-     requestDonorSync: async (donorRecords, sourceOrganization, sourceUserId, sourceUserName) => {
-       try {
-         return await ipcRenderer.invoke('db:requestDonorSync', donorRecords, sourceOrganization, sourceUserId, sourceUserName);
-       } catch (error) {
-         console.error('Preload Error - requestDonorSync:', error);
-         throw error;
-       }
-     },
+  getAllReleasedBloodInvoices: async () => {
+    try {
+      return await ipcRenderer.invoke('db:getAllReleasedBloodInvoices');
+    } catch (error) {
+      console.error('Preload Error - getAllReleasedBloodInvoices:', error);
+      throw error;
+    }
+  },
 
-     // Get pending sync requests
-     getPendingSyncRequests: async () => {
-       try {
-         return await ipcRenderer.invoke('db:getPendingSyncRequests');
-       } catch (error) {
-         console.error('Preload Error - getPendingSyncRequests:', error);
-         throw error;
-       }
-     },
+  viewReleasedBloodInvoice: async (invoiceId) => {
+    try {
+      return await ipcRenderer.invoke('db:viewReleasedBloodInvoice', invoiceId);
+    } catch (error) {
+      console.error('Preload Error - viewReleasedBloodInvoice:', error);
+      throw error;
+    }
+  },
 
-     // Get all donor records from main table
-     getAllDonorRecordsMain: async () => {
-       try {
-         return await ipcRenderer.invoke('db:getAllDonorRecordsMain');
-       } catch (error) {
-         console.error('Preload Error - getAllDonorRecordsMain:', error);
-         throw error;
-       }
-     },
+  deleteReleasedBloodInvoices: async (ids) => {
+    try {
+      return await ipcRenderer.invoke('db:deleteReleasedBloodInvoices', ids);
+    } catch (error) {
+      console.error('Preload Error - deleteReleasedBloodInvoices:', error);
+      throw error;
+    }
+  },
 
-     // Approve donor sync
-     approveDonorSync: async (approvedBy) => {
-       try {
-         return await ipcRenderer.invoke('db:approveDonorSync', approvedBy);
-       } catch (error) {
-         console.error('Preload Error - approveDonorSync:', error);
-         throw error;
-       }
-     },
+  getAllDiscardedBloodInvoices: async () => {
+    try {
+      return await ipcRenderer.invoke('db:getAllDiscardedBloodInvoices');
+    } catch (error) {
+      console.error('Preload Error - getAllDiscardedBloodInvoices:', error);
+      throw error;
+    }
+  },
 
-     // ========== NOTIFICATION METHODS ==========
+  viewDiscardedBloodInvoice: async (invoiceId) => {
+    try {
+      return await ipcRenderer.invoke('db:viewDiscardedBloodInvoice', invoiceId);
+    } catch (error) {
+      console.error('Preload Error - viewDiscardedBloodInvoice:', error);
+      throw error;
+    }
+  },
 
-     // Create notification
-     createNotification: async (notificationData) => {
-       try {
-         return await ipcRenderer.invoke('db:createNotification', notificationData);
-       } catch (error) {
-         console.error('Preload Error - createNotification:', error);
-         throw error;
-       }
-     },
-
-     // Get all notifications
-     getAllNotifications: async (userId = null) => {
-       try {
-         return await ipcRenderer.invoke('db:getAllNotifications', userId);
-       } catch (error) {
-         console.error('Preload Error - getAllNotifications:', error);
-         throw error;
-       }
-     },
-
-     // Get unread notification count
-     getUnreadNotificationCount: async (userId = null) => {
-       try {
-         return await ipcRenderer.invoke('db:getUnreadNotificationCount', userId);
-       } catch (error) {
-         console.error('Preload Error - getUnreadNotificationCount:', error);
-         throw error;
-       }
-     },
-
-     // Mark notification as read
-     markNotificationAsRead: async (notificationId) => {
-       try {
-         return await ipcRenderer.invoke('db:markNotificationAsRead', notificationId);
-       } catch (error) {
-         console.error('Preload Error - markNotificationAsRead:', error);
-         throw error;
-       }
-     },
-
-     // Mark all notifications as read
-     markAllNotificationsAsRead: async (userId = null) => {
-       try {
-         return await ipcRenderer.invoke('db:markAllNotificationsAsRead', userId);
-       } catch (error) {
-         console.error('Preload Error - markAllNotificationsAsRead:', error);
-         throw error;
-       }
-     },
-
-     // Delete notification
-     deleteNotification: async (notificationId) => {
-       try {
-         return await ipcRenderer.invoke('db:deleteNotification', notificationId);
-       } catch (error) {
-         console.error('Preload Error - deleteNotification:', error);
-         throw error;
-       }
-     },
-
+  deleteDiscardedBloodInvoices: async (ids) => {
+    try {
+      return await ipcRenderer.invoke('db:deleteDiscardedBloodInvoices', ids);
+    } catch (error) {
+      console.error('Preload Error - deleteDiscardedBloodInvoices:', error);
+      throw error;
+    }
+  },
 });
 
 console.log('electronAPI exposed successfully');

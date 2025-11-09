@@ -29,8 +29,7 @@ const CalendarPage = () => {
         const appointmentsData = await window.electronAPI.getAllAppointments();
 
         // Load ALL partnership requests from RBC DB (pending, approved, declined)
-        const partnershipRequests = await window.electronAPI.getAllPartnershipRequests();
-
+        const partnershipRequests = await window.electronAPI.getAllPartnershipRequests(null); // Pass null to get ALL statuses
         // Transform partnership requests to appointment format
         const partnershipAppointments = partnershipRequests.map(req => {
           // Map partnership request status to appointment status
@@ -305,6 +304,32 @@ const CalendarPage = () => {
     setCurrentDate(newDate);
   };
 
+  // ADD THIS ENTIRE FUNCTION
+  const getEventStatusColor = (status, dateString) => {
+    // Check if event is finished (in the past)
+    if (dateString) {
+      const eventDate = new Date(dateString + 'T23:59:59'); // Set to end of day
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Set to start of today
+
+      // If the event date is before today AND it was confirmed/scheduled
+      if (eventDate < today && (status === 'confirmed' || status === 'scheduled')) {
+        return '#10b981'; // Green (Finished)
+      }
+    }
+    
+    // Original status logic
+    switch (status) {
+      case 'confirmed': return '#10b981'; // Green (Approved)
+      case 'scheduled': return '#3b82f6'; // Blue (Scheduled by org)
+      case 'pending': return '#f59e0b'; // Orange (Pending)
+      case 'cancelled': return '#ef4444'; // Red (Cancelled)
+      case 'declined': return '#ef4444'; // Red (Declined)
+      default: return '#6b7280'; // Gray (default)
+    }
+  };
+  // END OF NEW FUNCTION
+
   const getEventTypeColor = (type) => {
     switch (type) {
       case 'blood-drive': return { bg: '#e8f5e8', border: '#4caf50', text: '#2e7d32' };
@@ -314,6 +339,35 @@ const CalendarPage = () => {
       default: return { bg: '#f5f5f5', border: '#9e9e9e', text: '#424242' };
     }
   };
+
+  // ADD THIS ENTIRE FUNCTION
+  const getEventDisplay = (status, dateString) => {
+    const eventDate = new Date(dateString + 'T00:00:00'); // Use T00:00:00 to avoid timezone issues
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Check for finished events (must be in the past AND approved/scheduled)
+    if (eventDate < today && (status === 'confirmed' || status === 'approved' || status === 'scheduled')) {
+      return { text: 'Finished', className: 'finished' };
+    }
+    
+    // Check for upcoming/pending
+    switch (status) {
+      case 'confirmed':
+      case 'approved':
+      case 'scheduled':
+        return { text: 'Upcoming', className: 'upcoming' };
+      case 'pending':
+        return { text: 'Pending', className: 'pending' };
+      case 'declined':
+      case 'cancelled':
+        return { text: 'Declined', className: 'declined' };
+      default:
+        // Fallback for any other status
+        return { text: status, className: 'default' };
+    }
+  };
+  // END OF NEW FUNCTION
 
   const formatDate = (dateStr) => {
     const date = new Date(dateStr + 'T00:00:00');
@@ -396,13 +450,14 @@ const CalendarPage = () => {
                   {day.events && day.events.length > 0 && (
                     <div className="events-container">
                       {day.events.map(event => {
-                        const colors = getEventTypeColor(event.type);
+                        // Use the new function to get color based on status and date
+                        const statusColor = getEventStatusColor(event.status, event.date);
                         return (
                           <div
                             key={event.id}
                             className="day-event"
                             style={{
-                              backgroundColor: colors.border
+                              backgroundColor: statusColor
                             }}
                             title={`${event.title} - ${event.time}`}
                             onClick={(e) => {
@@ -439,12 +494,12 @@ const CalendarPage = () => {
                   <div
                     key={event.id}
                     className="event-card"
-                    style={{ borderLeft: `4px solid ${colors.border}` }}
+                    style={{ borderLeft: `4px solid ${getEventStatusColor(event.status, event.date)}` }}
                   >
                     <div className="event-card-header">
                       <h4 className="event-title">{event.title}</h4>
-                      <span className={`event-status status-${event.status}`}>
-                        {event.status}
+                      <span className={`event-status status-${getEventDisplay(event.status, event.date).className}`}>
+                        {getEventDisplay(event.status, event.date).text}
                       </span>
                     </div>
 
@@ -882,6 +937,28 @@ const CalendarPage = () => {
           background-color: #fee2e2;
           color: #991b1b;
         }
+
+        /* --- ADD THESE NEW STYLES --- */
+        .status-upcoming {
+          background-color: #dbeafe; /* Blue */
+          color: #1e40af;
+        }
+
+        .status-finished {
+          background-color: #dcfce7; /* Green */
+          color: #166534;
+        }
+        
+        .status-declined {
+          background-color: #fee2e2; /* Red */
+          color: #991b1b;
+        }
+        
+        .status-default {
+          background-color: #f3f4f6; /* Gray */
+          color: #4b5563;
+        }
+        /* --- END OF NEW STYLES --- */
 
         .event-details {
           display: flex;

@@ -184,39 +184,12 @@ const MailComponent = () => {
   };
 
   const buildPartnershipRequestBody = (request) => {
-    const statusMessage = {
-      approved: 'This partnership request has been APPROVED.',
-      declined: 'This partnership request has been DECLINED.',
-      pending: 'This partnership request is awaiting your review.'
-    };
-
-    const eventDate = new Date(request.event_date).toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-
+    // This body is now clean and not redundant.
+    // The details will be shown in the new "Request Details" box.
     const lines = [
-      `${request.organization_name} (${request.organization_barangay}) has requested a blood drive partnership for ${eventDate} at ${request.event_time}.`,
-      '',
-      'Contact Information:',
-      `Name: ${request.contact_name}`,
-      `Email: ${request.contact_email}`,
-      `Phone: ${request.contact_phone}`,
-      '',
-      'Event Details:',
-      `Date: ${eventDate}`,
-      `Time: ${request.event_time}`,
-      `Address: ${request.event_address || 'Not provided'}`,
-      '',
-      `Status: ${request.status.toUpperCase()}`,
-      ''
+      `${request.organization_name} has requested a blood drive partnership.`,
+      'This partnership request is awaiting your review.'
     ];
-
-    lines.push(statusMessage[request.status] || '');
-    lines.push('');
-    lines.push('This request was submitted through the Blood Drive Partnership system.');
 
     return lines.join('\n');
   };
@@ -422,6 +395,9 @@ const MailComponent = () => {
           approvedBy
         );
 
+        // ADD THIS LINE TO UPDATE THE LOCAL CALENDAR
+        await window.electronAPI.updateAppointmentStatus(mail.appointmentId, 'scheduled');
+
         // Create MAIL (not notification) for PARTNERED ORG database
         try {
           const currentDate = new Date();
@@ -445,30 +421,23 @@ const MailComponent = () => {
           const subject = `Partnership Request Approved – Blood Drive Partnership Request`;
           const preview = 'Your Partnership Request has been APPROVED…';
 
-          const body = `${subject}
-(${formattedDate})
-
-Dear Partner,
-
-We are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center.
-
-Request Details:
-Title: Blood Drive Partnership Request
-Requestor: ${mail.requestInfo.organizationName} – (Organization)
-Date Submitted: ${formattedSubmitDate}
-Status: APPROVED
-
-Next Steps:
-- Our team will contact you shortly to coordinate the blood drive details.
-- Please Prepare the necessary documentation and venue arrangements.
-- Check your calendar for the scheduled appointment.
-
-Related Appointment ID: ${mail.appointmentId}
-
-If you have any questions, please contact us at admin@regionalbloodcenter.org
-
-Best regards,
-Regional Blood Center Team`;
+          // --- THIS IS THE UPDATED BODY ---
+          const body = [
+            'Dear Partner,',
+            '',
+            'We are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center.',
+            '',
+            'Next Steps:',
+            '- Our team will contact you shortly to coordinate the blood drive details.',
+            '- Please Prepare the necessary documentation and venue arrangements.',
+            '- Check your calendar for the scheduled appointment.',
+            '',
+            'If you have any questions, please contact us at admin@regionalbloodcenter.org',
+            '',
+            'Best regards,',
+            'Regional Blood Center Team'
+          ].join('\n'); // Use \n for new lines
+          // --- END OF UPDATED BODY ---
 
           console.log('[APPROVAL] Creating mail for organization...');
           const mailResult = await window.electronAPI.createMail({
@@ -537,6 +506,9 @@ Regional Blood Center Team`;
           declinedBy
         );
 
+        // ADD THIS LINE TO UPDATE THE LOCAL CALENDAR
+        await window.electronAPI.updateAppointmentStatus(mail.appointmentId, 'declined');
+
         // Create MAIL (not notification) for PARTNERED ORG database
         try {
           const currentDate = new Date();
@@ -560,28 +532,21 @@ Regional Blood Center Team`;
           const subject = `Partnership Request Declined – Blood Drive Partnership Request`;
           const preview = 'Your Partnership Request has been DECLINED…';
 
-          const body = `${subject}
-(${formattedDate})
-
-Dear Partner,
-
-We regret to inform you that your partnership request has been DECLINED by the Regional Blood Center.
-
-Request Details:
-Title: Blood Drive Partnership Request
-Requestor: ${mail.requestInfo.organizationName} – (Organization)
-Date Submitted: ${formattedSubmitDate}
-Status: DECLINED
-
-Reason for Decline:
-${declineReason}
-
-Related Appointment ID: ${mail.appointmentId}
-
-If you have any questions or would like to discuss this decision, please contact us at admin@regionalbloodcenter.org
-
-Best regards,
-Regional Blood Center Team`;
+          // --- THIS IS THE UPDATED BODY ---
+          const body = [
+            'Dear Partner,',
+            '',
+            'We regret to inform you that your partnership request has been DECLINED by the Regional Blood Center.',
+            '',
+            'Reason for Decline:',
+            declineReason, // This is the reason you type in the modal
+            '',
+            'If you have any questions or would like to discuss this decision, please contact us at admin@regionalbloodcenter.org',
+            '',
+            'Best regards,',
+            'Regional Blood Center Team'
+          ].join('\n'); // Use \n for new lines
+          // --- END OF UPDATED BODY ---
 
           console.log('[DECLINE] Creating mail for organization...');
           const mailResult = await window.electronAPI.createMail({
@@ -1005,6 +970,32 @@ Regional Blood Center Team`;
                 <p key={index}>{line || '\u00A0'}</p>
               ))}
             </div>
+
+              {/* --- ADD THIS NEW BLOCK (for RBC inbox) --- */}
+            {selectedMail.requestInfo && (selectedMail.requestInfo.title || selectedMail.requestInfo.organizationName) && (
+              <div className="request-details-box">
+                <h4 className="request-details-title">Request Details:</h4>
+                <div className="request-detail-item">
+                  <span className="request-detail-label">Title:</span>
+                  <span className="request-detail-value">Blood Drive Partnership Request</span>
+                </div>
+                <div className="request-detail-item">
+                  <span className="request-detail-label">Requestor:</span>
+                  <span className="request-detail-value">{selectedMail.requestInfo.organizationName} – ({selectedMail.requestInfo.organizationBarangay})</span>
+                </div>
+                <div className="request-detail-item">
+                  <span className="request-detail-label">Date Submitted:</span>
+                  <span className="request-detail-value">
+                    {new Date(selectedMail.timestamp).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: '2-digit',
+                      day: '2-digit'
+                    })}
+                  </span>
+                </div>
+              </div>
+            )}
+            {/* --- END OF NEW BLOCK --- */}
 
             {/* Decline Reason Display */}
             {selectedMail.status === 'declined' && selectedMail.declineReason && (
@@ -1767,6 +1758,48 @@ Regional Blood Center Team`;
         .mail-detail-body p {
           margin: 0 0 12px 0;
         }
+
+        /* --- ADD THIS NEW CSS --- */
+        .request-details-box {
+          margin-top: 24px;
+          margin-bottom: 24px;
+          padding: 20px;
+          background-color: #f8f9fa;
+          border-radius: 8px;
+          border: 1px solid #e5e7eb;
+        }
+
+        .request-details-title {
+          font-size: 16px;
+          font-weight: 600;
+          color: #111827;
+          margin: 0 0 16px 0;
+          font-family: 'Barlow', sans-serif;
+        }
+
+        .request-detail-item {
+          display: grid;
+          grid-template-columns: 120px 1fr;
+          gap: 8px;
+          font-size: 14px;
+          font-family: 'Barlow', sans-serif;
+          margin-bottom: 10px;
+        }
+
+        .request-detail-item:last-child {
+          margin-bottom: 0;
+        }
+
+        .request-detail-label {
+          font-weight: 500;
+          color: #6b7280;
+        }
+
+        .request-detail-value {
+          font-weight: 500;
+          color: #374151;
+        }
+        /* --- END OF NEW CSS --- */
 
         .decline-reason-display {
           margin-top: 24px;

@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
-import Loader from "../../../components/Loader";
+import Loader from "../../../components/loader";
+import DeleteConfirmationModal from "../../../components/DeleteConfirmationModal";
 
 const Platelet = () => {
   const [bloodData, setBloodData] = useState([]);
@@ -14,6 +15,7 @@ const Platelet = () => {
   const [showReleaseModal, setShowReleaseModal] = useState(false);
   const [showReleaseDetailsModal, setShowReleaseDetailsModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState({
     title: "",
     description: "",
@@ -420,7 +422,16 @@ const Platelet = () => {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
+    const selectedIds = bloodData.filter((item) => item.selected).map((item) => item.id);
+    if (selectedIds.length > 0) {
+      setDeleteModalOpen(true);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    setDeleteModalOpen(false);
+    setSaving(true);
     try {
       if (!window.electronAPI) {
         setError("Electron API not available");
@@ -432,11 +443,6 @@ const Platelet = () => {
       const serialNumbers = selectedItems.map((item) => item.serial_id);
 
       if (selectedIds.length === 0) return;
-
-      const confirmed = window.confirm(
-        `Are you sure you want to delete ${selectedIds.length} item(s)?`
-      );
-      if (!confirmed) return;
 
       await window.electronAPI.deletePlateletStock(selectedIds);
 
@@ -463,9 +469,16 @@ const Platelet = () => {
       await loadBloodData();
       clearAllSelection();
       setError(null);
+      setSuccessMessage({
+        title: "Deleted Successfully!",
+        description: `${selectedIds.length} platelet stock record(s) have been deleted.`,
+      });
+      setShowSuccessModal(true);
     } catch (err) {
       console.error("Error deleting items:", err);
       setError("Failed to delete items");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1974,6 +1987,14 @@ const Platelet = () => {
           </button>
         </div>
       )}
+
+      <DeleteConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={handleConfirmDelete}
+        itemCount={selectedCount}
+        itemName="platelet stock record"
+      />
 
       {/* SUCCESS MODAL */}
       {showSuccessModal && (

@@ -129,6 +129,7 @@ const setupIpcHandlers = () => {
 
   // Initialize donor database on startup
   dbOrgService.initializeDatabase().catch(console.error);
+  dbService.initializeTables().catch(console.error);
 
   // ========== ACTIVITY LOGGING IPC HANDLERS ==========
   ipcMain.handle("db:getAllActivities", async (_event, limit = 100, offset = 0) => {
@@ -498,6 +499,16 @@ const setupIpcHandlers = () => {
       throw error;
     }
   });
+
+  // ADD THIS NEW HANDLER
+    ipcMain.handle("db:updateAppointmentStatus", async (_event, appointmentId, status, userName = 'Central System Admin') => {
+      try {
+        return await dbOrgService.updateAppointmentStatus(appointmentId, status, userName);
+      } catch (error) {
+        console.error("IPC Error - updateAppointmentStatus:", error);
+        throw error;
+      }
+    });
 
   ipcMain.handle("db:deleteAppointments", async (_event, ids, userName = 'Alaiza Rose Olores') => {
     try {
@@ -1449,6 +1460,62 @@ ipcMain.handle("db:deleteReleasedPlateletStock", async (_event, ids) => {
     }
   });
 
+// ========== INVOICE HANDLERS (RELEASED & DISCARDED) ==========
+
+  ipcMain.handle('db:getAllReleasedBloodInvoices', async () => {
+    try {
+      return await dbService.getAllReleasedBloodInvoices();
+    } catch (error) {
+      console.error('IPC Error - getAllReleasedBloodInvoices:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('db:viewReleasedBloodInvoice', async (event, invoiceId) => {
+    try {
+      return await dbService.viewReleasedBloodInvoice(invoiceId);
+    } catch (error) {
+      console.error('IPC Error - viewReleasedBloodInvoice:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('db:deleteReleasedBloodInvoices', async (event, ids) => {
+    try {
+      return await dbService.deleteReleasedBloodInvoices(ids);
+    } catch (error) {
+      console.error('IPC Error - deleteReleasedBloodInvoices:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('db:getAllDiscardedBloodInvoices', async () => {
+    try {
+      return await dbService.getAllDiscardedBloodInvoices();
+    } catch (error) {
+      console.error('IPC Error - getAllDiscardedBloodInvoices:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('db:viewDiscardedBloodInvoice', async (event, invoiceId) => {
+    try {
+      return await dbService.viewDiscardedBloodInvoice(invoiceId);
+    } catch (error) {
+      console.error('IPC Error - viewDiscardedBloodInvoice:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('db:deleteDiscardedBloodInvoices', async (event, ids) => {
+    try {
+      return await dbService.deleteDiscardedBloodInvoices(ids);
+    } catch (error) {
+      console.error('IPC Error - deleteDiscardedBloodInvoices:', error);
+      throw error;
+    }
+  });
+
   // ===== NOTIFICATION HANDLERS =====
 
   // Create notification
@@ -1510,6 +1577,61 @@ ipcMain.handle("db:deleteReleasedPlateletStock", async (_event, ids) => {
       throw error;
     }
   });
+
+// ========== BLOOD REPORTS IPC HANDLERS ==========
+ipcMain.handle('get-all-blood-reports', async () => {
+  try {
+    return await dbService.getAllBloodReports();
+  } catch (error) {
+    console.error('Error getting all blood reports:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('generate-quarterly-report', async (event, quarter, year, monthStart, monthEnd) => {
+  try {
+    return await dbService.generateQuarterlyReport(quarter, year, monthStart, monthEnd);
+  } catch (error) {
+    console.error('Error generating quarterly report:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('generate-all-quarterly-reports', async (event, year) => {
+  try {
+    return await dbService.generateAllQuarterlyReports(year);
+  } catch (error) {
+    console.error('Error generating all quarterly reports:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('delete-reports', async (event, reportIds) => {
+  try {
+    return await dbService.deleteReports(reportIds);
+  } catch (error) {
+    console.error('Error deleting reports:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('search-reports', async (event, searchTerm) => {
+  try {
+    return await dbService.searchReports(searchTerm);
+  } catch (error) {
+    console.error('Error searching reports:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('refresh-current-year-reports', async () => {
+  try {
+    return await dbService.refreshCurrentYearReports();
+  } catch (error) {
+    console.error('Error refreshing current year reports:', error);
+    throw error;
+  }
+});
 }; 
 
 // Electron app lifecycle

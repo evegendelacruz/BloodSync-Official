@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import Loader from "../../../components/Loader";
+import Loader from "../../../components/loader";
+import DeleteConfirmationModal from "../../../components/DeleteConfirmationModal";
 
 const Plasma = () => {
   const [plasmaData, setPlasmaData] = useState([]);
@@ -13,6 +14,7 @@ const Plasma = () => {
   const [showReleaseModal, setShowReleaseModal] = useState(false);
   const [showReleaseDetailsModal, setShowReleaseDetailsModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState({
     title: "",
     description: "",
@@ -402,7 +404,16 @@ const Plasma = () => {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
+    const selectedIds = plasmaData.filter((item) => item.selected).map((item) => item.id);
+    if (selectedIds.length > 0) {
+      setDeleteModalOpen(true);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    setDeleteModalOpen(false);
+    setSaving(true);
     try {
       if (!window.electronAPI) {
         setError("Electron API not available");
@@ -414,11 +425,6 @@ const Plasma = () => {
       const serialNumbers = selectedItems.map((item) => item.serial_id);
 
       if (selectedIds.length === 0) return;
-
-      const confirmed = window.confirm(
-        `Are you sure you want to delete ${selectedIds.length} item(s)?`
-      );
-      if (!confirmed) return;
 
       await window.electronAPI.deletePlasmaStock(selectedIds);
 
@@ -445,9 +451,16 @@ const Plasma = () => {
       await loadPlasmaData();
       clearAllSelection();
       setError(null);
+      setSuccessMessage({
+        title: "Deleted Successfully!",
+        description: `${selectedIds.length} plasma stock record(s) have been deleted.`,
+      });
+      setShowSuccessModal(true);
     } catch (err) {
       console.error("Error deleting items:", err);
       setError("Failed to delete items");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1958,6 +1971,14 @@ const Plasma = () => {
           </button>
         </div>
       )}
+
+      <DeleteConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={handleConfirmDelete}
+        itemCount={selectedCount}
+        itemName="plasma stock record"
+      />
 
       {/* SUCCESS MODAL */}
       {showSuccessModal && (

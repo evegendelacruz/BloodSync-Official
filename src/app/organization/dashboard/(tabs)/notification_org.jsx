@@ -45,32 +45,66 @@ const NotificationOrg = () => {
       if (!isRefreshing) {
         setIsLoading(true);
       }
-
+      
       if (typeof window !== 'undefined' && window.electronAPI) {
-        // Load notifications from notification_org table (upcoming blood drive events)
-        const notificationsData = await window.electronAPI.getAllNotificationsOrg();
-        console.log('notificationsData (upcoming events):', notificationsData);
-
+        // Load notifications and appointments
+        const [notificationsData, appointmentsData] = await Promise.all([
+          window.electronAPI.getAllOrgNotifications(), // <-- CORRECT
+          window.electronAPI.getAllAppointments()
+        ]);
+        
         // Transform notifications
         const transformedNotifications = notificationsData.map(n => ({
           id: n.id,
           notificationId: n.notification_id,
-          type: n.type || 'upcoming_event',
+          type: n.type || 'partnership_response',
+          status: n.status,
           title: n.title,
           message: n.message,
-          description: n.description,
+          requestor: n.requestor || 'Regional Blood Center',
           timestamp: new Date(n.updated_at || n.created_at),
           read: n.read || false,
           appointmentId: n.appointment_id,
-          eventDate: n.event_date ? new Date(n.event_date) : null,
-          eventTime: n.event_time,
-          eventLocation: n.event_location,
-          daysUntilEvent: n.days_until_event,
-          priority: n.priority || 'normal'
+          declineReason: n.decline_reason,
+          contactInfo: {
+            email: n.contact_email,
+            phone: n.contact_phone,
+            address: n.contact_address,
+            type: n.contact_type
+          }
         }));
 
+        // Create event notifications from upcoming appointments
+        const now = new Date();
+        const upcomingAppointments = appointmentsData
+          .filter(apt => {
+            const aptDate = new Date(apt.date + 'T' + apt.time);
+            const hoursDiff = (aptDate - now) / (1000 * 60 * 60);
+            return hoursDiff > 0 && hoursDiff <= 72 && (apt.status === 'approved' || apt.status === 'confirmed');
+          })
+          .map(apt => {
+            const aptDate = new Date(apt.date + 'T' + apt.time);
+            const hoursDiff = Math.round((aptDate - now) / (1000 * 60 * 60));
+            
+            return {
+              id: `event-${apt.id || apt.appointment_id}`,
+              notificationId: `EVENT-${apt.id || apt.appointment_id}`,
+              type: 'upcoming_event',
+              status: 'info',
+              title: `Upcoming Event: ${apt.title || 'Blood Drive Partnership'}`,
+              message: `Your event "${apt.title || 'Blood Drive Partnership'}" is scheduled in ${hoursDiff} hours at ${apt.contactInfo?.address || 'TBD'}.`,
+              requestor: 'Event Reminder',
+              timestamp: new Date(apt.created_at || apt.date),
+              read: false,
+              appointmentId: apt.id || apt.appointment_id,
+              eventDate: apt.date,
+              eventTime: apt.time,
+              contactInfo: apt.contactInfo
+            };
+          });
+
         // Combine and sort all notifications
-        const allNotifications = [...transformedNotifications]
+        const allNotifications = [...transformedNotifications, ...upcomingAppointments]
           .sort((a, b) => {
             // Unread first
             if (a.read !== b.read) {
@@ -82,10 +116,94 @@ const NotificationOrg = () => {
 
         setNotifications(allNotifications);
       } else {
-        // Sample data for browser mode
-        setNotifications([
+        // Sample data for browser mode - includes upcoming events from calendar
+        const sampleAppointments = [
           {
             id: 1,
+            title: 'Blood Drive Partnership - Santos',
+            date: '2025-10-21',
+            time: '10:00',
+            status: 'confirmed',
+            contactInfo: {
+              lastName: 'Santos',
+              email: 'santos@sanroque.gov.ph',
+              phone: '+63 912 345 6789',
+              address: 'San Roque Barangay Hall',
+              type: 'barangay'
+            }
+          },
+          {
+            id: 2,
+            title: 'Blood Drive Partnership - Buloy',
+            date: '2025-10-13',
+            time: '9:00',
+            status: 'confirmed',
+            contactInfo: {
+              lastName: 'Buloy',
+              email: 'buloy@xyzorg.org.ph',
+              phone: '+63 918 765 4321',
+              address: 'XYZ Organization Hall',
+              type: 'organization'
+            }
+          },
+          {
+            id: 7,
+            title: 'Blood Drive Partnership - Month End',
+            date: '2025-10-22',
+            time: '15:00',
+            status: 'confirmed',
+            contactInfo: {
+              lastName: 'Month End',
+              email: 'monthend@test.com',
+              phone: '+63 918 765 4321',
+              address: 'Community Center Building',
+              type: 'organization'
+            }
+          }
+        ];
+
+        // Create upcoming event notifications
+        const now = new Date();
+        const upcomingEventNotifications = sampleAppointments
+          .filter(apt => {
+            const aptDate = new Date(apt.date + 'T' + apt.time);
+            const hoursDiff = (aptDate - now) / (1000 * 60 * 60);
+            return hoursDiff > 0 && hoursDiff <= 168; // Within 7 days
+          })
+          .map((apt, index) => {
+            const aptDate = new Date(apt.date + 'T' + apt.time);
+            const hoursDiff = Math.round((aptDate - now) / (1000 * 60 * 60));
+            const daysDiff = Math.floor(hoursDiff / 24);
+            
+            let timeMessage;
+            if (daysDiff === 0) {
+              timeMessage = `${hoursDiff} hours`;
+            } else if (daysDiff === 1) {
+              timeMessage = 'tomorrow';
+            } else {
+              timeMessage = `${daysDiff} days`;
+            }
+            
+            return {
+              id: `event-${apt.id}`,
+              notificationId: `EVENT-${apt.id}`,
+              type: 'upcoming_event',
+              status: 'info',
+              title: `Upcoming Event: ${apt.title}`,
+              message: `Your event "${apt.title}" is scheduled in ${timeMessage} at ${apt.contactInfo?.address}.`,
+              requestor: 'Event Reminder',
+              timestamp: new Date(Date.now() - (index + 3) * 60 * 60000),
+              read: false,
+              appointmentId: apt.id,
+              eventDate: apt.date,
+              eventTime: apt.time,
+              contactInfo: apt.contactInfo
+            };
+          });
+
+        const sampleNotifications = [
+          {
+            id: 'notif-1',
             notificationId: 'NOTIF-001',
             type: 'partnership_response',
             status: 'approved',
@@ -97,7 +215,7 @@ const NotificationOrg = () => {
             appointmentId: 'APT001'
           },
           {
-            id: 2,
+            id: 'notif-2',
             notificationId: 'NOTIF-002',
             type: 'partnership_response',
             status: 'declined',
@@ -109,21 +227,7 @@ const NotificationOrg = () => {
             declineReason: 'The proposed venue does not meet our safety standards.'
           },
           {
-            id: 3,
-            notificationId: 'EVENT-001',
-            type: 'upcoming_event',
-            status: 'info',
-            title: 'Upcoming Event: Blood Drive at Community Center',
-            message: 'Your event "Blood Drive at Community Center" is scheduled in 24 hours at 123 Main Street.',
-            requestor: 'Event Reminder',
-            timestamp: new Date(Date.now() - 3 * 60 * 60000),
-            read: false,
-            eventDate: '2025-10-21',
-            eventTime: '10:00',
-            appointmentId: 'APT001'
-          },
-          {
-            id: 4,
+            id: 'notif-3',
             notificationId: 'NOTIF-003',
             type: 'partnership_response',
             status: 'pending',
@@ -133,7 +237,20 @@ const NotificationOrg = () => {
             timestamp: new Date(Date.now() - 5 * 60 * 60000),
             read: true
           }
-        ]);
+        ];
+
+        // Combine and sort all notifications
+        const allNotifications = [...sampleNotifications, ...upcomingEventNotifications]
+          .sort((a, b) => {
+            // Unread first
+            if (a.read !== b.read) {
+              return a.read ? 1 : -1;
+            }
+            // Then by timestamp
+            return new Date(b.timestamp) - new Date(a.timestamp);
+          });
+
+        setNotifications(allNotifications);
       }
     } catch (error) {
       console.error('Error loading notifications:', error);
@@ -171,7 +288,8 @@ const NotificationOrg = () => {
   const getTypeIcon = (type) => {
     switch (type) {
       case 'partnership_response': return <Mail size={16} />;
-      case 'upcoming_event': return <Bell size={16} color="#2563eb" />;      default: return <Bell size={16} />;
+      case 'upcoming_event': return <Calendar size={16} />;
+      default: return <Bell size={16} />;
     }
   };
 
@@ -201,18 +319,13 @@ const NotificationOrg = () => {
     });
   };
 
-  const toggleNotificationReadStatus = async (notificationId) => {
-    try {
-      await window.electronAPI.markNotificationOrgAsRead(notificationId);
-      setNotifications(prev =>
-        prev.map(n =>
-          n.id === notificationId ? { ...n, read: true } : n
-        )
-      );
-      setActiveNotificationMenu(null);
-    } catch (error) {
-      console.error('Error marking notification as read:', error);
-    }
+  const toggleNotificationReadStatus = (notificationId) => {
+    setNotifications(prev =>
+      prev.map(n =>
+        n.id === notificationId ? { ...n, read: !n.read } : n
+      )
+    );
+    setActiveNotificationMenu(null);
   };
 
   const markAllAsRead = () => {
@@ -221,17 +334,12 @@ const NotificationOrg = () => {
     );
   };
 
-  const deleteNotification = async (notificationId) => {
+  const deleteNotification = (notificationId) => {
     if (confirm('Are you sure you want to delete this notification?')) {
-      try {
-        await window.electronAPI.deleteNotificationOrg(notificationId);
-        setNotifications(prev => prev.filter(n => n.id !== notificationId));
-        setActiveNotificationMenu(null);
-        if (selectedNotification && selectedNotification.id === notificationId) {
-          setSelectedNotification(null);
-        }
-      } catch (error) {
-        console.error('Error deleting notification:', error);
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
+      setActiveNotificationMenu(null);
+      if (selectedNotification && selectedNotification.id === notificationId) {
+        setSelectedNotification(null);
       }
     }
   };
@@ -308,14 +416,14 @@ const NotificationOrg = () => {
           <div className="loading-spinner"></div>
           <p>Loading notifications...</p>
         </div>
-        <style>{`
+        <style jsx>{`
           .notification-content {
             padding: 24px;
             background-color: #f9fafb;
             min-height: 100vh;
-            font-family: 'Barlow', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           }
-
+          
           .loading-state {
             display: flex;
             flex-direction: column;
@@ -324,7 +432,7 @@ const NotificationOrg = () => {
             min-height: 400px;
             gap: 16px;
           }
-
+          
           .loading-spinner {
             width: 40px;
             height: 40px;
@@ -333,15 +441,15 @@ const NotificationOrg = () => {
             border-radius: 50%;
             animation: spin 1s linear infinite;
           }
-
+          
           @keyframes spin {
             to { transform: rotate(360deg); }
           }
-
+          
           .loading-state p {
             color: #6b7280;
             font-size: 14px;
-            font-family: 'Barlow', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           }
         `}</style>
       </div>
@@ -544,11 +652,11 @@ const NotificationOrg = () => {
                         <span className="notification-time">{getTimeAgo(notification.timestamp)}</span>
                       </div>
                       <div className="notification-title">{notification.title}</div>
-                      <div className="notification-preview">
-                        {notification.message && notification.message.length > 100
-                          ? `${notification.message.substring(0, 100)}...`
-                          : notification.message || 'No message content'}
-                      </div>
+                        <div className="notification-preview">
+                          {(notification.message || '').length > 100 
+                            ? `${notification.message.substring(0, 100)}...` 
+                            : (notification.message || '')}
+                        </div>
                       <div className="notification-requestor">From: {notification.requestor}</div>
                     </div>
 
@@ -737,12 +845,12 @@ const NotificationOrg = () => {
         )}
       </div>
 
-      <style>{`
+      <style jsx>{`
         .notification-content {
           padding: 24px;
           background-color: #f9fafb;
           min-height: 100vh;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .notification-header {
@@ -754,14 +862,14 @@ const NotificationOrg = () => {
           font-weight: 700;
           color: #165C3C;
           margin: 0 0 4px 0;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .notification-subtitle {
           color: #6b7280;
           font-size: 14px;
           margin: 0;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .stats-grid {
@@ -807,14 +915,14 @@ const NotificationOrg = () => {
           color: #6b7280;
           font-weight: 500;
           margin-bottom: 4px;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .stat-value {
           font-size: 28px;
           font-weight: 700;
           color: #111827;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .controls-bar {
@@ -856,7 +964,7 @@ const NotificationOrg = () => {
           border-radius: 6px;
           width: 300px;
           font-size: 14px;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           outline: none;
         }
 
@@ -886,7 +994,7 @@ const NotificationOrg = () => {
           border-radius: 6px;
           cursor: pointer;
           font-size: 14px;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           font-weight: 500;
           transition: all 0.2s;
           min-width: 160px;
@@ -944,7 +1052,7 @@ const NotificationOrg = () => {
           letter-spacing: 0.05em;
           margin: 0 0 8px 0;
           padding: 0 16px;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .dropdown-item {
@@ -953,7 +1061,7 @@ const NotificationOrg = () => {
           text-align: left;
           padding: 8px 16px;
           font-size: 14px;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           font-weight: 400;
           color: #374151;
           background: none;
@@ -988,7 +1096,7 @@ const NotificationOrg = () => {
           border-radius: 6px;
           cursor: pointer;
           font-size: 14px;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           font-weight: 500;
           transition: all 0.2s;
         }
@@ -1111,14 +1219,14 @@ const NotificationOrg = () => {
           font-size: 12px;
           color: #6b7280;
           font-weight: 500;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .notification-time {
           font-size: 12px;
           color: #6b7280;
           white-space: nowrap;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .notification-title {
@@ -1126,7 +1234,7 @@ const NotificationOrg = () => {
           font-weight: 600;
           color: #111827;
           margin-bottom: 4px;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           line-height: 1.4;
         }
 
@@ -1134,7 +1242,7 @@ const NotificationOrg = () => {
           font-size: 13px;
           color: #6b7280;
           margin-bottom: 4px;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           line-height: 1.5;
         }
 
@@ -1142,7 +1250,7 @@ const NotificationOrg = () => {
           font-size: 12px;
           color: #374151;
           font-weight: 500;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .notification-actions {
@@ -1190,7 +1298,7 @@ const NotificationOrg = () => {
           text-align: left;
           padding: 8px 16px;
           font-size: 14px;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           font-weight: 400;
           color: #374151;
           background: none;
@@ -1292,7 +1400,7 @@ const NotificationOrg = () => {
           font-weight: 700;
           color: #111827;
           margin-bottom: 16px;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           line-height: 1.4;
         }
 
@@ -1307,7 +1415,7 @@ const NotificationOrg = () => {
           display: flex;
           gap: 8px;
           font-size: 14px;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .meta-label {
@@ -1331,7 +1439,7 @@ const NotificationOrg = () => {
           border-radius: 6px;
           font-size: 14px;
           font-weight: 600;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           border: 1px solid;
         }
 
@@ -1339,7 +1447,7 @@ const NotificationOrg = () => {
           font-size: 15px;
           color: #374151;
           line-height: 1.7;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           margin-bottom: 20px;
           white-space: pre-wrap;
         }
@@ -1357,7 +1465,7 @@ const NotificationOrg = () => {
           font-weight: 600;
           color: #111827;
           margin: 0 0 16px 0;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .event-details-grid {
@@ -1372,7 +1480,7 @@ const NotificationOrg = () => {
           gap: 10px;
           font-size: 14px;
           color: #374151;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .event-detail-item svg {
@@ -1399,7 +1507,7 @@ const NotificationOrg = () => {
           font-size: 16px;
           font-weight: 600;
           color: #991b1b;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .decline-reason-text {
@@ -1407,7 +1515,7 @@ const NotificationOrg = () => {
           color: #7f1d1d;
           margin: 0;
           line-height: 1.6;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           white-space: pre-wrap;
         }
 
@@ -1424,7 +1532,7 @@ const NotificationOrg = () => {
           font-weight: 600;
           color: #111827;
           margin: 0 0 16px 0;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .contact-info-grid {
@@ -1439,7 +1547,7 @@ const NotificationOrg = () => {
           gap: 10px;
           font-size: 14px;
           color: #374151;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .contact-info-item svg {
@@ -1459,7 +1567,7 @@ const NotificationOrg = () => {
         .notification-detail-empty p {
           margin-top: 16px;
           font-size: 14px;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .empty-state {
@@ -1481,13 +1589,13 @@ const NotificationOrg = () => {
           font-weight: 600;
           margin: 16px 0 8px 0;
           color: #374151;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .empty-state p {
           font-size: 14px;
           margin: 0;
-          font-family: 'Barlow', sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         @media (max-width: 1024px) {

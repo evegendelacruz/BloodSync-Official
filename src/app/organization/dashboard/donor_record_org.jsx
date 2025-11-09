@@ -1,10 +1,6 @@
-
 import React, { useState, useEffect } from "react";
 import { Plus, Filter, Search, Calendar, Mail, Bell, User, CheckCircle, X, Clock, RefreshCw, MoreVertical } from "lucide-react";
 import SidePanelOrg from "../../../components/SidePanelOrg";
-import SyncConfirmModal from "../../../components/SyncConfirmModal";
-import SyncSuccessModal from "../../../components/SyncSuccessModal";
-import Loader from "../../../components/Loader";
 
 // Import components for navigation
 import MailOrg from "./(tabs)/mail_org";
@@ -35,7 +31,7 @@ const AddDonorModal = ({ isOpen, onClose, onSave, donorData, onInputChange, isLo
         <div className="modal-header">
           <div>
             <h2 className="modal-title">Donor Record</h2>
-            <p className="modal-subtitle">{isEditMode ? 'Edit Donor' : 'Add New Donor'}</p>
+            <p className="modal-subtitle">{isEditMode ? 'Edit Donor' : 'Add Donor'}</p>
           </div>
           <button className="modal-close-button" onClick={onClose} disabled={isLoading}>
             <X size={20} />
@@ -57,7 +53,7 @@ const AddDonorModal = ({ isOpen, onClose, onSave, donorData, onInputChange, isLo
             </div>
 
             <div className="form-group">
-              <label className="form-label">Middle Name</label>
+              <label className="form-label">Middle Name (Optional)</label>
               <input
                 type="text"
                 className="form-input"
@@ -106,7 +102,7 @@ const AddDonorModal = ({ isOpen, onClose, onSave, donorData, onInputChange, isLo
             </div>
 
             <div className="form-group">
-              <label className="form-label">Age</label>
+              <label className="form-label">Age (Auto-calculated)</label>
               <input
                 type="number"
                 className="form-input"
@@ -154,357 +150,322 @@ const AddDonorModal = ({ isOpen, onClose, onSave, donorData, onInputChange, isLo
                 className="form-input"
                 value={donorData.contactNumber}
                 onChange={(e) => onInputChange('contactNumber', e.target.value)}
-                placeholder=""
+                placeholder="09XXXXXXXXX"
                 disabled={isLoading}
               />
             </div>
 
             <div className="form-group form-group-full">
               <label className="form-label">Address *</label>
-              <textarea
-                className="form-textarea"
+              <input
+                type="text"
+                className="form-input"
                 value={donorData.address}
                 onChange={(e) => onInputChange('address', e.target.value)}
-                placeholder=""
-                rows={3}
                 disabled={isLoading}
               />
             </div>
           </div>
         </div>
 
-        <div className="modal-footer">
-          <button className="modal-button modal-cancel-button" onClick={onClose} disabled={isLoading}>
-            Cancel
-          </button>
+        <div className="modal-footer-center">
           <button 
-            className="modal-button modal-save-button" 
+            className="modal-button modal-save-button-center" 
             onClick={handleSave}
             disabled={isLoading}
           >
-            {isLoading ? (isEditMode ? 'Updating...' : 'Saving...') : (isEditMode ? 'Update' : 'Save')}
+            {isLoading ? (isEditMode ? 'Updating...' : 'Saving...') : 'Save'}
           </button>
         </div>
+
+        {isLoading && (
+          <div className="saving-overlay">
+            <div className="saving-spinner"></div>
+            <div className="saving-text">{isEditMode ? 'Updating donor...' : 'Saving donor...'}</div>
+          </div>
+        )}
       </div>
 
       <style jsx>{`
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background-color: rgba(0, 0, 0, 0.5);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-          animation: fadeIn 0.2s ease-out;
-        }
+       /* Modal Overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+}
 
-        .modal-content {
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-          max-width: 800px;
-          width: 90%;
-          max-height: 90vh;
-          overflow-y: auto;
-          animation: slideIn 0.3s ease-out;
-        }
+/* Modal Content */
+.modal-content {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  max-width: 1000px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideIn 0.3s ease-out;
+  position: relative;
+}
 
-        .modal-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          padding: 24px 24px 16px 24px;
-          border-bottom: 1px solid #e5e7eb;
-        }
+/* Modal Header */
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 24px 32px 20px 32px;
+  border-bottom: 1px solid #e5e7eb;
+}
 
-        .modal-title {
-          font-size: 20px;
-          font-weight: 600;
-          color: #165C3C;
-          margin: 0;
-          font-family: 'Barlow';
-        }
+.modal-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #165C3C;
+  margin: 0;
+  font-family: 'Barlow', sans-serif;
+}
 
-        .modal-subtitle {
-          font-size: 14px;
-          color: #6b7280;
-          margin: 4px 0 0 0;
-          font-family: 'Barlow';
-        }
+.modal-subtitle {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 2px 0 0 0;
+  font-family: 'Barlow', sans-serif;
+}
 
-        .modal-close-button {
-          background: none;
-          border: none;
-          color: #6b7280;
-          cursor: pointer;
-          padding: 4px;
-          border-radius: 6px;
-          transition: all 0.2s;
-        }
+.modal-close-button {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
 
-        .modal-close-button:hover {
-          background-color: #f3f4f6;
-          color: #374151;
-        }
+.modal-close-button:hover {
+  background-color: #f3f4f6;
+  color: #6b7280;
+}
 
-        .modal-close-button:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
+.modal-close-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
-        .modal-body {
-          padding: 24px;
-        }
+/* Modal Body */
+.modal-body {
+  padding: 32px;
+}
 
-        .form-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr 1fr;
-          gap: 20px;
-        }
+/* Form Grid */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
 
-        .form-group {
-          display: flex;
-          flex-direction: column;
-        }
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
 
-        .form-group-full {
-          grid-column: 1 / -1;
-        }
+.form-group-full {
+  grid-column: 1 / -1;
+}
 
-        .form-label {
-          font-size: 14px;
-          font-weight: 500;
-          color: #374151;
-          margin-bottom: 6px;
-          font-family: 'Barlow';
-        }
+/* Form Labels */
+.form-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 8px;
+  font-family: 'Barlow', sans-serif;
+}
 
-        .form-input, .form-select, .form-textarea {
-          padding: 10px 12px;
-          border: 1px solid #d1d5db;
-          border-radius: 6px;
-          font-size: 14px;
-          font-family: 'Barlow';
-          color: #111827;
-          background-color: white;
-          transition: border-color 0.2s, box-shadow 0.2s;
-        }
+/* Form Inputs */
+.form-input, .form-select {
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: 'Barlow', sans-serif;
+  color: #111827;
+  background-color: white;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
 
-        .form-input:focus, .form-select:focus, .form-textarea:focus {
-          outline: none;
-          border-color: #165C3C;
-          box-shadow: 0 0 0 3px rgba(22, 92, 60, 0.1);
-        }
+.form-input::placeholder {
+  color: #9ca3af;
+}
 
-        .form-input[readonly], .form-input:disabled, .form-select:disabled, .form-textarea:disabled {
-          background-color: #f9fafb;
-          color: #6b7280;
-          cursor: not-allowed;
-        }
+.form-input:focus, .form-select:focus {
+  outline: none;
+  border-color: #165C3C;
+  box-shadow: 0 0 0 3px rgba(22, 92, 60, 0.1);
+}
 
-        .form-select {
-          cursor: pointer;
-        }
+.form-input[readonly], 
+.form-input:disabled, 
+.form-select:disabled {
+  background-color: #f3f4f6;
+  color: #6b7280;
+  cursor: not-allowed;
+}
 
-        .form-textarea {
-          resize: vertical;
-          min-height: 80px;
-        }
+/* Form Select Custom Styling */
+.form-select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
+}
 
-        .modal-footer {
-          display: flex;
-          justify-content: flex-end;
-          gap: 12px;
-          padding: 16px 24px 24px 24px;
-          border-top: 1px solid #e5e7eb;
-          background-color: #f9fafb;
-          border-bottom-left-radius: 12px;
-          border-bottom-right-radius: 12px;
-        }
+/* Modal Footer */
+.modal-footer-center {
+  display: flex;
+  justify-content: center;
+  padding: 24px 32px 32px 32px;
+}
 
-        .modal-button {
-          padding: 10px 24px;
-          border-radius: 6px;
-          font-size: 14px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s;
-          border: 1px solid;
-          font-family: 'Barlow';
-        }
+.modal-save-button-center {
+  padding: 12px 80px;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  font-family: 'Barlow', sans-serif;
+  background-color: #FFC200;
+  color: #000000;
+}
 
-        .modal-button:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
+.modal-save-button-center:hover:not(:disabled) {
+  background-color: #e6ae00;
+}
 
-        .modal-cancel-button {
-          background-color: white;
-          color: #6b7280;
-          border-color: #d1d5db;
-        }
+.modal-save-button-center:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
-        .modal-cancel-button:hover:not(:disabled) {
-          background-color: #f9fafb;
-          border-color: #9ca3af;
-        }
+/* Saving Overlay */
+.saving-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  border-radius: 8px;
+}
 
-        .modal-save-button {
-          background-color: #165C3C;
-          color: white;
-          border-color: #165C3C;
-        }
+.saving-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #165C3C;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
 
-        .modal-save-button:hover:not(:disabled) {
-          background-color: #134e33;
-          border-color: #134e33;
-        }
+.saving-text {
+  color: #374151;
+  font-family: 'Barlow', sans-serif;
+  font-size: 14px;
+}
 
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
 
-        @keyframes slideIn {
-          from {
-            opacity: 0;
-            transform: translateY(-20px) scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
 
-        @media (max-width: 768px) {
-          .form-grid {
-            grid-template-columns: 1fr;
-            gap: 16px;
-          }
-          
-          .modal-content {
-            width: 95%;
-            margin: 20px;
-          }
-          
-          .modal-header, .modal-body {
-            padding: 16px;
-          }
-          
-          .modal-footer {
-            padding: 12px 16px 16px 16px;
-            flex-direction: column;
-          }
-        }
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .modal-content {
+    width: 95%;
+    margin: 20px;
+  }
+  
+  .modal-header, .modal-body {
+    padding: 16px;
+  }
+  
+  .modal-footer-center {
+    padding: 12px 16px 16px 16px;
+  }
+
+  .modal-save-button-center {
+    width: 100%;
+    padding: 12px 24px;
+  }
+}
+
+/* Scrollbar Styling (Optional) */
+.modal-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.modal-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.modal-content::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+.modal-content::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
       `}</style>
     </div>
   );
 };
 
-// Save Donor Confirmation Modal Component
-const SaveDonorConfirmModal = ({ isOpen, onClose, onConfirm, actionType }) => {
-  if (!isOpen) return null;
-
-  return (
-    <div className="modal-overlay">
-      <div className="sync-modal-content">
-        <div className="modal-header">
-          <h2 className="modal-title" style={{ color: '#059669' }}>Confirm {actionType === 'add' ? 'Add' : 'Update'} Donor</h2>
-          <button className="modal-close-button" onClick={onClose}>
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="modal-body">
-          <p style={{ marginBottom: '16px', color: '#666', textAlign: 'center' }}>
-            Click Yes to Confirm {actionType === 'add' ? 'Adding' : 'Updating'} this donor record.
-          </p>
-        </div>
-
-        <div className="modal-footer">
-          <button className="modal-cancel-button" onClick={onClose} style={{ backgroundColor: 'white', color: '#059669', border: '1px solid #059669' }}>
-            No
-          </button>
-          <button className="modal-save-button" onClick={onConfirm} style={{ backgroundColor: '#059669', color: 'white', border: '1px solid #059669' }}>
-            Yes
-          </button>
-        </div>
-
-        <style>{`
-          .sync-modal-content {
-            background: white;
-            border-radius: 8px;
-            width: 90%;
-            max-width: 450px;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-            animation: slideIn 0.3s ease-out;
-          }
-
-          @keyframes slideIn {
-            from {
-              opacity: 0;
-              transform: translateY(-20px) scale(0.95);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(0) scale(1);
-            }
-          }
-        `}</style>
-      </div>
-    </div>
-  );
-};
-
-// Save Donor Success Modal Component
-const SaveDonorSuccessModal = ({ isOpen, onClose, actionType }) => {
-  if (!isOpen) return null;
-
-  return (
-    <div className="modal-overlay">
-      <div className="sync-modal-content">
-        <div style={{ padding: '2rem', textAlign: 'center' }}>
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
-            <img
-              src="/assets/success.png"
-              alt="Success"
-              style={{ width: '80px', height: '80px', objectFit: 'contain' }}
-              onError={(e) => {
-                e.target.style.display = 'none';
-                e.target.parentElement.innerHTML = '<div style="width: 80px; height: 80px; background-color: #059669; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 3rem; color: white;">✓</div>';
-              }}
-            />
-          </div>
-          <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#059669', margin: '0 0 0.75rem 0' }}>
-            {actionType === 'add' ? 'Donor Added' : 'Donor Updated'} Successfully
-          </h3>
-          <p style={{ color: '#6b7280', margin: '0 0 1.5rem 0', fontSize: '0.875rem', lineHeight: '1.5' }}>
-            The donor record has been {actionType === 'add' ? 'added' : 'updated'} successfully.
-          </p>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '0.5rem 1.5rem',
-              borderRadius: '0.375rem',
-              fontSize: '0.875rem',
-              fontWeight: 500,
-              cursor: 'pointer',
-              backgroundColor: '#059669',
-              color: 'white',
-              border: '1px solid #059669'
-            }}
-          >
-            OK
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const DonorRecordContent = () => {
   const [isAddDonorModalOpen, setIsAddDonorModalOpen] = useState(false);
@@ -527,35 +488,24 @@ const DonorRecordContent = () => {
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-
+  
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingDonorId, setEditingDonorId] = useState(null);
-
-  const [showSyncConfirmModal, setShowSyncConfirmModal] = useState(false);
-  const [showSyncSuccessModal, setShowSyncSuccessModal] = useState(false);
-  const [showLoader, setShowLoader] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncedDonorCount, setSyncedDonorCount] = useState(0);
-
-  const [showSaveDonorConfirmModal, setShowSaveDonorConfirmModal] = useState(false);
-  const [showSaveDonorSuccessModal, setShowSaveDonorSuccessModal] = useState(false);
-  const [saveDonorActionType, setSaveDonorActionType] = useState('add'); // 'add' or 'update'
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [successMessage, setSuccessMessage] = useState({ title: '', description: '' });
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
+  const [pendingDeleteType, setPendingDeleteType] = useState(null);
 
   useEffect(() => {
-    const initializePage = async () => {
-      setIsLoadingData(true);
-      await loadDonors();
-      // Show loader for 1 second minimum
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setIsLoadingData(false);
-    };
-    initializePage();
+    loadDonors();
   }, []);
 
   const loadDonors = async () => {
     try {
+      setIsLoadingData(true);
       setError(null);
-
+      
       if (typeof window !== 'undefined' && window.electronAPI) {
         const donors = await window.electronAPI.getAllDonors();
         setDonorData(donors);
@@ -566,6 +516,8 @@ const DonorRecordContent = () => {
     } catch (error) {
       console.error('Error loading donors:', error);
       setError('Failed to load donors. Please try again.');
+    } finally {
+      setIsLoadingData(false);
     }
   };
 
@@ -664,72 +616,49 @@ const DonorRecordContent = () => {
     }
   };
 
-  const handleSaveNewDonorClick = async () => {
-    // Validate form
-    if (!newDonorData.firstName || !newDonorData.lastName || !newDonorData.gender ||
-        !newDonorData.birthdate || !newDonorData.bloodType || !newDonorData.rhFactor ||
-        !newDonorData.contactNumber || !newDonorData.address) {
-      alert('Please fill in all required fields.');
-      return;
-    }
-
-    // Show loader first
-    setShowLoader(true);
-    setIsLoading(true);
-
-    // Wait a moment then show confirmation
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    setShowLoader(false);
-    setSaveDonorActionType(isEditMode ? 'update' : 'add');
-    setShowSaveDonorConfirmModal(true);
-    setIsLoading(false);
-  };
-
-  const handleConfirmSaveDonor = async () => {
+  const handleSaveNewDonor = async () => {
     try {
       setIsLoading(true);
       setError(null);
-
-      // Close confirmation and show loader
-      setShowSaveDonorConfirmModal(false);
-      setShowLoader(true);
-
+      
       if (typeof window !== 'undefined' && window.electronAPI) {
         const donorPayload = {
           ...newDonorData,
           age: parseInt(newDonorData.age)
         };
-
+        
+        // --- FIX: Get current user from localStorage ---
         const user = JSON.parse(localStorage.getItem('currentOrgUser'));
-        const currentUserName = user?.fullName || 'Unknown User';
-
+        const currentUser = user?.fullName || 'Unknown User';
+        // --- END FIX ---
+        
         if (isEditMode && editingDonorId) {
-          const updatedDonor = await window.electronAPI.updateDonor(editingDonorId, donorPayload, currentUserName);
-          setDonorData(prev => prev.map(donor =>
+          const updatedDonor = await window.electronAPI.updateDonor(editingDonorId, donorPayload, currentUser);
+          setDonorData(prev => prev.map(donor => 
             donor.id === editingDonorId ? updatedDonor : donor
           ));
         } else {
-          const newDonor = await window.electronAPI.addDonor(donorPayload, currentUserName);
+          const newDonor = await window.electronAPI.addDonor(donorPayload, currentUser);
           setDonorData(prev => [newDonor, ...prev]);
         }
 
-        // Wait 1 second for loader
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        setSuccessMessage({
+          title: isEditMode ? 'Donor Updated Successfully!' : 'Donor Added Successfully!',
+          description: `New donor record has been ${isEditMode ? 'updated in' : 'added to'} the system.`
+        });
 
-        // Hide loader and show success
-        setShowLoader(false);
-        setShowSaveDonorSuccessModal(true);
-
-        // Close add donor modal
-        handleCloseAddDonorModal();
+        // show success modal and then close form
+        setShowSuccessModal(true);
+        setTimeout(() => {
+          setShowSuccessModal(false);
+          handleCloseAddDonorModal();
+        }, 1200);
       } else {
         throw new Error('Database not available');
       }
     } catch (error) {
       console.error('Error saving donor:', error);
       setError(`Failed to ${isEditMode ? 'update' : 'save'} donor. Please try again.`);
-      setShowLoader(false);
     } finally {
       setIsLoading(false);
     }
@@ -766,121 +695,64 @@ const DonorRecordContent = () => {
     setIsAddDonorModalOpen(true);
   };
 
-  const handleDeleteSingleDonor = async (donorId) => {
-    if (!confirm('Are you sure you want to delete this donor?')) {
-      return;
-    }
+  const handleDeleteSingleDonor = (donorId) => {
+    setPendingDeleteId(donorId);
+    setPendingDeleteType('single');
+    setShowDeleteDialog(true);
+  };
+
+  const handleDeleteSelectedDonors = () => {
+    const selectedDonors = donorData.filter(donor => donor.selected);
     
-    try {
-      setIsLoading(true);
-      setError(null);
-      
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        const user = JSON.parse(localStorage.getItem('currentOrgUser'));
-        const currentUserName = user?.fullName || 'Unknown User';
-        await window.electronAPI.deleteDonors([donorId], currentUserName);
-        setDonorData(prev => prev.filter(donor => donor.donor_id !== donorId));
-      }
-    } catch (error) {
-      console.error('Error deleting donor:', error);
-      setError('Failed to delete donor. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleDeleteSelectedDonors = async () => {
-    const selectedDonors = donorData.filter(donor => donor.selected);
-
     if (selectedDonors.length === 0) return;
+    
+    setPendingDeleteId(selectedDonors.map(d => d.donor_id));
+    setPendingDeleteType('multiple');
+    setShowDeleteDialog(true);
+  };
 
-    if (!confirm(`Are you sure you want to delete ${selectedDonors.length} donor(s)?`)) {
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        const donorIds = selectedDonors.map(donor => donor.donor_id);
+  const confirmDelete = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        
+        if (typeof window !== 'undefined' && window.electronAPI) {
+          // --- FIX: Get current user from localStorage ---
         const user = JSON.parse(localStorage.getItem('currentOrgUser'));
-        const currentUserName = user?.fullName || 'Unknown User';
-        await window.electronAPI.deleteDonors(donorIds, currentUserName);
-        setDonorData(prev => prev.filter(donor => !donor.selected));
+        const currentUser = user?.fullName || 'Unknown User';
+        // --- END FIX ---
+          const idsToDelete = Array.isArray(pendingDeleteId) ? pendingDeleteId : [pendingDeleteId];
+          
+          await window.electronAPI.deleteDonors(idsToDelete, currentUser);
+          setDonorData(prev => prev.filter(donor => !idsToDelete.includes(donor.donor_id)));
+          
+          // --- START: ADD THIS CODE ---
+          const count = idsToDelete.length;
+          setSuccessMessage({
+            title: 'Deleted Successfully!',
+            description: `${count} donor record(s) have been deleted.`
+          });
+          setShowSuccessModal(true);
+          clearAllSelection(); // Good practice to clear selection
+          // --- END: ADD THIS CODE ---
+        }
+        
+        setShowDeleteDialog(false);
+        setPendingDeleteId(null);
+        setPendingDeleteType(null);
+      } catch (error) {
+        console.error('Error deleting donor:', error);
+        setError('Failed to delete donor. Please try again.');
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error('Error deleting donors:', error);
-      setError('Failed to delete donors. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
+    };
+
+  const cancelDelete = () => {
+    setShowDeleteDialog(false);
+    setPendingDeleteId(null);
+    setPendingDeleteType(null);
   };
-
-  const handleRequestSyncClick = () => {
-    const selectedDonors = donorData.filter(donor => donor.selected);
-
-    if (selectedDonors.length === 0) {
-      alert('Please select at least one donor to sync.');
-      return;
-    }
-
-    setShowSyncConfirmModal(true);
-  };
-
-  const handleConfirmSync = async () => {
-    try {
-      setIsSyncing(true);
-      setError(null);
-
-      const selectedDonors = donorData.filter(donor => donor.selected);
-      setSyncedDonorCount(selectedDonors.length);
-
-      // Close confirm modal and show loader
-      setShowSyncConfirmModal(false);
-      setShowLoader(true);
-
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        // Get current user info from localStorage
-        const currentUser = JSON.parse(localStorage.getItem('currentOrgUser'));
-        const sourceOrganization = currentUser?.barangay || 'Unknown Organization';
-        const sourceUserId = currentUser?.userId || 0;
-        const sourceUserName = currentUser?.fullName || 'Unknown User';
-
-        // Request sync
-        await window.electronAPI.requestDonorSync(
-          selectedDonors,
-          sourceOrganization,
-          sourceUserId,
-          sourceUserName
-        );
-
-        // Wait 1 second for loader animation
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        // Deselect synced donors
-        setDonorData(prev => prev.map(donor => ({
-          ...donor,
-          selected: false
-        })));
-
-        // Hide loader and show success modal
-        setShowLoader(false);
-        setShowSyncSuccessModal(true);
-      }
-    } catch (error) {
-      console.error('Error requesting sync:', error);
-      setError('Failed to request sync. Please try again.');
-      setShowLoader(false);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  // Show loader while loading initial donor data
-  if (isLoadingData) {
-    return <Loader />;
-  }
 
   return (
     <div className="donor-record-content">
@@ -928,11 +800,11 @@ const DonorRecordContent = () => {
             <span>Filter</span>
           </button>
 
-          <button className="sync-button" onClick={handleRequestSyncClick} disabled={isLoadingData || isSyncing}>
+          <button className="sync-button" disabled={isLoadingData}>
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            <span>{isSyncing ? 'Syncing...' : 'Request Sync'}</span>
+            <span>Request Sync</span>
           </button>
 
           <button className="add-button" onClick={handleAddDonorClick} disabled={isLoadingData || isLoading}>
@@ -1095,42 +967,59 @@ const DonorRecordContent = () => {
       <AddDonorModal
         isOpen={isAddDonorModalOpen}
         onClose={handleCloseAddDonorModal}
-        onSave={handleSaveNewDonorClick}
+        onSave={handleSaveNewDonor}
         donorData={newDonorData}
         onInputChange={handleNewDonorInputChange}
         isLoading={isLoading}
         isEditMode={isEditMode}
       />
 
-      <SyncConfirmModal
-        isOpen={showSyncConfirmModal}
-        onCancel={() => setShowSyncConfirmModal(false)}
-        onConfirm={handleConfirmSync}
-        donorCount={donorData.filter(donor => donor.selected).length}
-      />
+      {showSuccessModal && (
+        <div className="dialog-overlay">
+          <div className="dialog-content">
+            <div className="dialog-icon-container">
+              <div className="dialog-icon-success">
+                <CheckCircle size={24} />
+              </div>
+            </div>
+              <h3 className="dialog-title">{successMessage.title}</h3>
+              <p className="dialog-message">{successMessage.description}</p>
+            <div className="dialog-actions">
+              <button className="dialog-button confirm-button" onClick={() => setShowSuccessModal(false)}>OK</button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <SyncSuccessModal
-        isOpen={showSyncSuccessModal}
-        onClose={() => setShowSyncSuccessModal(false)}
-        donorCount={syncedDonorCount}
-      />
+      {showDeleteDialog && (
+        <div className="dialog-overlay">
+          <div className="dialog-content">
+            <div className="dialog-icon-container">
+              <div className="dialog-icon-warning">
+                <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+            </div>
+            <h3 className="dialog-title">Do you Want to Delete Donor{pendingDeleteType === 'multiple' ? 's' : ''}?</h3>
+            <p className="dialog-message">
+              {pendingDeleteType === 'multiple' 
+                ? `Are you sure you want to delete ${Array.isArray(pendingDeleteId) ? pendingDeleteId.length : 0} donor(s)? This action cannot be undone.`
+                : 'Are you sure you want to delete this donor? This action cannot be undone.'}
+            </p>
+            <div className="dialog-actions">
+              <button className="dialog-button cancel-button" onClick={cancelDelete} disabled={isLoading}>
+                Cancel
+              </button>
+              <button className="dialog-button delete-confirm-button" onClick={confirmDelete} disabled={isLoading}>
+                {isLoading ? 'Deleting...' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <SaveDonorConfirmModal
-        isOpen={showSaveDonorConfirmModal}
-        onClose={() => setShowSaveDonorConfirmModal(false)}
-        onConfirm={handleConfirmSaveDonor}
-        actionType={saveDonorActionType}
-      />
-
-      <SaveDonorSuccessModal
-        isOpen={showSaveDonorSuccessModal}
-        onClose={() => setShowSaveDonorSuccessModal(false)}
-        actionType={saveDonorActionType}
-      />
-
-      {showLoader && <Loader />}
-
-      <style>{`
+      <style jsx>{`
         @font-face {
           font-family: 'Barlow';
           src: url('./src/assets/fonts/Barlow-Regular.ttf') format('truetype');
@@ -1649,6 +1538,134 @@ const DonorRecordContent = () => {
           cursor: not-allowed;
         }
 
+        .dialog-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background-color: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          animation: fadeIn 0.2s ease-out;
+        }
+
+        .dialog-content {
+          background: white;
+          padding: 2rem;
+          border-radius: 0.5rem;
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+          max-width: 400px;
+          width: 90%;
+          text-align: center;
+          animation: slideIn 0.3s ease-out;
+        }
+
+        .dialog-icon-container {
+          display: flex;
+          justify-content: center;
+          margin-bottom: 1rem;
+        }
+
+        .dialog-icon-success {
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          background-color: #d1fae5;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #10b981;
+        }
+
+        .dialog-icon-warning {
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          background-color: #fef2f2;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #ef4444;
+        }
+
+        .dialog-title {
+          font-size: 1.125rem;
+          font-weight: 600;
+          color: #111827;
+          margin: 0 0 0.75rem 0;
+          font-family: 'Barlow';
+        }
+
+        .dialog-message {
+          color: #6b7280;
+          margin: 0 0 1.5rem 0;
+          font-size: 0.875rem;
+          font-family: 'Barlow';
+        }
+
+        .dialog-actions {
+          display: flex;
+          gap: 0.75rem;
+          justify-content: center;
+        }
+
+        .dialog-button {
+          padding: 0.5rem 1.5rem;
+          border-radius: 0.375rem;
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+          border: 1px solid;
+          font-family: 'Barlow';
+        }
+
+        .cancel-button {
+          background-color: white;
+          color: #6b7280;
+          border-color: #d1d5db;
+        }
+
+        .cancel-button:hover:not(:disabled) {
+          background-color: #f9fafb;
+          border-color: #9ca3af;
+        }
+
+        .cancel-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .confirm-button {
+          background-color: #FFC200;
+          color: #000000;
+          border-color: #FFC200;
+        }
+
+        .confirm-button:hover:not(:disabled) {
+          background-color: #e6ae00;
+          border-color: #e6ae00;
+        }
+
+        .delete-confirm-button {
+          background-color: #ef4444;
+          color: white;
+          border-color: #ef4444;
+        }
+
+        .delete-confirm-button:hover:not(:disabled) {
+          background-color: #dc2626;
+          border-color: #dc2626;
+        }
+
+        .delete-confirm-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
         @keyframes fadeIn {
           from {
             opacity: 0;
@@ -1797,29 +1814,19 @@ const DonorRecordOrg = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeNotificationMenu, setActiveNotificationMenu] = useState(null);
   const [mailMessages, setMailMessages] = useState([]);
+  // --- ADD THESE TWO LINES ---
+  const [userName, setUserName] = useState('Loading...');
+  const [userPhoto, setUserPhoto] = useState(null);
   const [isLoadingMail, setIsLoadingMail] = useState(false);
   const [calendarAppointments, setCalendarAppointments] = useState([]);
   const [isLoadingCalendar, setIsLoadingCalendar] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
 
-  // Load current user from localStorage
-  useEffect(() => {
-    const userData = localStorage.getItem('currentOrgUser');
-    if (userData) {
-      try {
-        const user = JSON.parse(userData);
-        setCurrentUser(user);
-      } catch (error) {
-        console.error('Error parsing user data:', error);
-      }
-    }
-  }, []);
-
-  // Load notifications and set up periodic refresh
+  // Load notifications from database
   useEffect(() => {
     loadNotifications();
-
+    
     const notificationInterval = setInterval(loadNotifications, 30000);
+    
     return () => clearInterval(notificationInterval);
   }, []);
 
@@ -1827,7 +1834,7 @@ const DonorRecordOrg = () => {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
         const [notificationsData, appointmentsData] = await Promise.all([
-          window.electronAPI.getAllOrgNotifications(),
+          window.electronAPI.getAllOrgNotifications(), // <-- CORRECTED
           window.electronAPI.getAllAppointments()
         ]);
         
@@ -2069,42 +2076,44 @@ const DonorRecordOrg = () => {
   }, []);
 
   const loadMailMessages = async () => {
-    try {
-      setIsLoadingMail(true);
-
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        // Load from mail_org table instead of notifications
-        const mails = await window.electronAPI.getAllMails();
-
-        const formattedMails = mails
-          .map(m => {
-            return {
-              id: m.id,
-              mailId: m.mail_id,
-              from: m.from_name || 'Regional Blood Center',
-              fromEmail: m.from_email || 'admin@regionalbloodcenter.org',
-              avatar: 'RBC',
-              avatarColor: '#165C3C',
-              subject: m.subject,
-              preview: m.preview,
-              timestamp: new Date(m.created_at),
-              read: m.read || false,
-              status: m.status,
-              declineReason: m.decline_reason || null,
-              appointmentId: m.appointment_id
-            };
-          })
-          .sort((a, b) => b.timestamp - a.timestamp)
-          .slice(0, 3);
-
-        setMailMessages(formattedMails);
+      try {
+        setIsLoadingMail(true);
+        
+        if (typeof window !== 'undefined' && window.electronAPI) {
+          // CORRECTED: Call getAllMails from db_org.js
+          const mailData = await window.electronAPI.getAllMails();
+          
+          // CORRECTED: Map fields from mail_org table
+          const mailsFromNotifications = mailData
+            .map(n => {
+              const avatar = 'RBC';
+              
+              return {
+                id: n.id,
+                notificationId: n.mail_id, // Use mail_id
+                from: 'Regional Blood Center',
+                fromEmail: 'admin@regionalbloodcenter.org',
+                avatar: avatar,
+                avatarColor: '#165C3C',
+                subject: n.subject,
+                preview: n.preview,
+                timestamp: new Date(n.created_at),
+                read: n.read || false,
+                status: n.status,
+                declineReason: n.decline_reason || null
+              };
+            })
+            .sort((a, b) => b.timestamp - a.timestamp)
+            .slice(0, 3);
+          
+          setMailMessages(mailsFromNotifications);
+        }
+      } catch (error) {
+        console.error('Error loading mail messages:', error);
+      } finally {
+        setIsLoadingMail(false);
       }
-    } catch (error) {
-      console.error('Error loading mail messages:', error);
-    } finally {
-      setIsLoadingMail(false);
-    }
-  };
+    };
 
   useEffect(() => {
     loadCalendarAppointments();
@@ -2182,6 +2191,38 @@ const DonorRecordOrg = () => {
       setIsLoadingCalendar(false);
     }
   };
+
+  // --- ADD THIS ENTIRE BLOCK ---
+  useEffect(() => {
+    // Load user info from localStorage
+    const userStr = localStorage.getItem('currentOrgUser');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      setUserName(user.fullName || 'Organization User');
+      setUserPhoto(user.profilePhoto || null);
+    } else {
+      // Fallback if no user is found
+      setUserName('Organization User');
+    }
+
+    // Listen for profile updates from other tabs
+    const handleProfileUpdate = () => {
+      const updatedUserStr = localStorage.getItem('currentOrgUser');
+      if (updatedUserStr) {
+        const updatedUser = JSON.parse(updatedUserStr);
+        setUserName(updatedUser.fullName || 'Organization User');
+        setUserPhoto(updatedUser.profilePhoto || null);
+      }
+    };
+
+    window.addEventListener('profileUpdated', handleProfileUpdate);
+
+    // Clean up the event listener
+    return () => {
+      window.removeEventListener('profileUpdated', handleProfileUpdate);
+    };
+  }, []);
+  // --- END OF NEW BLOCK ---
 
   const getAppointmentIcon = (type) => {
     return '🩸';
@@ -2486,7 +2527,7 @@ const DonorRecordOrg = () => {
                                 </div>
                               </div>
                             </div>
-                            <p className="notification-subtitle">{notification.message && notification.message.length > 60 ? `${notification.message.substring(0, 60)}...` : notification.message || 'No message content'}</p>
+                            <p className="notification-subtitle">{notification.message.length > 60 ? `${notification.message.substring(0, 60)}...` : notification.message}</p>
                             <span className="notification-requestor">From: {notification.requestor}</span>
                           </div>
                           {!notification.read && <div className="unread-dot-dropdown"></div>}
@@ -2503,30 +2544,23 @@ const DonorRecordOrg = () => {
               </div>
 
               <div className="user-section relative">
-                <span className="user-name">{currentUser?.fullName || 'User'}</span>
+                {/* USE THE 'userName' STATE VARIABLE */}
+                <span className="user-name">{userName}</span>
                 <div
                   className={`user-avatar cursor-pointer ${activeScreen === "profile" ? "user-avatar-active" : ""}`}
                   onClick={toggleProfileDropdown}
-                  style={{
-                    overflow: 'hidden',
-                    width: '40px',
-                    height: '40px',
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: currentUser?.profilePhoto ? 'transparent' : '#f3f4f6'
-                  }}
                 >
-                  {currentUser?.profilePhoto ? (
-                    <img
-                      src={currentUser.profilePhoto}
-                      alt="Profile"
+                  {/* CHECK FOR A userPhoto, OTHERWISE SHOW DEFAULT ICON */}
+                  {userPhoto ? (
+                    <img 
+                      src={userPhoto} 
+                      alt="Profile" 
                       style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover'
-                      }}
+                        width: '100%', 
+                        height: '100%', 
+                        objectFit: 'cover', 
+                        borderRadius: '50%'
+                      }} 
                     />
                   ) : (
                     <User className="w-4 h-4 text-gray-600" />
@@ -3118,6 +3152,59 @@ const DonorRecordOrg = () => {
           padding: 1.5rem;
         }
 
+        .unread-mail {
+          background-color: #fefffe;
+          border-left: 3px solid #10b981;
+        }
+
+        .message-header-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 4px;
+        }
+
+        .mail-status-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+
+        .message-subject {
+          font-size: 0.8rem;
+          font-weight: 600;
+          color: #111827;
+          margin: 0 0 4px 0;
+          line-height: 1.2;
+          font-family: 'Barlow';
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .loading-mail-content,
+        .empty-mail-content {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 12px;
+          width: 100%;
+        }
+
+        .loading-text,
+        .empty-text {
+          font-size: 0.75rem;
+          color: #6b7280;
+          font-family: 'Barlow';
+        }
+
+        .loading-icon {
+          animation: spin 1s linear infinite;
+        }
+
         @media (max-width: 768px) {
           .main-content-wrapper {
             margin-left: 0 !important;
@@ -3143,59 +3230,6 @@ const DonorRecordOrg = () => {
             right: auto;
             left: 0;
           }
-
-          .unread-mail {
-  background-color: #fefffe;
-  border-left: 3px solid #10b981;
-}
-
-.message-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.mail-status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.message-subject {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #111827;
-  margin: 0 0 4px 0;
-  line-height: 1.2;
-  font-family: 'Barlow';
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.loading-mail-content,
-.empty-mail-content {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px;
-  width: 100%;
-}
-
-.loading-text,
-.empty-text {
-  font-size: 0.75rem;
-  color: #6b7280;
-  font-family: 'Barlow';
-}
-
-.loading-icon {
-  animation: spin 1s linear infinite;
-}
 
           .requests-dropdown, .notifications-dropdown, .messages-dropdown {
             width: 280px;

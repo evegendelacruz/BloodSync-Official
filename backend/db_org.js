@@ -49,11 +49,29 @@ const initializeDatabase = async () => {
         address TEXT NOT NULL,
         message TEXT,
         notes TEXT,
-        status VARCHAR(20) DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'completed', 'cancelled')),
+        status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'declined', 'scheduled', 'completed', 'cancelled')),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // FIX: Force-update the status constraint in case the table already exists
+    try {
+      await pool.query(`
+        ALTER TABLE appointments
+        DROP CONSTRAINT IF EXISTS appointments_status_check
+      `);
+      
+      await pool.query(`
+        ALTER TABLE appointments
+        ADD CONSTRAINT appointments_status_check
+        CHECK (status IN ('pending', 'approved', 'declined', 'scheduled', 'completed', 'cancelled'))
+      `);
+      console.log('✓ [DB_ORG] appointments.status constraint updated successfully');
+    } catch (alterError) {
+      console.error('[DB_ORG] Error updating appointments.status constraint:', alterError);
+    }
+    // END FIX
 
     // Create activity logs table
     await pool.query(`
@@ -785,8 +803,8 @@ const addAppointment = async (appointmentData, userName = 'System User') => {
       INSERT INTO appointments (
         appointment_id, title, appointment_date, appointment_time, 
         appointment_type, contact_type, last_name, email, phone, 
-        address, message, notes
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        address, message, notes, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
     `;
     
@@ -802,7 +820,8 @@ const addAppointment = async (appointmentData, userName = 'System User') => {
       appointmentData.contactInfo.phone,
       appointmentData.contactInfo.address,
       appointmentData.contactInfo.message || null,
-      appointmentData.notes || null
+      appointmentData.notes || null,
+      appointmentData.status || 'pending' // <-- ADD THIS LINE
     ];
     
     const result = await client.query(insertQuery, values);
@@ -905,7 +924,7 @@ const updateAppointment = async (id, appointmentData, userName = 'System User') 
       appointmentData.contactInfo.address,
       appointmentData.contactInfo.message,
       appointmentData.notes,
-      appointmentData.status || 'scheduled'
+      appointmentData.status || originalAppointment.status || 'pending'
     ];
     
     const result = await client.query(updateQuery, values);
@@ -965,6 +984,48 @@ const updateAppointment = async (id, appointmentData, userName = 'System User') 
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error updating appointment:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
+// Update an appointment status
+const updateAppointmentStatus = async (appointmentId, status, userName = 'System User') => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    const result = await client.query(
+      `UPDATE appointments SET status = $1, updated_at = CURRENT_TIMESTAMP 
+       WHERE appointment_id = $2 RETURNING *`,
+      [status, appointmentId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error('Appointment not found');
+    }
+    
+    const appointment = result.rows[0];
+
+    // Log this status change
+    await logActivity({
+      userName: userName,
+      actionType: 'update',
+      entityType: 'appointment',
+      entityId: appointment.appointment_id.toString(),
+      actionDescription: `Updated appointment "${appointment.title}" status to ${status}`,
+      details: {
+        appointmentId: appointment.appointment_id,
+        newStatus: status
+      }
+    });
+
+    await client.query('COMMIT');
+    return result.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error updating appointment status:', error);
     throw error;
   } finally {
     client.release();
@@ -1536,7 +1597,7 @@ const activateOrgUserByToken = async (token) => {
         const notificationId = crypto.randomUUID();
         const currentDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
 
-        const notificationMessage = `Dear Partner,\n\nWe are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center. \n\nRequest Details: \nTitle: Blood Drive Partnership Request\nRequestor: ${activatedUser.full_name} (Organization)\nDate Submitted: ${currentDate}\nStatus: APPROVED\n\nNext Steps: \n- Our team will contact you shortly to coordinate the blood drive details.\n- Please Prepare the necessary documentation and venue arrangements.\n- Check your calendar for the scheduled appointment.\n\nRelated Appointment ID: 1762185182388`;
+        const notificationMessage = `Dear Partner,\n\nWe are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center. \n\nTitle: Blood Drive Partnership Request\nRequestor: ${activatedUser.full_name} (Organization)\nDate Submitted: ${currentDate}\nStatus: APPROVED\n\nNext Steps: \n- Our team will contact you shortly to coordinate the blood drive details.\n- Please Prepare the necessary documentation and venue arrangements.\n- Check your calendar for the scheduled appointment.\n\nRelated Appointment ID: 1762185182388`;
 
         await createNotification({
           notificationId: notificationId,
@@ -2258,6 +2319,7 @@ module.exports = {
   getAllAppointments,
   addAppointment,
   updateAppointment,
+  updateAppointmentStatus,
   deleteAppointments,
   deleteAppointment,
   searchAppointments,
