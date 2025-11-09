@@ -1366,11 +1366,11 @@ const Reports = () => {
                       <th style={styles.reportTableHeader} colSpan="2">TOTAL</th>
                     </tr>
                     <tr>
-                      <th style={styles.reportTableHeader}>Jan</th>
+                      <th style={styles.reportTableHeader}>{previewReport.monthLabels[0]}</th>
                       <th style={styles.reportTableHeader}>%</th>
-                      <th style={styles.reportTableHeader}>Feb</th>
+                      <th style={styles.reportTableHeader}>{previewReport.monthLabels[1]}</th>
                       <th style={styles.reportTableHeader}>%</th>
-                      <th style={styles.reportTableHeader}>Mar</th>
+                      <th style={styles.reportTableHeader}>{previewReport.monthLabels[2]}</th>
                       <th style={styles.reportTableHeader}>%</th>
                       <th style={styles.reportTableHeader}>No.</th>
                       <th style={styles.reportTableHeader}>%</th>

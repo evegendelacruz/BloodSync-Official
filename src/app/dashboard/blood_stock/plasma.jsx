@@ -36,6 +36,7 @@ const Plasma = () => {
       collection: "",
       expiration: "",
       status: "Stored",
+      source: "Walk-In",
     },
   ]);
   const [releaseData, setReleaseData] = useState({
@@ -210,6 +211,7 @@ const Plasma = () => {
         collection: "",
         expiration: "",
         status: "Stored",
+        source: "Walk-In", 
       },
     ]);
   };
@@ -246,6 +248,7 @@ const Plasma = () => {
           collection: item.collection,
           expiration: item.expiration,
           status: item.status,
+          source: item.source, 
         };
         await window.electronAPI.addPlasmaStock(stockData);
       }
@@ -261,6 +264,7 @@ const Plasma = () => {
           collection: "",
           expiration: "",
           status: "Stored",
+          source: "Walk-In",
         },
       ]);
       await loadPlasmaData();
@@ -326,6 +330,7 @@ const Plasma = () => {
         collection: editingItem.collection,
         expiration: editingItem.expiration,
         status: editingItem.status,
+        source: editingItem.source, 
       };
 
       await window.electronAPI.updatePlasmaStock(editingItem.id, stockData);
@@ -424,6 +429,7 @@ const Plasma = () => {
         expiration: "",
         status: "Stored",
         found: false,
+        source: "Walk-In", 
       },
     ]);
   };
@@ -469,6 +475,7 @@ const Plasma = () => {
                       collection: stockData.collection,
                       expiration: stockData.expiration,
                       status: stockData.status,
+                      source: stockData.source, 
                       found: true,
                     }
                   : item
@@ -489,6 +496,7 @@ const Plasma = () => {
                       collection: firstMatch.collection,
                       expiration: firstMatch.expiration,
                       status: firstMatch.status,
+                      source: firstMatch.source,
                       found: true,
                     }
                   : item
@@ -508,6 +516,7 @@ const Plasma = () => {
                       collection: "",
                       expiration: "",
                       status: "Stored",
+                      source: "Walk-In", 
                       found: false,
                     }
                   : item
@@ -574,6 +583,7 @@ const Plasma = () => {
         collection: "",
         expiration: "",
         status: "Stored",
+        source: "Walk-In", 
         found: false,
       },
     ]);
@@ -646,6 +656,7 @@ const Plasma = () => {
             collection: "",
             expiration: "",
             status: "Stored",
+            source: "Walk-In", 
             found: false,
           },
         ]);
@@ -693,6 +704,7 @@ const Plasma = () => {
       volume: "Volume",
       status: "Status",
       created: "Sort by",
+      source: "Source",
     };
     return labels[sortConfig.key] || "Sort";
   };
@@ -1105,7 +1117,7 @@ const Plasma = () => {
     },
     tableHeader: {
       display: "grid",
-      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr",
       gap: "15px",
       marginBottom: "15px",
       padding: "0 5px",
@@ -1119,7 +1131,7 @@ const Plasma = () => {
     },
     dataRow: {
       display: "grid",
-      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr",
       gap: "15px",
       marginBottom: "15px",
       alignItems: "center",
@@ -1479,6 +1491,7 @@ const Plasma = () => {
                   { key: "rhFactor", label: "RH Factor" },
                   { key: "volume", label: "Volume" },
                   { key: "status", label: "Status" },
+                  { key: "source", label: "Source" },
                   { key: "created", label: "Sort by" },
                 ].map((item) => (
                   <div
@@ -1579,6 +1592,7 @@ const Plasma = () => {
                       <option value="rhFactor">RH Factor</option>
                       <option value="status">Status</option>
                       <option value="volume">Volume</option>
+                      <option value="source">Source</option>
                     </select>
                   </div>
                 </div>
@@ -1742,6 +1756,14 @@ const Plasma = () => {
                 {sortConfig.key === "status" &&
                   (sortConfig.direction === "asc" ? "↑" : "↓")}
               </th>
+              <th
+                style={{ ...styles.th, width: "7%", cursor: "pointer" }}
+                onClick={() => handleSort("source")}
+              >
+                SOURCE{" "}
+                {sortConfig.key === "source" &&
+                  (sortConfig.direction === "asc" ? "↑" : "↓")}
+              </th>
               <th style={{ ...styles.th, width: "13%" }}>CREATED AT</th>
               <th style={{ ...styles.th, width: "13%" }}>MODIFIED AT</th>
             </tr>
@@ -1782,6 +1804,7 @@ const Plasma = () => {
                   <td style={styles.td}>
                     <span style={styles.statusBadge}>{item.status}</span>
                   </td>
+                  <td style={styles.td}>{item.source}</td>
                   <td style={styles.td}>{item.created}</td>
                   <td style={styles.td}>{item.modified}</td>
                 </tr>
@@ -1967,6 +1990,7 @@ const Plasma = () => {
                 <div style={styles.tableHeaderCell}>Volume (mL)</div>
                 <div style={styles.tableHeaderCell}>Date of Collection</div>
                 <div style={styles.tableHeaderCell}>Expiration Date</div>
+                <div style={styles.tableHeaderCell}>Source</div>
               </div>
 
               <div style={styles.rowsContainer}>
@@ -2039,6 +2063,17 @@ const Plasma = () => {
                       readOnly
                       disabled
                     />
+
+                    <select
+                      style={styles.fieldSelect}
+                      value={item.source}
+                      onChange={(e) =>
+                        handleStockItemChange(item.id, "source", e.target.value)
+                      }
+                    >
+                      <option value="Walk-In">Walk-In</option>
+                      <option value="Mobile">Mobile</option>
+                    </select>
                   </div>
                 ))}
               </div>
@@ -2090,116 +2125,127 @@ const Plasma = () => {
       )}
 
       {/* Edit Stock Modal */}
-      {showEditModal && editingItem && (
-        <div
-          style={styles.modalOverlay}
-          onClick={() => setShowEditModal(false)}
-        >
-          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.modalHeader}>
-              <div style={styles.modalTitleSection}>
-                <h3 style={styles.modalTitle}>Plasma</h3>
-                <p style={styles.modalSubtitle}>Edit Stock</p>
-              </div>
-              <button
-                style={{
-                  ...styles.modalCloseButton,
-                  ...(hoverStates.closeEditModal
-                    ? styles.modalCloseButtonHover
-                    : {}),
-                }}
-                onClick={() => setShowEditModal(false)}
-                onMouseEnter={() => handleMouseEnter("closeEditModal")}
-                onMouseLeave={() => handleMouseLeave("closeEditModal")}
-              >
-                ×
-              </button>
-            </div>
-
-            <div style={styles.modalContent}>
-              <div style={styles.tableHeader}>
-                <div style={styles.tableHeaderCell}>Barcode Serial ID</div>
-                <div style={styles.tableHeaderCell}>Blood Type</div>
-                <div style={styles.tableHeaderCell}>Rh Factor</div>
-                <div style={styles.tableHeaderCell}>Volume (mL)</div>
-                <div style={styles.tableHeaderCell}>Date of Collection</div>
-                <div style={styles.tableHeaderCell}>Expiration Date</div>
-              </div>
-
-              <div style={styles.dataRow}>
-                <input
-                  type="text"
-                  style={styles.fieldInput}
-                  value={editingItem.serial_id}
-                  onChange={(e) =>
-                    handleEditItemChange("serial_id", e.target.value)
-                  }
-                  placeholder="Enter Serial ID"
-                />
-                <select
-                  style={styles.fieldSelect}
-                  value={editingItem.type}
-                  onChange={(e) => handleEditItemChange("type", e.target.value)}
+        {showEditModal && editingItem && (
+          <div
+            style={styles.modalOverlay}
+            onClick={() => setShowEditModal(false)}
+          >
+            <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+              <div style={styles.modalHeader}>
+                <div style={styles.modalTitleSection}>
+                  <h3 style={styles.modalTitle}>Plasma</h3>
+                  <p style={styles.modalSubtitle}>Edit Stock</p>
+                </div>
+                <button
+                  style={{
+                    ...styles.modalCloseButton,
+                    ...(hoverStates.closeEditModal
+                      ? styles.modalCloseButtonHover
+                      : {}),
+                  }}
+                  onClick={() => setShowEditModal(false)}
+                  onMouseEnter={() => handleMouseEnter("closeEditModal")}
+                  onMouseLeave={() => handleMouseLeave("closeEditModal")}
                 >
-                  <option value="O">O</option>
-                  <option value="A">A</option>
-                  <option value="B">B</option>
-                  <option value="AB">AB</option>
-                </select>
-                <select
-                  style={styles.fieldSelect}
-                  value={editingItem.rhFactor}
-                  onChange={(e) =>
-                    handleEditItemChange("rhFactor", e.target.value)
-                  }
-                >
-                  <option value="+">+</option>
-                  <option value="-">-</option>
-                </select>
-                <input
-                  type="number"
-                  style={styles.fieldInput}
-                  value={editingItem.volume}
-                  onChange={(e) =>
-                    handleEditItemChange("volume", e.target.value)
-                  }
-                  min="1"
-                />
-                <input
-                  type="date"
-                  style={styles.fieldInput}
-                  value={editingItem.collection}
-                  onChange={(e) =>
-                    handleEditItemChange("collection", e.target.value)
-                  }
-                />
-                <input
-                  type="date"
-                  style={styles.fieldInputDisabled}
-                  value={editingItem.expiration}
-                  readOnly
-                  disabled
-                />
+                  ×
+                </button>
               </div>
-            </div>
 
-            <div style={styles.modalFooter}>
-              <button
-                type="button"
-                style={{
-                  ...styles.saveButton,
-                  ...(hoverStates.saveEdit ? styles.saveButtonHover : {}),
-                }}
-                onClick={handleSaveEdit}
-                onMouseEnter={() => handleMouseEnter("saveEdit")}
-                onMouseLeave={() => handleMouseLeave("saveEdit")}
-              >
-                Save Changes
-              </button>
+              <div style={styles.modalContent}>
+                <div style={styles.tableHeader}>
+                  <div style={styles.tableHeaderCell}>Barcode Serial ID</div>
+                  <div style={styles.tableHeaderCell}>Blood Type</div>
+                  <div style={styles.tableHeaderCell}>Rh Factor</div>
+                  <div style={styles.tableHeaderCell}>Volume (mL)</div>
+                  <div style={styles.tableHeaderCell}>Date of Collection</div>
+                  <div style={styles.tableHeaderCell}>Expiration Date</div>
+                  <div style={styles.tableHeaderCell}>Source</div>
+                </div>
+
+                <div style={styles.dataRow}>
+                  <input
+                    type="text"
+                    style={styles.fieldInput}
+                    value={editingItem.serial_id}
+                    onChange={(e) =>
+                      handleEditItemChange("serial_id", e.target.value)
+                    }
+                    placeholder="Enter Serial ID"
+                  />
+                  <select
+                    style={styles.fieldSelect}
+                    value={editingItem.type}
+                    onChange={(e) => handleEditItemChange("type", e.target.value)}
+                  >
+                    <option value="O">O</option>
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="AB">AB</option>
+                  </select>
+                  <select
+                    style={styles.fieldSelect}
+                    value={editingItem.rhFactor}
+                    onChange={(e) =>
+                      handleEditItemChange("rhFactor", e.target.value)
+                    }
+                  >
+                    <option value="+">+</option>
+                    <option value="-">-</option>
+                  </select>
+                  <input
+                    type="number"
+                    style={styles.fieldInput}
+                    value={editingItem.volume}
+                    onChange={(e) =>
+                      handleEditItemChange("volume", e.target.value)
+                    }
+                    min="1"
+                  />
+                  <input
+                    type="date"
+                    style={styles.fieldInput}
+                    value={editingItem.collection}
+                    onChange={(e) =>
+                      handleEditItemChange("collection", e.target.value)
+                    }
+                  />
+                  <input
+                    type="date"
+                    style={styles.fieldInputDisabled}
+                    value={editingItem.expiration}
+                    readOnly
+                    disabled
+                  />
+                  <select
+                    style={styles.fieldSelect}
+                    value={editingItem.source || 'Walk-In'} 
+                    onChange={(e) =>
+                      handleEditItemChange("source", e.target.value)  
+                    }
+                  >
+                    <option value="Walk-In">Walk-In</option>
+                    <option value="Mobile">Mobile</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={styles.modalFooter}>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.saveButton,
+                    ...(hoverStates.saveEdit ? styles.saveButtonHover : {}),
+                  }}
+                  onClick={handleSaveEdit}
+                  onMouseEnter={() => handleMouseEnter("saveEdit")}
+                  onMouseLeave={() => handleMouseLeave("saveEdit")}
+                >
+                  Save Changes
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Release Stock Modal */}
       {showReleaseModal && (
@@ -2400,7 +2446,7 @@ const Plasma = () => {
                       readOnly
                       disabled
                     />
-
+                
                     <span
                       style={{
                         padding: "4px 8px",

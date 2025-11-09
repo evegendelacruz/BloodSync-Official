@@ -290,6 +290,7 @@ const ReleasedBlood = () => {
         type: editingItem.type,
         rhFactor: editingItem.rhFactor,
         volume: editingItem.volume,
+        source: editingItem.source || 'Walk-In',
         collection: editingItem.collection,
         expiration: editingItem.expiration,
         status: editingItem.status,
@@ -387,6 +388,7 @@ const ReleasedBlood = () => {
         bloodType: "O",
         rhFactor: "+",
         volume: 100,
+        source: "Walk-In",
         collection: "",
         expiration: "",
         status: "Released",
@@ -455,6 +457,7 @@ const ReleasedBlood = () => {
                       bloodType: stockData.type,
                       rhFactor: stockData.rhFactor,
                       volume: stockData.volume,
+                      source: stockData.source || 'Walk-In',
                       collection: stockData.collection,
                       expiration: stockData.expiration,
                       status: stockData.status,
@@ -475,6 +478,7 @@ const ReleasedBlood = () => {
                       bloodType: "O",
                       rhFactor: "+",
                       volume: 100,
+                      source: "Walk-In",
                       collection: "",
                       expiration: "",
                       status: "Released",
@@ -507,6 +511,7 @@ const ReleasedBlood = () => {
         bloodType: "O",
         rhFactor: "+",
         volume: 100,
+        source: "Walk-In",
         collection: "",
         expiration: "",
         status: "Released",
@@ -607,6 +612,7 @@ const ReleasedBlood = () => {
           bloodType: "O",
           rhFactor: "+",
           volume: 100,
+          source: "Walk-In",
           collection: "",
           expiration: "",
           status: "Released",
@@ -1193,14 +1199,14 @@ const ReleasedBlood = () => {
     },
     tableHeader: {
       display: "grid",
-      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1.5fr 1.5fr",
       gap: "15px",
       marginBottom: "15px",
       padding: "0 5px",
     },
     dataRow: {
       display: "grid",
-      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr",
+      gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1.5fr 1.5fr",
       gap: "15px",
       marginBottom: "15px",
       alignItems: "center",
@@ -1494,6 +1500,7 @@ const ReleasedBlood = () => {
               <th style={{...styles.th, width: "7%"}}>BLOOD TYPE</th>
               <th style={{...styles.th, width: "6%"}}>RH FACTOR</th>
               <th style={{...styles.th, width: "7%"}}>VOLUME (ML)</th>
+              <th style={{...styles.th, width: "7%"}}>SOURCE</th>
               <th style={{...styles.th, width: "10%"}}>DATE OF COLLECTION</th>
               <th style={{...styles.th, width: "10%"}}>EXPIRATION DATE</th>
               <th style={{...styles.th, width: "7%"}}>STATUS</th>
@@ -1537,6 +1544,7 @@ const ReleasedBlood = () => {
                   <td style={styles.td}>{item.type}</td>
                   <td style={styles.td}>{item.rhFactor}</td>
                   <td style={styles.td}>{item.volume}</td>
+                  <td style={styles.td}>{item.source || 'Walk-In'}</td>
                   <td style={styles.td}>{item.collection}</td>
                   <td style={styles.td}>{item.expiration}</td>
                   <td style={styles.td}>
@@ -1645,6 +1653,7 @@ const ReleasedBlood = () => {
                 <div style={styles.tableHeaderCell}>Blood Type</div>
                 <div style={styles.tableHeaderCell}>Rh Factor</div>
                 <div style={styles.tableHeaderCell}>Volume (mL)</div>
+                <div style={styles.tableHeaderCell}>Source</div>
                 <div style={styles.tableHeaderCell}>Date of Collection</div>
                 <div style={styles.tableHeaderCell}>Expiration Date</div>
               </div>
@@ -1688,6 +1697,16 @@ const ReleasedBlood = () => {
                   }
                   min="1"
                 />
+                <select
+                  style={styles.fieldSelect}
+                  value={editingItem.source || 'Walk-In'}
+                  onChange={(e) =>
+                    handleEditItemChange("source", e.target.value)
+                  }
+                >
+                  <option value="Walk-In">Walk-In</option>
+                  <option value="Mobile">Mobile</option>
+                </select>
                 <input
                   type="date"
                   style={styles.fieldInput}
@@ -1764,6 +1783,7 @@ const ReleasedBlood = () => {
                 <div style={styles.tableHeaderCell}>Blood Type</div>
                 <div style={styles.tableHeaderCell}>RH Factor</div>
                 <div style={styles.tableHeaderCell}>Volume</div>
+                <div style={styles.tableHeaderCell}>Source</div>
                 <div style={styles.tableHeaderCell}>Collection</div>
                 <div style={styles.tableHeaderCell}>Status</div>
                 <div style={styles.tableHeaderCell}>Action</div>
@@ -1772,18 +1792,18 @@ const ReleasedBlood = () => {
               <div style={styles.rowsContainer}>
                 {selectedItems.map((item, index) => (
                   <div
-                    key={index}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr",
-                      gap: "6px",
-                      marginBottom: "15px",
-                      alignItems: "center",
-                      backgroundColor: item.found ? "#f0f9ff" : "#fef2f2",
-                      padding: "8px 5px",
-                      borderRadius: "4px",
-                    }}
-                  >
+                  key={index}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr",
+                    gap: "6px",
+                    marginBottom: "15px",
+                    alignItems: "center",
+                    backgroundColor: item.found ? "#f0f9ff" : "#fef2f2",
+                    padding: "8px 5px",
+                    borderRadius: "4px",
+                  }}
+                >
                     <div style={{ position: "relative" }}>
                       <style>{`
                         .serial-input::placeholder {
@@ -1931,6 +1951,18 @@ const ReleasedBlood = () => {
                       readOnly
                       disabled
                     />
+
+                    <input
+                        type="text"
+                        style={{
+                          ...styles.fieldInputDisabled,
+                          backgroundColor: item.found ? "#f0f9ff" : "#f9fafb",
+                          color: item.found ? "#374151" : "#9ca3af",
+                        }}
+                        value={item.source || 'Walk-In'}
+                        readOnly
+                        disabled
+                      />
 
                     <input
                       type="text"
