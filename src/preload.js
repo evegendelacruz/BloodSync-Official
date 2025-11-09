@@ -524,6 +524,9 @@ transferPlateletToNonConforming: async (serialIds) => {
   deleteReports: (reportIds) => ipcRenderer.invoke('delete-reports', reportIds),
   searchReports: (searchTerm) => ipcRenderer.invoke('search-reports', searchTerm),
   refreshCurrentYearReports: () => ipcRenderer.invoke('refresh-current-year-reports'),
+  
+  // ========== REPORTS ==========
+  generateAllHistoricalReports: () => ipcRenderer.invoke('generate-all-historical-reports'),
 });
 
 
