@@ -9,6 +9,7 @@ const RedBloodCell = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showReleaseModal, setShowReleaseModal] = useState(false);
   const [showReleaseDetailsModal, setShowReleaseDetailsModal] = useState(false);
@@ -339,6 +340,13 @@ const RedBloodCell = () => {
       await loadBloodData();
       clearAllSelection();
       setError(null);
+  
+      // Show success modal
+      setSuccessMessage({
+        title: "Stock Updated Successfully!",
+        description: "The red blood cell stock information has been updated.",
+      });
+      setShowSuccessModal(true);
     } catch (err) {
       console.error("Error updating blood stock:", err);
       setError(`Failed to update blood stock: ${err.message}`);
@@ -353,25 +361,31 @@ const RedBloodCell = () => {
         setError("Electron API not available");
         return;
       }
-
+  
       const selectedIds = bloodData
         .filter((item) => item.selected)
         .map((item) => item.id);
       if (selectedIds.length === 0) return;
-
-      const confirmed = window.confirm(
-        `Are you sure you want to delete ${selectedIds.length} item(s)?`
-      );
-      if (!confirmed) return;
-
+  
       await window.electronAPI.deleteBloodStock(selectedIds);
+      setShowConfirmDeleteModal(false);
       await loadBloodData();
       clearAllSelection();
       setError(null);
+  
+      setSuccessMessage({
+        title: "Deleted Successfully!",
+        description: `${selectedIds.length} red blood cell stock record(s) have been deleted.`,
+      });
+      setShowSuccessModal(true);
     } catch (err) {
       console.error("Error deleting items:", err);
       setError("Failed to delete items");
     }
+  };
+  
+  const handleDeleteClick = () => {
+    setShowConfirmDeleteModal(true);
   };
 
   const handleSort = (key) => {
@@ -1373,6 +1387,20 @@ const RedBloodCell = () => {
     successOkButtonHover: {
       backgroundColor: "#ffb300",
     },
+    
+    confirmButton: {
+      padding: "12px 48px",
+      backgroundColor: "#2563eb",
+      color: "white",
+      border: "none",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontSize: "16px",
+      fontWeight: "600",
+      fontFamily: "Barlow",
+      minWidth: "120px",
+      transition: "all 0.2s ease",
+    },
   };
 
   const [hoverStates, setHoverStates] = useState({});
@@ -1876,7 +1904,7 @@ const RedBloodCell = () => {
               ...styles.deleteButton,
               ...(hoverStates.delete ? styles.deleteButtonHover : {}),
             }}
-            onClick={handleDelete}
+            onClick={handleDeleteClick}
             onMouseEnter={() => handleMouseEnter("delete")}
             onMouseLeave={() => handleMouseLeave("delete")}
           >
@@ -1898,6 +1926,181 @@ const RedBloodCell = () => {
           </button>
         </div>
       )}
+
+      {/* Confirm Delete Modal */}
+        {showConfirmDeleteModal && (
+          <div
+            style={styles.modalOverlay}
+            onClick={() => setShowConfirmDeleteModal(false)}
+          >
+            <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+              <div style={styles.modalHeader}>
+                <div style={styles.modalTitleSection}>
+                  <h3 style={styles.modalTitle}>Confirm Delete</h3>
+                  <p style={styles.modalSubtitle}>Review items before deletion</p>
+                </div>
+                <button
+                  style={{
+                    ...styles.modalCloseButton,
+                    ...(hoverStates.closeDeleteModal
+                      ? styles.modalCloseButtonHover
+                      : {}),
+                  }}
+                  onClick={() => setShowConfirmDeleteModal(false)}
+                  onMouseEnter={() => handleMouseEnter("closeDeleteModal")}
+                  onMouseLeave={() => handleMouseLeave("closeDeleteModal")}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div style={styles.modalContent}>
+                <div
+                  style={{
+                    backgroundColor: "#fef2f2",
+                    border: "1px solid #ef4444",
+                    borderRadius: "8px",
+                    padding: "16px",
+                    marginBottom: "24px",
+                  }}
+                >
+                  <h4
+                    style={{
+                      fontSize: "16px",
+                      fontWeight: "600",
+                      color: "#991b1b",
+                      margin: "0 0 12px 0",
+                    }}
+                  >
+                    Items to Delete ({bloodData.filter((item) => item.selected).length})
+                  </h4>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
+                      gap: "12px",
+                      fontSize: "12px",
+                      fontWeight: "500",
+                      color: "#374151",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    <div>Serial ID</div>
+                    <div>Blood Type</div>
+                    <div>RH Factor</div>
+                    <div>Volume (mL)</div>
+                    <div>Source</div>
+                  </div>
+                  {bloodData
+                    .filter((item) => item.selected)
+                    .map((item, index) => (
+                      <div
+                        key={index}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr",
+                          gap: "12px",
+                          fontSize: "12px",
+                          color: "#6b7280",
+                          padding: "8px 0",
+                          borderTop: index > 0 ? "1px solid #e5e7eb" : "none",
+                        }}
+                      >
+                        <div style={{ fontWeight: "500", color: "#374151" }}>
+                          {item.serial_id}
+                        </div>
+                        <div>{item.type}</div>
+                        <div>{item.rhFactor}</div>
+                        <div>{item.volume}</div>
+                        <div>{item.source || 'Walk-In'}</div>
+                      </div>
+                    ))}
+                  <div
+                    style={{
+                      marginTop: "12px",
+                      paddingTop: "12px",
+                      borderTop: "1px solid #ef4444",
+                      fontSize: "14px",
+                      fontWeight: "600",
+                      color: "#991b1b",
+                    }}
+                  >
+                    Total Volume:{" "}
+                    {bloodData
+                      .filter((item) => item.selected)
+                      .reduce((sum, item) => sum + parseInt(item.volume || 0), 0)}{" "}
+                    mL
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    backgroundColor: "#fef2f2",
+                    border: "1px solid #ef4444",
+                    borderRadius: "8px",
+                    padding: "16px",
+                    display: "flex",
+                    gap: "12px",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    fill="#ef4444"
+                    viewBox="0 0 20 20"
+                    style={{ flexShrink: 0, marginTop: "2px" }}
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  <div>
+                    <p
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: "600",
+                        color: "#991b1b",
+                        margin: "0 0 4px 0",
+                      }}
+                    >
+                      Confirm Delete Action
+                    </p>
+                    <p
+                      style={{
+                        fontSize: "13px",
+                        color: "#7f1d1d",
+                        margin: 0,
+                        lineHeight: "1.5",
+                      }}
+                    >
+                      These items will be permanently deleted from the Red Blood Cell stock records. This action cannot be undone.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.modalFooter}>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.confirmButton,
+                    backgroundColor: "#ef4444",
+                    ...(hoverStates.confirmDelete ? { backgroundColor: "#dc2626" } : {}),
+                  }}
+                  onClick={handleDelete}
+                  onMouseEnter={() => handleMouseEnter("confirmDelete")}
+                  onMouseLeave={() => handleMouseLeave("confirmDelete")}
+                >
+                  Confirm Delete (
+                  {bloodData.filter((item) => item.selected).length} items)
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       {/* SUCCESS MODAL */}
       {showSuccessModal && (
