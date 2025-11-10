@@ -1,13 +1,25 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import Loader from "../components/Loader";
 
 const Login = () => {
   const navigate = useNavigate();
   const [error, setError] = useState("");
+  const [isPageLoading, setIsPageLoading] = useState(true); 
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  useEffect(() => {
+    // Simulate initial loading
+    const timer = setTimeout(() => {
+      setIsPageLoading(false);
+    }, 1500); // Adjust time as needed
+  
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
+    setIsLoggingIn(true);
 
     const formData = new FormData(e.target);
     const loginData = {
@@ -18,16 +30,20 @@ const Login = () => {
     try {
       // Simulate login API call
       await new Promise((resolve) => setTimeout(resolve, 1500));
-
+  
       // In a real app, replace this with API call or Electron IPC
       navigate("/dashboard");
     } catch (err) {
       setError("Login failed. Please check your credentials and try again.");
+    } finally {
+      setIsLoggingIn(false); // Changed variable name
     }
   };
 
   return (
     <>
+      {isPageLoading && <Loader />}
+
       <style>{`
         * {
           margin: 0;
@@ -281,6 +297,39 @@ const Login = () => {
           margin: 0;
           padding: 0;
         }
+
+        .loading-dots {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          justify-content: center;
+        }
+        
+        .loading-dots span {
+          width: 6px;
+          height: 6px;
+          background-color: white;
+          border-radius: 50%;
+          animation: buttonBounce 1.4s infinite ease-in-out both;
+        }
+        
+        .loading-dots span:nth-child(1) {
+          animation-delay: -0.32s;
+        }
+        
+        .loading-dots span:nth-child(2) {
+          animation-delay: -0.16s;
+        }
+        
+        @keyframes buttonBounce {
+          0%, 80%, 100% {
+            transform: scale(0);
+            opacity: 0.5;
+          }
+          40% {
+            transform: scale(1);
+            opacity: 1;
+          }
       `}</style>
 
       <div className="page-container">
@@ -348,8 +397,16 @@ const Login = () => {
                   />
                 </div>
 
-                <button type="submit" className="btn">
-                  LOGIN
+                <button type="submit" className="btn" disabled={isLoggingIn}>
+                  {isLoggingIn ? (
+                    <div className="loading-dots">
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                    </div>
+                  ) : (
+                    "LOGIN"
+                  )}
                 </button>
 
                 {error && <div className="error">{error}</div>}
