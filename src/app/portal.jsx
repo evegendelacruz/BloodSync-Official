@@ -2,8 +2,22 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const Portal = () => {
-    const navigate = useNavigate();
-    const [error, setError] = useState("");
+  const navigate = useNavigate();
+  const [error, setError] = useState("");
+  const [isRegionalLoading, setIsRegionalLoading] = useState(false);
+  const [isPartneredLoading, setIsPartneredLoading] = useState(false);
+
+  const handleRegionalClick = async () => {
+    setIsRegionalLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    navigate("/login");
+  };
+  
+  const handlePartneredClick = async () => {
+    setIsPartneredLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    navigate("/login-org");
+  };
 
   return (
     <>
@@ -312,6 +326,38 @@ const Portal = () => {
           margin: 0;
           padding: 0;
         }
+        .loading-dots {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          justify-content: center;
+        }
+        
+        .loading-dots span {
+          width: 6px;
+          height: 6px;
+          background-color: white;
+          border-radius: 50%;
+          animation: buttonBounce 1.4s infinite ease-in-out both;
+        }
+        
+        .loading-dots span:nth-child(1) {
+          animation-delay: -0.32s;
+        }
+        
+        .loading-dots span:nth-child(2) {
+          animation-delay: -0.16s;
+        }
+        
+        @keyframes buttonBounce {
+          0%, 80%, 100% {
+            transform: scale(0);
+            opacity: 0.5;
+          }
+          40% {
+            transform: scale(1);
+            opacity: 1;
+          }
       `}</style>
 
       <div className="page-container">
@@ -354,12 +400,21 @@ const Portal = () => {
 
             {/* Account Type Selection Content */}
             <div className="content">
-              <button
+            <button
                 type="button"
-                onClick={() => navigate("/login")}
+                onClick={handleRegionalClick}
                 className="account-type-btn regional-btn"
+                disabled={isRegionalLoading || isPartneredLoading}
               >
-                REGIONAL BLOOD CENTER - DOH
+                {isRegionalLoading ? (
+                  <div className="loading-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                ) : (
+                  "REGIONAL BLOOD CENTER - DOH"
+                )}
               </button>
 
               <div className="or-divider">
@@ -370,10 +425,19 @@ const Portal = () => {
 
               <button
                 type="button"
-                onClick={() => navigate("/login-org")}
+                onClick={handlePartneredClick}
                 className="account-type-btn partnered-btn"
+                disabled={isRegionalLoading || isPartneredLoading}
               >
-                PARTNERED ORGANIZATION
+                {isPartneredLoading ? (
+                  <div className="loading-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                ) : (
+                  "PARTNERED ORGANIZATION"
+                )}
               </button>
             </div>
           </div>
