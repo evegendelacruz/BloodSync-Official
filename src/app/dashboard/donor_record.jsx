@@ -1,6 +1,19 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Plus, Filter, Search } from "lucide-react";
 
+const Loader = () => (
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      height: "100vh",
+    }}
+  >
+    <div style={{ fontSize: "18px", color: "#6b7280" }}>Loading...</div>
+  </div>
+);
+
 const DonorRecord = () => {
   const [donorData, setDonorData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +41,8 @@ const DonorRecord = () => {
   const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState(false);
   const [editingDonor, setEditingDonor] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
+  const [editValidationErrors, setEditValidationErrors] = useState({});
   const [formData, setFormData] = useState({
     donorId: "",
     firstName: "",
@@ -333,6 +348,15 @@ const DonorRecord = () => {
       }
       return updated;
     });
+    
+    // Clear validation error for this field when user starts typing
+    if (validationErrors[field]) {
+      setValidationErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
   };
 
   const handleEditClick = () => {
@@ -376,58 +400,60 @@ const DonorRecord = () => {
       updated.age = age.toString();
     }
     setEditingDonor(updated);
-  };
+    
+    // Clear validation error for this field when user starts typing
+    if (editValidationErrors[field]) {
+      setEditValidationErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
+  };  
 
   const handleSaveEdit = async (e) => {
     e.preventDefault();
+    
+    // Validate all fields
+    const errors = {};
+    if (!editingDonor.firstName?.trim()) {
+      errors.firstName = "First Name is required";
+    }
+    if (!editingDonor.lastName?.trim()) {
+      errors.lastName = "Last Name is required";
+    }
+    if (!editingDonor.gender) {
+      errors.gender = "Gender is required";
+    }
+    if (!editingDonor.birthdate) {
+      errors.birthdate = "Birthdate is required";
+    }
+    if (!editingDonor.bloodType) {
+      errors.bloodType = "Blood Type is required";
+    }
+    if (!editingDonor.rhFactor) {
+      errors.rhFactor = "RH Factor is required";
+    }
+    if (!editingDonor.contactNumber?.trim()) {
+      errors.contactNumber = "Contact Number is required";
+    }
+    if (!editingDonor.address?.trim()) {
+      errors.address = "Address/Barangay is required";
+    }
+  
+    if (Object.keys(errors).length > 0) {
+      setEditValidationErrors(errors);
+      setError("Please fill in all required fields");
+      return;
+    }
+    
     try {
       setSaving(true);
       if (!window.electronAPI) {
-        setError("Electron API not available");
+        setEditValidationErrors({ api: "Electron API not available" });
         return;
       }
-
-      if (!editingDonor.firstName?.trim()) {
-        setError("First Name is required");
-        setSaving(false);
-        return;
-      }
-      if (!editingDonor.lastName?.trim()) {
-        setError("Last Name is required");
-        setSaving(false);
-        return;
-      }
-      if (!editingDonor.gender) {
-        setError("Gender is required");
-        setSaving(false);
-        return;
-      }
-      if (!editingDonor.birthdate) {
-        setError("Birthdate is required");
-        setSaving(false);
-        return;
-      }
-      if (!editingDonor.bloodType) {
-        setError("Blood Type is required");
-        setSaving(false);
-        return;
-      }
-      if (!editingDonor.rhFactor) {
-        setError("RH Factor is required");
-        setSaving(false);
-        return;
-      }
-      if (!editingDonor.contactNumber?.trim()) {
-        setError("Contact Number is required");
-        setSaving(false);
-        return;
-      }
-      if (!editingDonor.address?.trim()) {
-        setError("Address/Barangay is required");
-        setSaving(false);
-        return;
-      }
-
+  
       const donorUpdateData = {
         donorId: editingDonor.donorId,
         firstName: editingDonor.firstName,
@@ -444,17 +470,18 @@ const DonorRecord = () => {
         recentDonation: editingDonor.recentDonation || null,
         donationCount: editingDonor.donationCount || 0,
       };
-
+  
       await window.electronAPI.updateDonorRecord(
         editingDonor.id,
         donorUpdateData
       );
       setShowEditModal(false);
       setEditingDonor(null);
+      setEditValidationErrors({});
       await loadDonorData();
       clearAllSelection();
       setError(null);
-
+  
       setSuccessMessage({
         title: "Donor Updated Successfully!",
         description: "The donor record information has been updated.",
@@ -462,6 +489,7 @@ const DonorRecord = () => {
       setShowSuccessModal(true);
     } catch (err) {
       console.error("Error updating donor:", err);
+      setEditValidationErrors({ save: `Failed to update donor: ${err.message}` });
       setError(`Failed to update donor: ${err.message}`);
     } finally {
       setSaving(false);
@@ -488,54 +516,52 @@ const DonorRecord = () => {
   const handleAddDonor = async () => {
     try {
       if (!window.electronAPI) {
-        setError("Electron API not available");
+        setValidationErrors({ api: "Electron API not available" });
         return;
       }
-
+  
       console.log("Form Data before validation:", formData);
-
+  
+      // Validate all fields
+      const errors = {};
       if (!formData.firstName?.trim()) {
-        setError("First Name is required");
-        return;
+        errors.firstName = "First Name is required";
       }
       if (!formData.lastName?.trim()) {
-        setError("Last Name is required");
-        return;
+        errors.lastName = "Last Name is required";
       }
       if (!formData.gender) {
-        setError("Gender is required");
-        return;
+        errors.gender = "Gender is required";
       }
       if (!formData.birthdate) {
-        setError("Birthdate is required");
-        return;
+        errors.birthdate = "Birthdate is required";
       }
       if (!formData.bloodType) {
-        setError("Blood Type is required");
-        return;
+        errors.bloodType = "Blood Type is required";
       }
       if (!formData.rhFactor) {
-        setError("RH Factor is required");
-        return;
+        errors.rhFactor = "RH Factor is required";
       }
       if (!formData.contactNumber?.trim()) {
-        setError("Contact Number is required");
-        return;
+        errors.contactNumber = "Contact Number is required";
       }
       if (!formData.address?.trim()) {
-        setError("Address/Barangay is required");
-        return;
+        errors.address = "Address/Barangay is required";
       }
-
       if (!formData.donorId) {
-        setError("Donor ID not generated. Please try again.");
+        errors.donorId = "Donor ID not generated. Please try again.";
+      }
+  
+      if (Object.keys(errors).length > 0) {
+        setValidationErrors(errors);
+        setError("Please fill in all required fields");
         return;
       }
-
+  
       console.log("Validation passed, saving donor:", formData);
-
+  
       await window.electronAPI.addDonorRecord(formData);
-
+  
       setFormData({
         donorId: "",
         firstName: "",
@@ -552,9 +578,10 @@ const DonorRecord = () => {
       setShowAddModal(false);
       setSearchDonorTerm("");
       setBarangaySearch("");
+      setValidationErrors({});
       await loadDonorData();
       setError(null);
-
+  
       setSuccessMessage({
         title: "Donor Added Successfully!",
         description: "New donor record has been added to the system.",
@@ -562,6 +589,7 @@ const DonorRecord = () => {
       setShowSuccessModal(true);
     } catch (err) {
       console.error("Error adding donor:", err);
+      setValidationErrors({ save: `Failed to add donor: ${err.message}` });
       setError("Failed to add donor: " + err.message);
     }
   };
@@ -587,29 +615,7 @@ const DonorRecord = () => {
   };
 
   if (loading || saving) {
-    return (
-      <div
-        style={{
-          padding: "24px",
-          backgroundColor: "#f9fafb",
-          minHeight: "100vh",
-          fontFamily: "Barlow",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            padding: "40px",
-            fontSize: "16px",
-            color: "#6b7280",
-          }}
-        >
-          Loading donor records...
-        </div>
-      </div>
-    );
+    return <Loader />;
   }
 
   return (
@@ -645,43 +651,6 @@ const DonorRecord = () => {
           Centralized Donor Record
         </p>
       </div>
-
-      {error && (
-        <div
-          style={{
-            backgroundColor: "#fee2e2",
-            color: "#991b1b",
-            padding: "12px 16px",
-            borderRadius: "8px",
-            marginBottom: "20px",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-          }}
-        >
-          <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
-            <path
-              fillRule="evenodd"
-              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-            />
-          </svg>
-          <span>{error}</span>
-          <button
-            style={{
-              backgroundColor: "#059669",
-              color: "white",
-              border: "none",
-              padding: "4px 8px",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontSize: "12px",
-            }}
-            onClick={() => setError(null)}
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
 
       <div
         style={{
@@ -1044,6 +1013,7 @@ const DonorRecord = () => {
               borderRadius: "6px",
               cursor: "pointer",
               fontSize: "14px",
+              fontFamily: 'Barlow'
             }}
           >
             <svg
@@ -1074,6 +1044,7 @@ const DonorRecord = () => {
               borderRadius: "6px",
               cursor: "pointer",
               fontSize: "14px",
+              fontFamily: 'Barlow'
             }}
             onClick={openAddModal}
           >
@@ -1855,7 +1826,7 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    First Name *
+                    First Name
                   </label>
                   <input
                     type="text"
@@ -1866,6 +1837,7 @@ const DonorRecord = () => {
                       fontSize: "11px",
                       fontFamily: "Barlow",
                       outline: "none",
+                      borderColor: validationErrors.firstName ? '#ef4444' : '#d1d5db'
                     }}
                     value={formData.firstName}
                     onChange={(e) =>
@@ -1911,7 +1883,7 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    Last Name *
+                    Last Name
                   </label>
                   <input
                     type="text"
@@ -1922,6 +1894,7 @@ const DonorRecord = () => {
                       fontSize: "11px",
                       fontFamily: "Barlow",
                       outline: "none",
+                      borderColor: validationErrors.lastName ? '#ef4444' : '#d1d5db'
                     }}
                     value={formData.lastName}
                     onChange={(e) =>
@@ -1939,7 +1912,7 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    Gender *
+                    Gender
                   </label>
                   <select
                     style={{
@@ -1951,6 +1924,7 @@ const DonorRecord = () => {
                       outline: "none",
                       cursor: "pointer",
                       backgroundColor: "white",
+                      borderColor: validationErrors.gender ? '#ef4444' : '#d1d5db'
                     }}
                     value={formData.gender}
                     onChange={(e) => handleFormChange("gender", e.target.value)}
@@ -1970,7 +1944,7 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    Birthdate *
+                    Birthdate
                   </label>
                   <input
                     type="date"
@@ -1981,6 +1955,7 @@ const DonorRecord = () => {
                       fontSize: "11px",
                       fontFamily: "Barlow",
                       outline: "none",
+                      borderColor: validationErrors.birthdate ? '#ef4444' : '#d1d5db'
                     }}
                     value={formData.birthdate}
                     onChange={(e) =>
@@ -2028,7 +2003,7 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    Blood Type *
+                    Blood Type
                   </label>
                   <select
                     style={{
@@ -2040,6 +2015,7 @@ const DonorRecord = () => {
                       outline: "none",
                       cursor: "pointer",
                       backgroundColor: "white",
+                      borderColor: validationErrors.bloodType ? '#ef4444' : '#d1d5db'
                     }}
                     value={formData.bloodType}
                     onChange={(e) =>
@@ -2063,7 +2039,7 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    RH Factor *
+                    RH Factor
                   </label>
                   <select
                     style={{
@@ -2075,6 +2051,7 @@ const DonorRecord = () => {
                       outline: "none",
                       cursor: "pointer",
                       backgroundColor: "white",
+                      borderColor: validationErrors.rhFactor ? '#ef4444' : '#d1d5db'
                     }}
                     value={formData.rhFactor}
                     onChange={(e) =>
@@ -2096,7 +2073,7 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    Status *
+                    Status
                   </label>
                   <select
                     style={{
@@ -2126,10 +2103,11 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    Contact Number *
+                    Contact Number
                   </label>
                   <input
                     type="tel"
+                    maxLength={11}
                     style={{
                       padding: "7px 10px",
                       border: "1px solid #d1d5db",
@@ -2137,11 +2115,13 @@ const DonorRecord = () => {
                       fontSize: "11px",
                       fontFamily: "Barlow",
                       outline: "none",
+                      borderColor: validationErrors.contactNumber ? '#ef4444' : '#d1d5db'
                     }}
                     value={formData.contactNumber}
-                    onChange={(e) =>
-                      handleFormChange("contactNumber", e.target.value)
-                    }
+                    onChange={(e) => {
+                      const onlyDigits = e.target.value.replace(/\D/g, "");
+                      handleFormChange("contactNumber", onlyDigits)
+                    }}
                     placeholder="09XXXXXXXXX"
                   />
                 </div>
@@ -2212,7 +2192,7 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    Barangay *
+                    Barangay
                   </label>
                   <input
                     type="text"
@@ -2225,6 +2205,7 @@ const DonorRecord = () => {
                       outline: "none",
                       width: "100%",
                       boxSizing: "border-box",
+                      borderColor: validationErrors.address ? '#ef4444' : '#d1d5db'
                     }}
                     value={formData.address || barangaySearch}
                     onChange={(e) => handleBarangayInputChange(e.target.value)}
@@ -2277,6 +2258,42 @@ const DonorRecord = () => {
                   )}
                 </div>
               </div>
+              {Object.keys(validationErrors).length > 0 && (
+              <div style={{
+                backgroundColor: '#fee2e2',
+                color: '#991b1b',
+                padding: '12px 16px',
+                borderRadius: '6px',
+                marginTop: '16px',
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px'
+              }}>
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0, marginTop: '2px' }}>
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <div>
+                  {validationErrors.api && (
+                    <div style={{ marginBottom: '4px' }}>{validationErrors.api}</div>
+                  )}
+                  {validationErrors.save && (
+                    <div style={{ marginBottom: '4px' }}>{validationErrors.save}</div>
+                  )}
+                  {validationErrors.donorId && (
+                    <div style={{ marginBottom: '4px' }}>• {validationErrors.donorId}</div>
+                  )}
+                  {Object.entries(validationErrors)
+                    .filter(([key]) => !['api', 'save', 'donorId'].includes(key))
+                    .map(([key, message]) => (
+                      <div key={key} style={{ marginBottom: '4px' }}>
+                        • {message}
+                      </div>
+                    ))
+                  }
+                </div>
+              </div>
+            )}
             </div>
 
             <div
@@ -2686,7 +2703,7 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    First Name *
+                    First Name
                   </label>
                   <input
                     type="text"
@@ -2697,6 +2714,7 @@ const DonorRecord = () => {
                       fontSize: "11px",
                       fontFamily: "Barlow",
                       outline: "none",
+                      borderColor: editValidationErrors.firstName ? '#ef4444' : '#d1d5db'
                     }}
                     value={editingDonor.firstName}
                     onChange={(e) =>
@@ -2742,7 +2760,7 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    Last Name *
+                    Last Name
                   </label>
                   <input
                     type="text"
@@ -2753,6 +2771,7 @@ const DonorRecord = () => {
                       fontSize: "11px",
                       fontFamily: "Barlow",
                       outline: "none",
+                      borderColor: editValidationErrors.lastName ? '#ef4444' : '#d1d5db'
                     }}
                     value={editingDonor.lastName}
                     onChange={(e) =>
@@ -2770,7 +2789,7 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    Gender *
+                    Gender
                   </label>
                   <select
                     style={{
@@ -2782,6 +2801,7 @@ const DonorRecord = () => {
                       outline: "none",
                       cursor: "pointer",
                       backgroundColor: "white",
+                      borderColor: editValidationErrors.gender ? '#ef4444' : '#d1d5db'
                     }}
                     value={editingDonor.gender}
                     onChange={(e) =>
@@ -2803,7 +2823,7 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    Birthdate *
+                    Birthdate
                   </label>
                   <input
                     type="date"
@@ -2814,6 +2834,7 @@ const DonorRecord = () => {
                       fontSize: "11px",
                       fontFamily: "Barlow",
                       outline: "none",
+                      borderColor: editValidationErrors.birthdate ? '#ef4444' : '#d1d5db'
                     }}
                     value={editingDonor.birthdate}
                     onChange={(e) =>
@@ -2861,7 +2882,7 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    Blood Type *
+                    Blood Type
                   </label>
                   <select
                     style={{
@@ -2873,6 +2894,7 @@ const DonorRecord = () => {
                       outline: "none",
                       cursor: "pointer",
                       backgroundColor: "white",
+                      borderColor: editValidationErrors.bloodType ? '#ef4444' : '#d1d5db'
                     }}
                     value={editingDonor.bloodType}
                     onChange={(e) =>
@@ -2896,7 +2918,7 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    RH Factor *
+                    RH Factor
                   </label>
                   <select
                     style={{
@@ -2908,6 +2930,7 @@ const DonorRecord = () => {
                       outline: "none",
                       cursor: "pointer",
                       backgroundColor: "white",
+                      borderColor: editValidationErrors.rhFactor ? '#ef4444' : '#d1d5db'
                     }}
                     value={editingDonor.rhFactor}
                     onChange={(e) =>
@@ -2929,7 +2952,7 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    Status *
+                    Status
                   </label>
                   <select
                     style={{
@@ -2961,10 +2984,11 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    Contact Number *
+                    Contact Number
                   </label>
                   <input
                     type="tel"
+                    maxLength={11}
                     style={{
                       padding: "7px 10px",
                       border: "1px solid #d1d5db",
@@ -2972,11 +2996,13 @@ const DonorRecord = () => {
                       fontSize: "11px",
                       fontFamily: "Barlow",
                       outline: "none",
+                      borderColor: editValidationErrors.contactNumber ? '#ef4444' : '#d1d5db'
                     }}
                     value={editingDonor.contactNumber}
-                    onChange={(e) =>
-                      handleEditDonorChange("contactNumber", e.target.value)
-                    }
+                    onChange={(e) => {
+                      const onlyDigits = e.target.value.replace(/\D/g, "");
+                      handleFormChange("contactNumber", onlyDigits);
+                    }}
                     placeholder="09XXXXXXXXX"
                   />
                 </div>
@@ -3058,7 +3084,7 @@ const DonorRecord = () => {
                       fontFamily: "Barlow",
                     }}
                   >
-                    Barangay *
+                    Barangay
                   </label>
                   <input
                     type="text"
@@ -3071,6 +3097,7 @@ const DonorRecord = () => {
                       outline: "none",
                       width: "100%",
                       boxSizing: "border-box",
+                      borderColor: editValidationErrors.address ? '#ef4444' : '#d1d5db'
                     }}
                     value={editingDonor.address}
                     onChange={(e) =>
@@ -3080,6 +3107,39 @@ const DonorRecord = () => {
                   />
                 </div>
               </div>
+              {Object.keys(editValidationErrors).length > 0 && (
+              <div style={{
+                backgroundColor: '#fee2e2',
+                color: '#991b1b',
+                padding: '12px 16px',
+                borderRadius: '6px',
+                marginTop: '16px',
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px'
+              }}>
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0, marginTop: '2px' }}>
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <div>
+                  {editValidationErrors.api && (
+                    <div style={{ marginBottom: '4px' }}>{editValidationErrors.api}</div>
+                  )}
+                  {editValidationErrors.save && (
+                    <div style={{ marginBottom: '4px' }}>{editValidationErrors.save}</div>
+                  )}
+                  {Object.entries(editValidationErrors)
+                    .filter(([key]) => !['api', 'save'].includes(key))
+                    .map(([key, message]) => (
+                      <div key={key} style={{ marginBottom: '4px' }}>
+                        • {message}
+                      </div>
+                    ))
+                  }
+                </div>
+              </div>
+            )}
             </div>
 
             <div

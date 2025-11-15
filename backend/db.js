@@ -149,7 +149,21 @@ const dbService = {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
+      // Check if serial ID already exists for this specific category
+      const checkSerialQuery = `
+        SELECT bs_id FROM blood_stock 
+        WHERE bs_serial_id = $1 AND bs_category = $2
+      `;
+      const checkResult = await client.query(checkSerialQuery, [
+        bloodData.serial_id,
+        "Red Blood Cell"
+      ]);
+  
+      if (checkResult.rows.length > 0) {
+        throw new Error(`Serial ID ${bloodData.serial_id} already exists for Red Blood Cell category`);
+      }
+  
       const query = `
         INSERT INTO blood_stock (
           bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
@@ -157,10 +171,9 @@ const dbService = {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8, $9)
         RETURNING bs_id
       `;
-
-      // Ensure source is properly extracted
+  
       const source = bloodData.source || "Walk-In";
-
+  
       const values = [
         bloodData.serial_id,
         bloodData.type,
@@ -170,13 +183,12 @@ const dbService = {
         new Date(bloodData.expiration),
         bloodData.status || "Stored",
         "Red Blood Cell",
-        source, // Use the extracted source
+        source,
       ];
-
+  
       const result = await client.query(query, values);
       const stockId = result.rows[0].bs_id;
-
-
+  
       await client.query("COMMIT");
       return result.rows[0];
     } catch (error) {
@@ -577,10 +589,24 @@ const dbService = {
     }
   },
 
-  async addPlateletStock(plateletData) {
+    async addPlateletStock(plateletData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+
+      // Check if serial ID already exists for this specific category
+      const checkSerialQuery = `
+        SELECT bs_id FROM blood_stock 
+        WHERE bs_serial_id = $1 AND bs_category = $2
+      `;
+      const checkResult = await client.query(checkSerialQuery, [
+        plateletData.serial_id,
+        "Platelet"
+      ]);
+
+      if (checkResult.rows.length > 0) {
+        throw new Error(`Serial ID ${plateletData.serial_id} already exists for Platelet category`);
+      }
 
       const query = `
         INSERT INTO blood_stock (
@@ -610,51 +636,6 @@ const dbService = {
     } catch (error) {
       await client.query("ROLLBACK");
       console.error("Error adding platelet stock:", error);
-      throw error;
-    } finally {
-      client.release();
-    }
-  },
-  async updatePlateletStock(id, plateletData) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-
-      const query = `
-        UPDATE blood_stock SET
-          bs_serial_id = $2,
-          bs_blood_type = $3,
-          bs_rh_factor = $4,
-          bs_volume = $5,
-          bs_timestamp = $6,
-          bs_expiration_date = $7,
-          bs_status = $8,
-          bs_modified_at = NOW(),
-          bs_category = $9,
-          bs_source = $10 
-        WHERE bs_id = $1
-      `;
-
-      const values = [
-        id,
-        plateletData.serial_id,
-        plateletData.type,
-        plateletData.rhFactor,
-        parseInt(plateletData.volume),
-        new Date(plateletData.collection),
-        new Date(plateletData.expiration),
-        plateletData.status || "Stored",
-        "Platelet",
-        plateletData.source || "Walk-In",
-      ];
-
-      await client.query(query, values);
-
-      await client.query("COMMIT");
-      return true;
-    } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("Error updating platelet stock:", error);
       throw error;
     } finally {
       client.release();
@@ -730,6 +711,67 @@ const dbService = {
     } catch (error) {
       console.error("Error searching platelet stock:", error);
       throw error;
+    }
+  },
+
+  async updatePlateletStock(id, plateletData) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+  
+      // Check if serial ID already exists for a different record in this category
+      const checkSerialQuery = `
+        SELECT bs_id FROM blood_stock 
+        WHERE bs_serial_id = $1 AND bs_category = $2 AND bs_id != $3
+      `;
+      const checkResult = await client.query(checkSerialQuery, [
+        plateletData.serial_id,
+        "Platelet",
+        id
+      ]);
+  
+      if (checkResult.rows.length > 0) {
+        throw new Error(`Serial ID ${plateletData.serial_id} already exists for Platelet category`);
+      }
+  
+      const query = `
+        UPDATE blood_stock SET
+          bs_serial_id = $2,
+          bs_blood_type = $3,
+          bs_rh_factor = $4,
+          bs_volume = $5,
+          bs_timestamp = $6,
+          bs_expiration_date = $7,
+          bs_status = $8,
+          bs_modified_at = NOW(),
+          bs_category = $9,
+          bs_source = $10
+        WHERE bs_id = $1 AND bs_category = 'Platelet'
+      `;
+  
+      const values = [
+        id,
+        plateletData.serial_id,
+        plateletData.type,
+        plateletData.rhFactor,
+        parseInt(plateletData.volume),
+        new Date(plateletData.collection),
+        new Date(plateletData.expiration),
+        plateletData.status || "Stored",
+        "Platelet",
+        plateletData.source || "Walk-In",
+      ];
+  
+      await client.query(query, values);
+  
+      await client.query("COMMIT");
+      return true;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error updating platelet stock:", error);
+      throw error;
+    } finally {
+      client.release();
     }
   },
 
@@ -1050,15 +1092,29 @@ const dbService = {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
+      // Check if serial ID already exists for this specific category
+      const checkSerialQuery = `
+        SELECT bs_id FROM blood_stock 
+        WHERE bs_serial_id = $1 AND bs_category = $2
+      `;
+      const checkResult = await client.query(checkSerialQuery, [
+        plasmaData.serial_id,
+        "Plasma"
+      ]);
+  
+      if (checkResult.rows.length > 0) {
+        throw new Error(`Serial ID ${plasmaData.serial_id} already exists for Plasma category`);
+      }
+  
       const query = `
-      INSERT INTO blood_stock (
-        bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
-        bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category, bs_source
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8, $9)
-      RETURNING bs_id
-    `;
-
+        INSERT INTO blood_stock (
+          bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
+          bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category, bs_source
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8, $9)
+        RETURNING bs_id
+      `;
+  
       const values = [
         plasmaData.serial_id,
         plasmaData.type,
@@ -1070,10 +1126,10 @@ const dbService = {
         "Plasma",
         plasmaData.source || "Walk-In",
       ];
-
+  
       const result = await client.query(query, values);
       const stockId = result.rows[0].bs_id;
-
+  
       await client.query("COMMIT");
       return result.rows[0];
     } catch (error) {
@@ -1729,51 +1785,49 @@ const dbService = {
 
   // ========== RESTORE BLOOD STOCK METHODS ==========
 
-  // Restore RBC from released_blood back to blood_stock
   async restoreBloodStock(serialIds) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
-      // Get the released blood records
+  
       const getReleasedQuery = `
-      SELECT * FROM released_blood 
-      WHERE rb_serial_id = ANY($1) AND rb_category = 'Red Blood Cell'
-    `;
+        SELECT * FROM released_blood 
+        WHERE rb_serial_id = ANY($1) AND rb_category = 'Red Blood Cell'
+      `;
       const releasedResult = await client.query(getReleasedQuery, [serialIds]);
-
+  
       if (releasedResult.rows.length === 0) {
         throw new Error("No released blood records found to restore");
       }
-
+  
       let restoredCount = 0;
       const serialIdsToDelete = [];
-
-      // Insert back into blood_stock with status 'Stored'
+  
       for (const record of releasedResult.rows) {
-        // Check if serial ID already exists in blood_stock
+        // Check if serial ID already exists in blood_stock for this category
         const checkExistingQuery = `
-        SELECT bs_id FROM blood_stock WHERE bs_serial_id = $1
-      `;
+          SELECT bs_id FROM blood_stock 
+          WHERE bs_serial_id = $1 AND bs_category = 'Red Blood Cell'
+        `;
         const existingResult = await client.query(checkExistingQuery, [
           record.rb_serial_id,
         ]);
-
+  
         if (existingResult.rows.length > 0) {
           console.warn(
-            `Serial ID ${record.rb_serial_id} already exists in blood_stock, will only remove from released_blood`
+            `Serial ID ${record.rb_serial_id} already exists in blood_stock for Red Blood Cell category, will only remove from released_blood`
           );
           serialIdsToDelete.push(record.rb_serial_id);
           continue;
         }
-
+  
         const insertQuery = `
-        INSERT INTO blood_stock (
-          bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
-          bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category, bs_source
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      `;
-
+          INSERT INTO blood_stock (
+            bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
+            bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category, bs_source
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `;
+  
         const values = [
           record.rb_serial_id,
           record.rb_blood_type,
@@ -1786,21 +1840,20 @@ const dbService = {
           "Red Blood Cell",
           record.rb_source || "Walk-In",
         ];
-
+  
         await client.query(insertQuery, values);
         restoredCount++;
         serialIdsToDelete.push(record.rb_serial_id);
       }
-
-      // Delete from released_blood
+  
       if (serialIdsToDelete.length > 0) {
         const deleteQuery = `
-        DELETE FROM released_blood 
-        WHERE rb_serial_id = ANY($1) AND rb_category = 'Red Blood Cell'
-      `;
+          DELETE FROM released_blood 
+          WHERE rb_serial_id = ANY($1) AND rb_category = 'Red Blood Cell'
+        `;
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
-
+  
       await client.query("COMMIT");
       return { success: true, restoredCount: restoredCount };
     } catch (error) {
@@ -1812,49 +1865,49 @@ const dbService = {
     }
   },
 
-  // Restore Plasma from released_blood back to blood_stock
   async restorePlasmaStock(serialIds) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
       const getReleasedQuery = `
-      SELECT * FROM released_blood 
-      WHERE rb_serial_id = ANY($1) AND rb_category = 'Plasma'
-    `;
+        SELECT * FROM released_blood 
+        WHERE rb_serial_id = ANY($1) AND rb_category = 'Plasma'
+      `;
       const releasedResult = await client.query(getReleasedQuery, [serialIds]);
-
+  
       if (releasedResult.rows.length === 0) {
         throw new Error("No released plasma records found to restore");
       }
-
+  
       let restoredCount = 0;
       const serialIdsToDelete = [];
-
+  
       for (const record of releasedResult.rows) {
-        // Check if serial ID already exists in blood_stock
+        // Check if serial ID already exists in blood_stock for this category
         const checkExistingQuery = `
-        SELECT bs_id FROM blood_stock WHERE bs_serial_id = $1
-      `;
+          SELECT bs_id FROM blood_stock 
+          WHERE bs_serial_id = $1 AND bs_category = 'Plasma'
+        `;
         const existingResult = await client.query(checkExistingQuery, [
           record.rb_serial_id,
         ]);
-
+  
         if (existingResult.rows.length > 0) {
           console.warn(
-            `Serial ID ${record.rb_serial_id} already exists in blood_stock, will only remove from released_blood`
+            `Serial ID ${record.rb_serial_id} already exists in blood_stock for Plasma category, will only remove from released_blood`
           );
           serialIdsToDelete.push(record.rb_serial_id);
           continue;
         }
-
+  
         const insertQuery = `
-        INSERT INTO blood_stock (
-          bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
-          bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category, bs_source
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      `;
-
+          INSERT INTO blood_stock (
+            bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
+            bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category, bs_source
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `;
+  
         const values = [
           record.rb_serial_id,
           record.rb_blood_type,
@@ -1867,20 +1920,20 @@ const dbService = {
           "Plasma",
           record.rb_source || "Walk-In",
         ];
-
+  
         await client.query(insertQuery, values);
         restoredCount++;
         serialIdsToDelete.push(record.rb_serial_id);
       }
-
+  
       if (serialIdsToDelete.length > 0) {
         const deleteQuery = `
-        DELETE FROM released_blood 
-        WHERE rb_serial_id = ANY($1) AND rb_category = 'Plasma'
-      `;
+          DELETE FROM released_blood 
+          WHERE rb_serial_id = ANY($1) AND rb_category = 'Plasma'
+        `;
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
-
+  
       await client.query("COMMIT");
       return { success: true, restoredCount: restoredCount };
     } catch (error) {
@@ -1897,44 +1950,45 @@ const dbService = {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
       const getReleasedQuery = `
-      SELECT * FROM released_blood 
-      WHERE rb_serial_id = ANY($1) AND rb_category = 'Platelet'
-    `;
+        SELECT * FROM released_blood 
+        WHERE rb_serial_id = ANY($1) AND rb_category = 'Platelet'
+      `;
       const releasedResult = await client.query(getReleasedQuery, [serialIds]);
-
+  
       if (releasedResult.rows.length === 0) {
         throw new Error("No released platelet records found to restore");
       }
-
+  
       let restoredCount = 0;
       const serialIdsToDelete = [];
-
+  
       for (const record of releasedResult.rows) {
-        // Check if serial ID already exists in blood_stock
+        // Check if serial ID already exists in blood_stock for this category
         const checkExistingQuery = `
-        SELECT bs_id FROM blood_stock WHERE bs_serial_id = $1
-      `;
+          SELECT bs_id FROM blood_stock 
+          WHERE bs_serial_id = $1 AND bs_category = 'Platelet'
+        `;
         const existingResult = await client.query(checkExistingQuery, [
           record.rb_serial_id,
         ]);
-
+  
         if (existingResult.rows.length > 0) {
           console.warn(
-            `Serial ID ${record.rb_serial_id} already exists in blood_stock, will only remove from released_blood`
+            `Serial ID ${record.rb_serial_id} already exists in blood_stock for Platelet category, will only remove from released_blood`
           );
           serialIdsToDelete.push(record.rb_serial_id);
           continue;
         }
-
+  
         const insertQuery = `
-        INSERT INTO blood_stock (
-          bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
-          bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category, bs_source
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      `;
-
+          INSERT INTO blood_stock (
+            bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
+            bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category, bs_source
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `;
+  
         const values = [
           record.rb_serial_id,
           record.rb_blood_type,
@@ -1947,20 +2001,20 @@ const dbService = {
           "Platelet",
           record.rb_source || "Walk-In",
         ];
-
+  
         await client.query(insertQuery, values);
         restoredCount++;
         serialIdsToDelete.push(record.rb_serial_id);
       }
-
+  
       if (serialIdsToDelete.length > 0) {
         const deleteQuery = `
-        DELETE FROM released_blood 
-        WHERE rb_serial_id = ANY($1) AND rb_category = 'Platelet'
-      `;
+          DELETE FROM released_blood 
+          WHERE rb_serial_id = ANY($1) AND rb_category = 'Platelet'
+        `;
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
-
+  
       await client.query("COMMIT");
       return { success: true, restoredCount: restoredCount };
     } catch (error) {
@@ -2084,7 +2138,7 @@ const dbService = {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
       const getStockQuery = `
         SELECT * FROM blood_stock 
         WHERE bs_serial_id = ANY($1) 
@@ -2092,38 +2146,39 @@ const dbService = {
           AND bs_category = 'Red Blood Cell'
       `;
       const stockResult = await client.query(getStockQuery, [serialIds]);
-
+  
       if (stockResult.rows.length === 0) {
         throw new Error(
           "No valid Red Blood Cell stock records found for transfer to non-conforming"
         );
       }
-
+  
       let transferredCount = 0;
       const serialIdsToDelete = [];
-
+  
       for (const stockRecord of stockResult.rows) {
         const checkExistingQuery = `
-          SELECT nc_id FROM non_conforming WHERE nc_serial_id = $1
+          SELECT nc_id FROM non_conforming 
+          WHERE nc_serial_id = $1 AND nc_category = 'Red Blood Cell'
         `;
         const existingResult = await client.query(checkExistingQuery, [
           stockRecord.bs_serial_id,
         ]);
-
+  
         if (existingResult.rows.length > 0) {
           console.warn(
-            `Serial ID ${stockRecord.bs_serial_id} already exists in non_conforming, skipping`
+            `Serial ID ${stockRecord.bs_serial_id} already exists in non_conforming for Red Blood Cell category, skipping`
           );
           continue;
         }
-
+  
         const insertQuery = `
           INSERT INTO non_conforming (
             nc_serial_id, nc_blood_type, nc_rh_factor, nc_volume,
             nc_timestamp, nc_expiration_date, nc_status, nc_created_at, nc_category, nc_source
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         `;
-
+  
         const values = [
           stockRecord.bs_serial_id,
           stockRecord.bs_blood_type,
@@ -2136,12 +2191,12 @@ const dbService = {
           "Red Blood Cell",
           stockRecord.bs_source || "Walk-In",
         ];
-
+  
         await client.query(insertQuery, values);
         transferredCount++;
         serialIdsToDelete.push(stockRecord.bs_serial_id);
       }
-
+  
       if (serialIdsToDelete.length > 0) {
         const deleteQuery = `
           DELETE FROM blood_stock 
@@ -2151,7 +2206,7 @@ const dbService = {
         `;
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
-
+  
       await client.query("COMMIT");
       return { success: true, transferredCount: transferredCount };
     } catch (error) {
@@ -2161,7 +2216,7 @@ const dbService = {
     } finally {
       client.release();
     }
-  },
+  },  
 
   async updateNonConforming(id, ncData) {
     try {
@@ -2261,51 +2316,54 @@ const dbService = {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
       const getNonConformingQuery = `
-      SELECT * FROM non_conforming 
-      WHERE nc_serial_id = ANY($1) AND nc_category = 'Red Blood Cell'
-    `;
+        SELECT * FROM non_conforming 
+        WHERE nc_serial_id = ANY($1) AND nc_category = 'Red Blood Cell'
+      `;
       const ncResult = await client.query(getNonConformingQuery, [
         discardData.serialIds,
       ]);
-
+  
       if (ncResult.rows.length === 0) {
         throw new Error(
           "No valid non-conforming Red Blood Cell records found for discard"
         );
       }
-
+  
       let discardedCount = 0;
       const serialIdsToDelete = [];
-      const discardedBloodIds = []; // Track discarded blood IDs
-
+      const discardedBloodIds = [];
+  
       for (const ncRecord of ncResult.rows) {
+        // Check for duplicate with BOTH serial_id AND category
         const checkExistingQuery = `
-        SELECT db_id FROM discarded_blood WHERE db_serial_id = $1
-      `;
+          SELECT db_id FROM discarded_blood 
+          WHERE db_serial_id = $1 AND db_category = $2
+        `;
         const existingResult = await client.query(checkExistingQuery, [
           ncRecord.nc_serial_id,
+          'Red Blood Cell'
         ]);
-
+  
         if (existingResult.rows.length > 0) {
           console.warn(
-            `Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood, skipping`
+            `Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood for Red Blood Cell category, skipping`
           );
           continue;
         }
-
+  
         const insertQuery = `
-        INSERT INTO discarded_blood (
-          db_serial_id, db_blood_type, db_rh_factor, db_volume,
-          db_timestamp, db_expiration_date, db_status, db_created_at, 
-          db_discarded_at, db_category, db_original_id,
-          db_responsible_personnel, db_reason_for_discarding, db_authorized_by,
-          db_date_of_discard, db_time_of_discard, db_method_of_disposal, db_remarks
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
-        RETURNING db_id
-      `;
-
+          INSERT INTO discarded_blood (
+            db_serial_id, db_blood_type, db_rh_factor, db_volume,
+            db_timestamp, db_expiration_date, db_status, db_created_at, 
+            db_discarded_at, db_category, db_original_id,
+            db_responsible_personnel, db_reason_for_discarding, db_authorized_by,
+            db_date_of_discard, db_time_of_discard, db_method_of_disposal, db_remarks, 
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
+          RETURNING db_id
+        `;
+  
         const values = [
           ncRecord.nc_serial_id,
           ncRecord.nc_blood_type,
@@ -2325,28 +2383,27 @@ const dbService = {
           discardData.methodOfDisposal,
           discardData.remarks || "",
         ];
-
+  
         const insertResult = await client.query(insertQuery, values);
-        discardedBloodIds.push(insertResult.rows[0].db_id); // Store the ID
+        discardedBloodIds.push(insertResult.rows[0].db_id);
         discardedCount++;
         serialIdsToDelete.push(ncRecord.nc_serial_id);
       }
-
+  
       if (serialIdsToDelete.length > 0) {
         const deleteQuery = `
-        DELETE FROM non_conforming 
-        WHERE nc_serial_id = ANY($1) AND nc_category = 'Red Blood Cell'
-      `;
+          DELETE FROM non_conforming 
+          WHERE nc_serial_id = ANY($1) AND nc_category = 'Red Blood Cell'
+        `;
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
-
-      // Generate invoice with the discarded blood IDs
+  
       const invoiceResult = await this.generateDiscardedInvoiceWithClient(
         client,
         discardData,
         discardedBloodIds
       );
-
+  
       await client.query("COMMIT");
       return {
         success: true,
@@ -2362,6 +2419,7 @@ const dbService = {
       client.release();
     }
   },
+  
 
   // Get non-conforming stock by serial ID for discard (RED BLOOD CELL ONLY)
   async getNonConformingBySerialIdForDiscard(serialId) {
@@ -2464,10 +2522,12 @@ const dbService = {
 
       for (const ncRecord of ncResult.rows) {
         const checkExistingQuery = `
-        SELECT db_id FROM discarded_blood WHERE db_serial_id = $1
-      `;
+          SELECT db_id FROM discarded_blood 
+          WHERE db_serial_id = $1 AND db_category = $2
+        `;
         const existingResult = await client.query(checkExistingQuery, [
           ncRecord.nc_serial_id,
+          'Platelet'  // Make sure this matches exactly
         ]);
 
         if (existingResult.rows.length > 0) {
@@ -2548,51 +2608,54 @@ const dbService = {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
       const getNonConformingQuery = `
-      SELECT * FROM non_conforming 
-      WHERE nc_serial_id = ANY($1) AND nc_category = 'Plasma'
-    `;
+        SELECT * FROM non_conforming 
+        WHERE nc_serial_id = ANY($1) AND nc_category = 'Plasma'
+      `;
       const ncResult = await client.query(getNonConformingQuery, [
         discardData.serialIds,
       ]);
-
+  
       if (ncResult.rows.length === 0) {
         throw new Error(
           "No valid plasma non-conforming records found for discard"
         );
       }
-
+  
       let discardedCount = 0;
       const serialIdsToDelete = [];
-      const discardedBloodIds = []; // Track discarded blood IDs
-
+      const discardedBloodIds = [];
+  
       for (const ncRecord of ncResult.rows) {
+        // FIXED: Check for duplicate with BOTH serial_id AND category
         const checkExistingQuery = `
-        SELECT db_id FROM discarded_blood WHERE db_serial_id = $1
-      `;
+          SELECT db_id FROM discarded_blood 
+          WHERE db_serial_id = $1 AND db_category = $2
+        `;
         const existingResult = await client.query(checkExistingQuery, [
           ncRecord.nc_serial_id,
+          'Plasma'  // Make sure this matches exactly
         ]);
-
+          
         if (existingResult.rows.length > 0) {
           console.warn(
-            `Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood, skipping`
+            `Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood for Plasma category, skipping`
           );
           continue;
         }
-
+  
         const insertQuery = `
-        INSERT INTO discarded_blood (
-          db_serial_id, db_blood_type, db_rh_factor, db_volume,
-          db_timestamp, db_expiration_date, db_status, db_created_at, 
-          db_discarded_at, db_category, db_original_id,
-          db_responsible_personnel, db_reason_for_discarding, db_authorized_by,
-          db_date_of_discard, db_time_of_discard, db_method_of_disposal, db_remarks
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
-        RETURNING db_id
-      `;
-
+          INSERT INTO discarded_blood (
+            db_serial_id, db_blood_type, db_rh_factor, db_volume,
+            db_timestamp, db_expiration_date, db_status, db_created_at, 
+            db_discarded_at, db_category, db_original_id,
+            db_responsible_personnel, db_reason_for_discarding, db_authorized_by,
+            db_date_of_discard, db_time_of_discard, db_method_of_disposal, db_remarks
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
+          RETURNING db_id
+        `;
+  
         const values = [
           ncRecord.nc_serial_id,
           ncRecord.nc_blood_type,
@@ -2612,28 +2675,27 @@ const dbService = {
           discardData.methodOfDisposal,
           discardData.remarks || "",
         ];
-
+  
         const insertResult = await client.query(insertQuery, values);
-        discardedBloodIds.push(insertResult.rows[0].db_id); // Store the ID
+        discardedBloodIds.push(insertResult.rows[0].db_id);
         discardedCount++;
         serialIdsToDelete.push(ncRecord.nc_serial_id);
       }
-
+  
       if (serialIdsToDelete.length > 0) {
         const deleteQuery = `
-        DELETE FROM non_conforming 
-        WHERE nc_serial_id = ANY($1) AND nc_category = 'Plasma'
-      `;
+          DELETE FROM non_conforming 
+          WHERE nc_serial_id = ANY($1) AND nc_category = 'Plasma'
+        `;
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
-
-      // Generate invoice with the discarded blood IDs
+  
       const invoiceResult = await this.generateDiscardedInvoiceWithClient(
         client,
         discardData,
         discardedBloodIds
       );
-
+  
       await client.query("COMMIT");
       return {
         success: true,
@@ -2646,61 +2708,63 @@ const dbService = {
       console.error("Error discarding plasma non-conforming stock:", error);
       throw error;
     } finally {
-      client.release();
+    client.release();
     }
   },
 
-  // Search non-conforming records for discard modal (RED BLOOD CELL ONLY)
   // Search non-conforming records for discard modal (RED BLOOD CELL ONLY)
   async discardNonConformingStock(discardData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
       const getNonConformingQuery = `
-      SELECT * FROM non_conforming 
-      WHERE nc_serial_id = ANY($1) AND nc_category = 'Red Blood Cell'
-    `;
+        SELECT * FROM non_conforming 
+        WHERE nc_serial_id = ANY($1) AND nc_category = 'Red Blood Cell'
+      `;
       const ncResult = await client.query(getNonConformingQuery, [
         discardData.serialIds,
       ]);
-
+  
       if (ncResult.rows.length === 0) {
         throw new Error(
           "No valid non-conforming Red Blood Cell records found for discard"
         );
       }
-
+  
       let discardedCount = 0;
       const serialIdsToDelete = [];
-      const discardedBloodIds = []; // Track discarded blood IDs
-
+      const discardedBloodIds = [];
+  
       for (const ncRecord of ncResult.rows) {
+        // FIXED: Check for duplicate with BOTH serial_id AND category
         const checkExistingQuery = `
-        SELECT db_id FROM discarded_blood WHERE db_serial_id = $1
-      `;
+          SELECT db_id FROM discarded_blood 
+          WHERE db_serial_id = $1 AND db_category = $2
+        `;
         const existingResult = await client.query(checkExistingQuery, [
           ncRecord.nc_serial_id,
+          'Red Blood Cell' // Add category to the check
         ]);
-
+  
         if (existingResult.rows.length > 0) {
           console.warn(
-            `Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood, skipping`
+            `Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood for Red Blood Cell category, skipping`
           );
           continue;
         }
-
+  
         const insertQuery = `
-        INSERT INTO discarded_blood (
-          db_serial_id, db_blood_type, db_rh_factor, db_volume,
-          db_timestamp, db_expiration_date, db_status, db_created_at, 
-          db_discarded_at, db_category, db_original_id,
-          db_responsible_personnel, db_reason_for_discarding, db_authorized_by,
-          db_date_of_discard, db_time_of_discard, db_method_of_disposal, db_remarks
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
-        RETURNING db_id
-      `;
-
+          INSERT INTO discarded_blood (
+            db_serial_id, db_blood_type, db_rh_factor, db_volume,
+            db_timestamp, db_expiration_date, db_status, db_created_at, 
+            db_discarded_at, db_category, db_original_id,
+            db_responsible_personnel, db_reason_for_discarding, db_authorized_by,
+            db_date_of_discard, db_time_of_discard, db_method_of_disposal, db_remarks
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
+          RETURNING db_id
+        `;
+  
         const values = [
           ncRecord.nc_serial_id,
           ncRecord.nc_blood_type,
@@ -2720,28 +2784,27 @@ const dbService = {
           discardData.methodOfDisposal,
           discardData.remarks || "",
         ];
-
+  
         const insertResult = await client.query(insertQuery, values);
-        discardedBloodIds.push(insertResult.rows[0].db_id); // Store the ID
+        discardedBloodIds.push(insertResult.rows[0].db_id);
         discardedCount++;
         serialIdsToDelete.push(ncRecord.nc_serial_id);
       }
-
+  
       if (serialIdsToDelete.length > 0) {
         const deleteQuery = `
-        DELETE FROM non_conforming 
-        WHERE nc_serial_id = ANY($1) AND nc_category = 'Red Blood Cell'
-      `;
+          DELETE FROM non_conforming 
+          WHERE nc_serial_id = ANY($1) AND nc_category = 'Red Blood Cell'
+        `;
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
-
-      // Generate invoice with the discarded blood IDs
+  
       const invoiceResult = await this.generateDiscardedInvoiceWithClient(
         client,
         discardData,
         discardedBloodIds
       );
-
+  
       await client.query("COMMIT");
       return {
         success: true,
@@ -2873,7 +2936,7 @@ const dbService = {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
       const getStockQuery = `
         SELECT * FROM blood_stock 
         WHERE bs_serial_id = ANY($1) 
@@ -2881,38 +2944,39 @@ const dbService = {
           AND bs_category = 'Platelet'
       `;
       const stockResult = await client.query(getStockQuery, [serialIds]);
-
+  
       if (stockResult.rows.length === 0) {
         throw new Error(
           "No valid Platelet stock records found for transfer to non-conforming"
         );
       }
-
+  
       let transferredCount = 0;
       const serialIdsToDelete = [];
-
+  
       for (const stockRecord of stockResult.rows) {
         const checkExistingQuery = `
-          SELECT nc_id FROM non_conforming WHERE nc_serial_id = $1
+          SELECT nc_id FROM non_conforming 
+          WHERE nc_serial_id = $1 AND nc_category = 'Platelet'
         `;
         const existingResult = await client.query(checkExistingQuery, [
           stockRecord.bs_serial_id,
         ]);
-
+  
         if (existingResult.rows.length > 0) {
           console.warn(
-            `Serial ID ${stockRecord.bs_serial_id} already exists in non_conforming, skipping`
+            `Serial ID ${stockRecord.bs_serial_id} already exists in non_conforming for Platelet category, skipping`
           );
           continue;
         }
-
+  
         const insertQuery = `
           INSERT INTO non_conforming (
             nc_serial_id, nc_blood_type, nc_rh_factor, nc_volume,
-            nc_timestamp, nc_expiration_date, nc_status, nc_created_at, nc_category
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            nc_timestamp, nc_expiration_date, nc_status, nc_created_at, nc_category, nc_source
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         `;
-
+  
         const values = [
           stockRecord.bs_serial_id,
           stockRecord.bs_blood_type,
@@ -2923,13 +2987,14 @@ const dbService = {
           "Non-Conforming",
           stockRecord.bs_created_at,
           "Platelet",
+          stockRecord.bs_source || "Walk-In",
         ];
-
+  
         await client.query(insertQuery, values);
         transferredCount++;
         serialIdsToDelete.push(stockRecord.bs_serial_id);
       }
-
+  
       if (serialIdsToDelete.length > 0) {
         const deleteQuery = `
           DELETE FROM blood_stock 
@@ -2939,7 +3004,7 @@ const dbService = {
         `;
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
-
+  
       await client.query("COMMIT");
       return { success: true, transferredCount: transferredCount };
     } catch (error) {
@@ -3048,7 +3113,7 @@ const dbService = {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
       const getNonConformingQuery = `
         SELECT * FROM non_conforming 
         WHERE nc_serial_id = ANY($1) AND nc_category = 'Platelet'
@@ -3056,32 +3121,35 @@ const dbService = {
       const ncResult = await client.query(getNonConformingQuery, [
         discardData.serialIds,
       ]);
-
+  
       if (ncResult.rows.length === 0) {
         throw new Error(
           "No valid platelet non-conforming records found for discard"
         );
       }
-
+  
       let discardedCount = 0;
       const serialIdsToDelete = [];
       const discardedBloodIds = [];
-
+  
       for (const ncRecord of ncResult.rows) {
+        // Check for duplicate with BOTH serial_id AND category
         const checkExistingQuery = `
-          SELECT db_id FROM discarded_blood WHERE db_serial_id = $1
+          SELECT db_id FROM discarded_blood 
+          WHERE db_serial_id = $1 AND db_category = $2
         `;
         const existingResult = await client.query(checkExistingQuery, [
           ncRecord.nc_serial_id,
+          'Platelet'
         ]);
-
+  
         if (existingResult.rows.length > 0) {
           console.warn(
-            `Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood, skipping`
+            `Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood for Platelet category, skipping`
           );
           continue;
         }
-
+  
         const insertQuery = `
           INSERT INTO discarded_blood (
             db_serial_id, db_blood_type, db_rh_factor, db_volume,
@@ -3092,7 +3160,7 @@ const dbService = {
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
           RETURNING db_id
         `;
-
+  
         const values = [
           ncRecord.nc_serial_id,
           ncRecord.nc_blood_type,
@@ -3112,13 +3180,13 @@ const dbService = {
           discardData.methodOfDisposal,
           discardData.remarks || "",
         ];
-
+  
         const insertResult = await client.query(insertQuery, values);
         discardedBloodIds.push(insertResult.rows[0].db_id);
         discardedCount++;
         serialIdsToDelete.push(ncRecord.nc_serial_id);
       }
-
+  
       if (serialIdsToDelete.length > 0) {
         const deleteQuery = `
           DELETE FROM non_conforming 
@@ -3126,14 +3194,13 @@ const dbService = {
         `;
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
-
-      // Generate invoice with the discarded blood IDs
+  
       const invoiceResult = await this.generateDiscardedInvoiceWithClient(
         client,
         discardData,
         discardedBloodIds
       );
-
+  
       await client.query("COMMIT");
       return {
         success: true,
@@ -3149,6 +3216,7 @@ const dbService = {
       client.release();
     }
   },
+  
 
   // Get platelet non-conforming by serial ID for discard
   async getPlateletNonConformingBySerialIdForDiscard(serialId) {
@@ -3329,7 +3397,7 @@ const dbService = {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
       const getStockQuery = `
         SELECT * FROM blood_stock 
         WHERE bs_serial_id = ANY($1) 
@@ -3337,38 +3405,39 @@ const dbService = {
           AND bs_category = 'Plasma'
       `;
       const stockResult = await client.query(getStockQuery, [serialIds]);
-
+  
       if (stockResult.rows.length === 0) {
         throw new Error(
           "No valid Plasma stock records found for transfer to non-conforming"
         );
       }
-
+  
       let transferredCount = 0;
       const serialIdsToDelete = [];
-
+  
       for (const stockRecord of stockResult.rows) {
         const checkExistingQuery = `
-          SELECT nc_id FROM non_conforming WHERE nc_serial_id = $1
+          SELECT nc_id FROM non_conforming 
+          WHERE nc_serial_id = $1 AND nc_category = 'Plasma'
         `;
         const existingResult = await client.query(checkExistingQuery, [
           stockRecord.bs_serial_id,
         ]);
-
+  
         if (existingResult.rows.length > 0) {
           console.warn(
-            `Serial ID ${stockRecord.bs_serial_id} already exists in non_conforming, skipping`
+            `Serial ID ${stockRecord.bs_serial_id} already exists in non_conforming for Plasma category, skipping`
           );
           continue;
         }
-
+  
         const insertQuery = `
           INSERT INTO non_conforming (
             nc_serial_id, nc_blood_type, nc_rh_factor, nc_volume,
-            nc_timestamp, nc_expiration_date, nc_status, nc_created_at, nc_category
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            nc_timestamp, nc_expiration_date, nc_status, nc_created_at, nc_category, nc_source
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         `;
-
+  
         const values = [
           stockRecord.bs_serial_id,
           stockRecord.bs_blood_type,
@@ -3379,13 +3448,14 @@ const dbService = {
           "Non-Conforming",
           stockRecord.bs_created_at,
           "Plasma",
+          stockRecord.bs_source || "Walk-In",
         ];
-
+  
         await client.query(insertQuery, values);
         transferredCount++;
         serialIdsToDelete.push(stockRecord.bs_serial_id);
       }
-
+  
       if (serialIdsToDelete.length > 0) {
         const deleteQuery = `
           DELETE FROM blood_stock 
@@ -3395,7 +3465,7 @@ const dbService = {
         `;
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
-
+  
       await client.query("COMMIT");
       return { success: true, transferredCount: transferredCount };
     } catch (error) {
@@ -3504,7 +3574,7 @@ const dbService = {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
       const getNonConformingQuery = `
         SELECT * FROM non_conforming 
         WHERE nc_serial_id = ANY($1) AND nc_category = 'Plasma'
@@ -3512,32 +3582,35 @@ const dbService = {
       const ncResult = await client.query(getNonConformingQuery, [
         discardData.serialIds,
       ]);
-
+  
       if (ncResult.rows.length === 0) {
         throw new Error(
           "No valid plasma non-conforming records found for discard"
         );
       }
-
+  
       let discardedCount = 0;
       const serialIdsToDelete = [];
       const discardedBloodIds = [];
-
+  
       for (const ncRecord of ncResult.rows) {
+        // Check for duplicate with BOTH serial_id AND category
         const checkExistingQuery = `
-          SELECT db_id FROM discarded_blood WHERE db_serial_id = $1
+          SELECT db_id FROM discarded_blood 
+          WHERE db_serial_id = $1 AND db_category = $2
         `;
         const existingResult = await client.query(checkExistingQuery, [
           ncRecord.nc_serial_id,
+          'Plasma'
         ]);
-
+  
         if (existingResult.rows.length > 0) {
           console.warn(
-            `Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood, skipping`
+            `Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood for Plasma category, skipping`
           );
           continue;
         }
-
+  
         const insertQuery = `
           INSERT INTO discarded_blood (
             db_serial_id, db_blood_type, db_rh_factor, db_volume,
@@ -3548,7 +3621,7 @@ const dbService = {
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
           RETURNING db_id
         `;
-
+  
         const values = [
           ncRecord.nc_serial_id,
           ncRecord.nc_blood_type,
@@ -3568,13 +3641,13 @@ const dbService = {
           discardData.methodOfDisposal,
           discardData.remarks || "",
         ];
-
+  
         const insertResult = await client.query(insertQuery, values);
         discardedBloodIds.push(insertResult.rows[0].db_id);
         discardedCount++;
         serialIdsToDelete.push(ncRecord.nc_serial_id);
       }
-
+  
       if (serialIdsToDelete.length > 0) {
         const deleteQuery = `
           DELETE FROM non_conforming 
@@ -3582,14 +3655,13 @@ const dbService = {
         `;
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
-
-      // Generate invoice with the discarded blood IDs
+  
       const invoiceResult = await this.generateDiscardedInvoiceWithClient(
         client,
         discardData,
         discardedBloodIds
       );
-
+  
       await client.query("COMMIT");
       return {
         success: true,
