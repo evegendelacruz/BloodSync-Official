@@ -51,7 +51,9 @@ const RedBloodCellNC = () => {
   });
   const [showDiscardConfirmModal, setShowDiscardConfirmModal] = useState(false);
   const [showDiscardSuccessModal, setShowDiscardSuccessModal] = useState(false);
-
+  const [validationErrors, setValidationErrors] = useState({});
+  const [editValidationErrors, setEditValidationErrors] = useState({});
+  const [discardValidationErrors, setDiscardValidationErrors] = useState({});
   const [successMessage, setSuccessMessage] = useState({
     title: "",
     description: "",
@@ -211,26 +213,35 @@ const RedBloodCellNC = () => {
           i === index ? { ...item, [field]: value, found: false } : item
         )
       );
-
+  
+      // Clear validation error for this field
+      if (validationErrors[`${index}-${field}`]) {
+        setValidationErrors((prev) => {
+          const newErrors = { ...prev };
+          delete newErrors[`${index}-${field}`];
+          return newErrors;
+        });
+      }
+  
       if (searchTimeoutsRef.current[index]) {
         clearTimeout(searchTimeoutsRef.current[index]);
       }
-
+  
       if (!value || value.trim() === "") {
         setError(null);
         return;
       }
-
+  
       searchTimeoutsRef.current[index] = setTimeout(async () => {
         try {
           if (!window.electronAPI) {
             setError("Electron API not available");
             return;
           }
-
+  
           const stockData =
             await window.electronAPI.getBloodStockBySerialIdForNC(value.trim());
-
+  
           if (
             stockData &&
             !Array.isArray(stockData) &&
@@ -260,7 +271,7 @@ const RedBloodCellNC = () => {
             const rbcMatch = stockData.find(
               (item) => item.category === "Red Blood Cell"
             );
-
+  
             if (rbcMatch) {
               setNonConformingItems((prev) =>
                 prev.map((item, i) =>
@@ -512,6 +523,23 @@ const RedBloodCellNC = () => {
     }
   };
 
+  const handleDiscardFormDataChange = (field, value) => {
+    setDiscardFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+    
+    // Clear validation error for this field when user starts typing
+    if (discardValidationErrors[field]) {
+      setDiscardValidationErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
+  };
+  
+
   const handleDiscardProceed = async (e) => {
     e.preventDefault();
     const validItems = discardItems.filter(
@@ -527,32 +555,48 @@ const RedBloodCellNC = () => {
   };
 
   const confirmDiscard = async () => {
+    // Validate all fields
+    const errors = {};
+    if (!discardFormData.responsiblePersonnel || discardFormData.responsiblePersonnel.trim() === "") {
+      errors.responsiblePersonnel = "Responsible personnel is required";
+    }
+    if (!discardFormData.reasonForDiscarding) {
+      errors.reasonForDiscarding = "Reason for discarding is required";
+    }
+    if (!discardFormData.authorizedBy || discardFormData.authorizedBy.trim() === "") {
+      errors.authorizedBy = "Authorized by is required";
+    }
+    if (!discardFormData.dateOfDiscard) {
+      errors.dateOfDiscard = "Date of discard is required";
+    }
+    if (!discardFormData.timeOfDiscard) {
+      errors.timeOfDiscard = "Time of discard is required";
+    }
+    if (!discardFormData.methodOfDisposal) {
+      errors.methodOfDisposal = "Method of disposal is required";
+    }
+    
+    if (Object.keys(errors).length > 0) {
+      setDiscardValidationErrors(errors);
+      return;
+    }
+    
     try {
       setSaving(true);
       if (!window.electronAPI) {
-        setError("Electron API not available");
+        setDiscardValidationErrors({ api: "Electron API not available" });
         return;
       }
-      if (
-        !discardFormData.responsiblePersonnel ||
-        !discardFormData.reasonForDiscarding ||
-        !discardFormData.authorizedBy ||
-        !discardFormData.dateOfDiscard ||
-        !discardFormData.timeOfDiscard ||
-        !discardFormData.methodOfDisposal
-      ) {
-        setError("Please fill in all required fields");
-        setSaving(false);
-        return;
-      }
+      
       const validItems = discardItems.filter(
         (item) => item.serialId && item.found
       );
       if (validItems.length === 0) {
-        setError("No valid items to discard");
+        setDiscardValidationErrors({ items: "No valid items to discard" });
         setSaving(false);
         return;
       }
+      
       const discardData = {
         serialIds: validItems.map((item) => item.serialId),
         responsiblePersonnel: discardFormData.responsiblePersonnel,
@@ -563,11 +607,13 @@ const RedBloodCellNC = () => {
         methodOfDisposal: discardFormData.methodOfDisposal,
         remarks: discardFormData.remarks,
       };
+      
       const result =
         await window.electronAPI.discardNonConformingStock(discardData);
       if (result.success) {
         setShowDiscardDetailsModal(false);
         setShowDiscardModal(false);
+        setDiscardValidationErrors({});
         setDiscardItems([
           {
             id: 1,
@@ -601,7 +647,7 @@ const RedBloodCellNC = () => {
       }
     } catch (err) {
       console.error("Error discarding non-conforming stock:", err);
-      setError(`Failed to discard non-conforming stock: ${err.message}`);
+      setDiscardValidationErrors({ save: `Failed to discard non-conforming stock: ${err.message}` });
     } finally {
       setSaving(false);
     }
@@ -613,8 +659,17 @@ const RedBloodCellNC = () => {
       updated.expiration = calculateExpiration(value);
     }
     setEditingItem(updated);
+    
+    // Clear validation error for this field when user starts typing
+    if (editValidationErrors[field]) {
+      setEditValidationErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
   };
-
+  
   const addNewRow = () => {
     const newId = Math.max(...nonConformingItems.map((item) => item.id)) + 1;
     setNonConformingItems((prev) => [
@@ -633,40 +688,63 @@ const RedBloodCellNC = () => {
         found: false,
       },
     ]);
+    setValidationErrors({});
   };
+  
 
   const removeRow = (index) => {
     if (nonConformingItems.length > 1) {
       setNonConformingItems((prev) => prev.filter((_, i) => i !== index));
     }
   };
-
   const handleSaveAllStock = async (e) => {
     e.preventDefault();
+    
+    // Validate all items
+    const errors = {};
+    let hasInvalidItems = false;
+    
+    nonConformingItems.forEach((item, index) => {
+      if (!item.serialId || item.serialId.trim() === "") {
+        errors[`${index}-serialId`] = "Serial ID is required";
+        hasInvalidItems = true;
+      } else if (!item.found) {
+        errors[`${index}-serialId`] = "Serial ID not found or invalid";
+        hasInvalidItems = true;
+      }
+    });
+    
+    if (hasInvalidItems || Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      setError("Please ensure all items have valid serial IDs");
+      return;
+    }
+    
     try {
       setSaving(true);
       if (!window.electronAPI) {
-        setError("Electron API not available");
+        setValidationErrors({ api: "Electron API not available" });
         return;
       }
-
+  
       const validItems = nonConformingItems.filter(
         (item) => item.serialId && item.found
       );
-
+  
       if (validItems.length === 0) {
-        setError("Please add at least one valid item with a found serial ID");
+        setValidationErrors({ items: "Please add at least one valid item with a found serial ID" });
         setSaving(false);
         return;
       }
-
+  
       const serialIds = validItems.map((item) => item.serialId);
-
+  
       const result =
         await window.electronAPI.transferToNonConforming(serialIds);
-
+  
       if (result.success) {
         setShowAddModal(false);
+        setValidationErrors({});
         setNonConformingItems([
           {
             id: 1,
@@ -683,7 +761,7 @@ const RedBloodCellNC = () => {
         ]);
         await loadNonConformingData();
         setError(null);
-
+  
         setSuccessMessage({
           title: "Non-Conforming Records Added!",
           description: `${result.transferredCount} blood unit(s) have been transferred to non-conforming inventory.`,
@@ -692,7 +770,26 @@ const RedBloodCellNC = () => {
       }
     } catch (err) {
       console.error("Error transferring to non-conforming:", err);
-      setError(`Failed to transfer to non-conforming: ${err.message}`);
+      
+      let errorMessage = err.message;
+      
+      if (errorMessage.includes("already exists")) {
+        const serialIdMatch = errorMessage.match(/Serial ID (\S+) already exists/);
+        if (serialIdMatch) {
+          const duplicateSerialId = serialIdMatch[1];
+          const duplicateErrors = {};
+          nonConformingItems.forEach((item, index) => {
+            if (item.serialId === duplicateSerialId) {
+              duplicateErrors[`${index}-serialId`] = `Serial ID ${duplicateSerialId} already exists in non-conforming`;
+            }
+          });
+          setValidationErrors(duplicateErrors);
+        } else {
+          setValidationErrors({ save: errorMessage });
+        }
+      } else {
+        setValidationErrors({ save: `Failed to transfer to non-conforming: ${errorMessage}` });
+      }
     } finally {
       setSaving(false);
     }
@@ -723,20 +820,25 @@ const RedBloodCellNC = () => {
 
   const handleSaveEdit = async (e) => {
     e.preventDefault();
-
-    if (!editingItem.serial_id || !editingItem.collection) {
-      setError("Please fill in all required fields");
+    
+    // Validate all fields
+    const errors = {};
+    if (!editingItem.serial_id || editingItem.serial_id.trim() === "") {
+      errors.serial_id = "Serial ID is required";
+    }
+    if (!editingItem.collection) {
+      errors.collection = "Collection date is required";
+    }
+    
+    if (Object.keys(errors).length > 0) {
+      setEditValidationErrors(errors);
       return;
     }
-
-    setShowEditConfirmModal(true);
-  };
-
-  const confirmEdit = async () => {
+    
     try {
       setSaving(true);
       if (!window.electronAPI) {
-        setError("Electron API not available");
+        setEditValidationErrors({ api: "Electron API not available" });
         return;
       }
   
@@ -753,9 +855,9 @@ const RedBloodCellNC = () => {
       };
   
       await window.electronAPI.updateNonConforming(editingItem.id, ncData);
-      setShowEditConfirmModal(false);
       setShowEditModal(false);
       setEditingItem(null);
+      setEditValidationErrors({});
       await loadNonConformingData();
       clearAllSelection();
       setError(null);
@@ -767,8 +869,22 @@ const RedBloodCellNC = () => {
       setShowSuccessModal(true);
     } catch (err) {
       console.error("Error updating non-conforming record:", err);
-      setError(`Failed to update non-conforming record: ${err.message}`);
-      setShowEditConfirmModal(false);
+      
+      let errorMessage = err.message;
+      
+      if (errorMessage.includes("already exists")) {
+        const serialIdMatch = errorMessage.match(/Serial ID (\S+) already exists/);
+        if (serialIdMatch) {
+          const duplicateSerialId = serialIdMatch[1];
+          setEditValidationErrors({ 
+            serial_id: `Serial ID ${duplicateSerialId} already exists`
+          });
+        } else {
+          setEditValidationErrors({ save: errorMessage });
+        }
+      } else {
+        setEditValidationErrors({ save: `Failed to update non-conforming record: ${errorMessage}` });
+      }
     } finally {
       setSaving(false);
     }
@@ -1151,10 +1267,11 @@ const RedBloodCellNC = () => {
       backgroundColor: "#fee2e2",
       color: "#991b1b",
       padding: "12px 16px",
-      borderRadius: "8px",
-      marginBottom: "20px",
+      borderRadius: "6px",
+      marginTop: "16px",
+      fontSize: "14px",
       display: "flex",
-      alignItems: "center",
+      alignItems: "flex-start",
       gap: "8px",
     },
     refreshButton: {
@@ -1579,29 +1696,6 @@ const RedBloodCellNC = () => {
         <h2 style={styles.title}>Red Blood Cell</h2>
         <p style={styles.subtitle}>Non-Conforming</p>
       </div>
-
-      {error && (
-        <div style={styles.errorContainer}>
-          <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
-            <path
-              fillRule="evenodd"
-              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-            />
-          </svg>
-          <span>{error}</span>
-          <button
-            style={{
-              ...styles.refreshButton,
-              ...(hoverStates.refresh ? styles.refreshButtonHover : {}),
-            }}
-            onClick={loadNonConformingData}
-            onMouseEnter={() => handleMouseEnter("refresh")}
-            onMouseLeave={() => handleMouseLeave("refresh")}
-          >
-            Retry
-          </button>
-        </div>
-      )}
 
       <div style={styles.controlsBar}>
         <div style={styles.leftControls}>
@@ -2476,6 +2570,18 @@ const RedBloodCellNC = () => {
                     </button>
                   </div>
                 ))}
+
+                {error && (
+                  <div style={styles.errorContainer}>
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0, marginTop: '2px' }}>
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                      />
+                    </svg>
+                    <span>{error}</span>
+                  </div>
+                )}
               </div>
 
               <button
@@ -2670,30 +2776,30 @@ const RedBloodCellNC = () => {
               {/* Form Fields */}
               <div style={styles.filterContainer}>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Responsible Personnel *</label>
+                  <label style={styles.label}>Responsible Personnel</label>
                   <input
                     type="text"
-                    style={styles.fieldInput}
+                    style={{
+                      ...styles.fieldInput,
+                      borderColor: discardValidationErrors.responsiblePersonnel ? '#ef4444' : '#d1d5db'
+                    }}
                     value={discardFormData.responsiblePersonnel}
                     onChange={(e) =>
-                      setDiscardFormData({
-                        ...discardFormData,
-                        responsiblePersonnel: e.target.value,
-                      })
+                      handleDiscardFormDataChange("responsiblePersonnel", e.target.value)
                     }
                     placeholder="Enter name"
                   />
                 </div>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Reason for Discarding *</label>
+                  <label style={styles.label}>Reason for Discarding</label>
                   <select
-                    style={styles.fieldSelect}
+                    style={{
+                      ...styles.fieldSelect,
+                      borderColor: discardValidationErrors.reasonForDiscarding ? '#ef4444' : '#d1d5db'
+                    }}
                     value={discardFormData.reasonForDiscarding}
                     onChange={(e) =>
-                      setDiscardFormData({
-                        ...discardFormData,
-                        reasonForDiscarding: e.target.value,
-                      })
+                      handleDiscardFormDataChange("reasonForDiscarding", e.target.value)
                     }
                   >
                     <option value="">Select classification</option>
@@ -2714,31 +2820,31 @@ const RedBloodCellNC = () => {
 
               <div style={styles.filterContainer}>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Authorized by *</label>
+                  <label style={styles.label}>Authorized by</label>
                   <input
                     type="text"
-                    style={styles.fieldInput}
+                    style={{
+                      ...styles.fieldInput,
+                      borderColor: discardValidationErrors.authorizedBy ? '#ef4444' : '#d1d5db'
+                    }}
                     value={discardFormData.authorizedBy}
                     onChange={(e) =>
-                      setDiscardFormData({
-                        ...discardFormData,
-                        authorizedBy: e.target.value,
-                      })
+                      handleDiscardFormDataChange("authorizedBy", e.target.value)
                     }
                     placeholder="Enter name"
                   />
                 </div>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Date of Discard *</label>
+                  <label style={styles.label}>Date of Discard</label>
                   <input
                     type="date"
-                    style={styles.fieldInput}
+                    style={{
+                      ...styles.fieldInput,
+                      borderColor: discardValidationErrors.dateOfDiscard ? '#ef4444' : '#d1d5db'
+                    }}
                     value={discardFormData.dateOfDiscard}
                     onChange={(e) =>
-                      setDiscardFormData({
-                        ...discardFormData,
-                        dateOfDiscard: e.target.value,
-                      })
+                      handleDiscardFormDataChange("dateOfDiscard", e.target.value)
                     }
                   />
                 </div>
@@ -2746,29 +2852,29 @@ const RedBloodCellNC = () => {
 
               <div style={styles.filterContainer}>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Time of Discard *</label>
+                  <label style={styles.label}>Time of Discard</label>
                   <input
                     type="time"
-                    style={styles.fieldInput}
+                    style={{
+                      ...styles.fieldInput,
+                      borderColor: discardValidationErrors.timeOfDiscard ? '#ef4444' : '#d1d5db'
+                    }}
                     value={discardFormData.timeOfDiscard}
                     onChange={(e) =>
-                      setDiscardFormData({
-                        ...discardFormData,
-                        timeOfDiscard: e.target.value,
-                      })
+                      handleDiscardFormDataChange("timeOfDiscard", e.target.value)
                     }
                   />
                 </div>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Method of Disposal *</label>
+                  <label style={styles.label}>Method of Disposal</label>
                   <select
-                    style={styles.fieldSelect}
+                    style={{
+                      ...styles.fieldSelect,
+                      borderColor: discardValidationErrors.methodOfDisposal ? '#ef4444' : '#d1d5db'
+                    }}
                     value={discardFormData.methodOfDisposal}
                     onChange={(e) =>
-                      setDiscardFormData({
-                        ...discardFormData,
-                        methodOfDisposal: e.target.value,
-                      })
+                      handleDiscardFormDataChange("methodOfDisposal", e.target.value)
                     }
                   >
                     <option value="">Select classification</option>
@@ -2800,6 +2906,42 @@ const RedBloodCellNC = () => {
                   placeholder="Enter any additional notes"
                 />
               </div>
+              {Object.keys(discardValidationErrors).length > 0 && (
+              <div style={{
+                backgroundColor: '#fee2e2',
+                color: '#991b1b',
+                padding: '12px 16px',
+                borderRadius: '6px',
+                marginTop: '16px',
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px'
+              }}>
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0, marginTop: '2px' }}>
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <div>
+                  {discardValidationErrors.api && (
+                    <div style={{ marginBottom: '4px' }}>{discardValidationErrors.api}</div>
+                  )}
+                  {discardValidationErrors.save && (
+                    <div style={{ marginBottom: '4px' }}>{discardValidationErrors.save}</div>
+                  )}
+                  {discardValidationErrors.items && (
+                    <div style={{ marginBottom: '4px' }}>{discardValidationErrors.items}</div>
+                  )}
+                  {Object.entries(discardValidationErrors)
+                    .filter(([key]) => !['api', 'save', 'items'].includes(key))
+                    .map(([key, message]) => (
+                      <div key={key} style={{ marginBottom: '4px' }}>
+                        • {message}
+                      </div>
+                    ))
+                  }
+                </div>
+              </div>
+            )}
             </div>
 
             <div style={styles.modalFooter}>
@@ -2885,11 +3027,13 @@ const RedBloodCellNC = () => {
                         style={{
                           ...styles.fieldInput,
                           paddingRight: "30px",
-                          border: item.found
-                            ? "1px solid #0ea5e9"
-                            : item.serialId && !item.found
-                              ? "1px solid #ef4444"
-                              : "1px solid #d1d5db",
+                          border: validationErrors[`${index}-serialId`]
+                            ? "1px solid #ef4444"
+                            : item.found
+                              ? "1px solid #0ea5e9"
+                              : item.serialId && !item.found
+                                ? "1px solid #ef4444"
+                                : "1px solid #d1d5db",
                         }}
                         value={item.serialId}
                         onChange={(e) =>
@@ -3082,6 +3226,49 @@ const RedBloodCellNC = () => {
                     </button>
                   </div>
                 ))}
+                {Object.keys(validationErrors).length > 0 && (
+                  <div style={{
+                    backgroundColor: '#fee2e2',
+                    color: '#991b1b',
+                    padding: '12px 16px',
+                    borderRadius: '6px',
+                    marginTop: '16px',
+                    fontSize: '14px',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '8px'
+                  }}>
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0, marginTop: '2px' }}>
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                    <div>
+                      {validationErrors.api && (
+                        <div style={{ marginBottom: '4px' }}>{validationErrors.api}</div>
+                      )}
+                      {validationErrors.save && (
+                        <div style={{ marginBottom: '4px' }}>{validationErrors.save}</div>
+                      )}
+                      {validationErrors.items && (
+                        <div style={{ marginBottom: '4px' }}>{validationErrors.items}</div>
+                      )}
+                      {Object.entries(validationErrors)
+                        .filter(([key]) => key.includes('-serialId'))
+                        .map(([key, message]) => (
+                          <div key={key} style={{ marginBottom: '4px' }}>
+                            • {message}
+                          </div>
+                        ))
+                      }
+                      {!validationErrors.api && 
+                      !validationErrors.save && 
+                      !validationErrors.items &&
+                      Object.keys(validationErrors).length > 0 &&
+                      Object.keys(validationErrors).every(key => !validationErrors[key].includes('already exists')) && (
+                        <div>Please ensure all items have valid serial IDs</div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <button
@@ -3217,7 +3404,10 @@ const RedBloodCellNC = () => {
               >
                 <input
                   type="text"
-                  style={styles.fieldInput}
+                  style={{
+                    ...styles.fieldInput,
+                    borderColor: editValidationErrors.serial_id ? '#ef4444' : '#d1d5db'
+                  }}
                   value={editingItem.serial_id}
                   onChange={(e) =>
                     handleEditItemChange("serial_id", e.target.value)
@@ -3255,7 +3445,10 @@ const RedBloodCellNC = () => {
                 />
                 <input
                   type="date"
-                  style={styles.fieldInput}
+                  style={{
+                    ...styles.fieldInput,
+                    borderColor: editValidationErrors.collection ? '#ef4444' : '#d1d5db'
+                  }}
                   value={editingItem.collection}
                   onChange={(e) =>
                     handleEditItemChange("collection", e.target.value)
@@ -3286,6 +3479,44 @@ const RedBloodCellNC = () => {
                   <option value="Mobile">Mobile</option>
                 </select>
               </div>
+              {Object.keys(editValidationErrors).length > 0 && (
+              <div style={{
+                backgroundColor: '#fee2e2',
+                color: '#991b1b',
+                padding: '12px 16px',
+                borderRadius: '6px',
+                marginTop: '16px',
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px'
+              }}>
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0, marginTop: '2px' }}>
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <div>
+                  {editValidationErrors.api && (
+                    <div style={{ marginBottom: '4px' }}>{editValidationErrors.api}</div>
+                  )}
+                  {editValidationErrors.save && (
+                    <div style={{ marginBottom: '4px' }}>{editValidationErrors.save}</div>
+                  )}
+                  {editValidationErrors.serial_id && (
+                    <div style={{ marginBottom: '4px' }}>• {editValidationErrors.serial_id}</div>
+                  )}
+                  {editValidationErrors.collection && (
+                    <div style={{ marginBottom: '4px' }}>• {editValidationErrors.collection}</div>
+                  )}
+                  {!editValidationErrors.api && 
+                  !editValidationErrors.save && 
+                  !editValidationErrors.serial_id &&
+                  !editValidationErrors.collection &&
+                  Object.keys(editValidationErrors).length > 0 && (
+                    <div>Please fill in all required fields</div>
+                  )}
+                </div>
+              </div>
+            )}
             </div>
 
             <div style={styles.modalFooter}>

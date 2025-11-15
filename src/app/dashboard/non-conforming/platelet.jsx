@@ -2,8 +2,15 @@ import React, { useState, useEffect, useRef } from "react";
 import { Trash2, Plus } from "lucide-react";
 
 const Loader = () => (
-  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-    <div style={{ fontSize: '18px', color: '#6b7280' }}>Loading...</div>
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      height: "100vh",
+    }}
+  >
+    <div style={{ fontSize: "18px", color: "#6b7280" }}>Loading...</div>
   </div>
 );
 
@@ -18,6 +25,9 @@ const PlateletNC = () => {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showDiscardModal, setShowDiscardModal] = useState(false);
   const [showDiscardDetailsModal, setShowDiscardDetailsModal] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
+  const [editValidationErrors, setEditValidationErrors] = useState({});
+  const [discardValidationErrors, setDiscardValidationErrors] = useState({});
   const [discardItems, setDiscardItems] = useState([
     {
       id: 1,
@@ -205,28 +215,42 @@ const PlateletNC = () => {
           i === index ? { ...item, [field]: value, found: false } : item
         )
       );
-  
+
+      // Clear validation error for this field
+      if (validationErrors[`${index}-${field}`]) {
+        setValidationErrors((prev) => {
+          const newErrors = { ...prev };
+          delete newErrors[`${index}-${field}`];
+          return newErrors;
+        });
+      }
+
       if (searchTimeoutsRef.current[index]) {
         clearTimeout(searchTimeoutsRef.current[index]);
       }
-  
+
       if (!value || value.trim() === "") {
         setError(null);
         return;
       }
-  
+
       searchTimeoutsRef.current[index] = setTimeout(async () => {
         try {
           if (!window.electronAPI) {
             setError("Electron API not available");
             return;
           }
-  
-          const stockData = await window.electronAPI.getPlateletStockBySerialIdForNC(
-            value.trim()
-          );
-  
-          if (stockData && !Array.isArray(stockData) && stockData.category === 'Platelet') {
+
+          const stockData =
+            await window.electronAPI.getPlateletStockBySerialIdForNC(
+              value.trim()
+            );
+
+          if (
+            stockData &&
+            !Array.isArray(stockData) &&
+            stockData.category === "Platelet"
+          ) {
             setNonConformingItems((prev) =>
               prev.map((item, i) =>
                 i === index
@@ -248,8 +272,10 @@ const PlateletNC = () => {
             );
             setError(null);
           } else if (Array.isArray(stockData) && stockData.length > 0) {
-            const plateletMatch = stockData.find(item => item.category === 'Platelet');
-            
+            const plateletMatch = stockData.find(
+              (item) => item.category === "Platelet"
+            );
+
             if (plateletMatch) {
               setNonConformingItems((prev) =>
                 prev.map((item, i) =>
@@ -291,7 +317,9 @@ const PlateletNC = () => {
                     : item
                 )
               );
-              setError(`No Platelet stock found with serial ID: ${value.trim()}`);
+              setError(
+                `No Platelet stock found with serial ID: ${value.trim()}`
+              );
             }
           } else {
             setNonConformingItems((prev) =>
@@ -341,28 +369,33 @@ const PlateletNC = () => {
           i === index ? { ...item, [field]: value, found: false } : item
         )
       );
-  
+
       if (searchTimeoutsRef.current[`discard-${index}`]) {
         clearTimeout(searchTimeoutsRef.current[`discard-${index}`]);
       }
-  
+
       if (!value || value.trim() === "") {
         setError(null);
         return;
       }
-  
+
       searchTimeoutsRef.current[`discard-${index}`] = setTimeout(async () => {
         try {
           if (!window.electronAPI) {
             setError("Electron API not available");
             return;
           }
-  
-          const ncData = await window.electronAPI.getPlateletNonConformingBySerialIdForDiscard(
-            value.trim()
-          );
-  
-          if (ncData && !Array.isArray(ncData) && ncData.category === 'Platelet') {
+
+          const ncData =
+            await window.electronAPI.getPlateletNonConformingBySerialIdForDiscard(
+              value.trim()
+            );
+
+          if (
+            ncData &&
+            !Array.isArray(ncData) &&
+            ncData.category === "Platelet"
+          ) {
             setDiscardItems((prev) =>
               prev.map((item, i) =>
                 i === index
@@ -384,8 +417,10 @@ const PlateletNC = () => {
             );
             setError(null);
           } else if (Array.isArray(ncData) && ncData.length > 0) {
-            const plateletMatch = ncData.find(item => item.category === 'Platelet');
-            
+            const plateletMatch = ncData.find(
+              (item) => item.category === "Platelet"
+            );
+
             if (plateletMatch) {
               setDiscardItems((prev) =>
                 prev.map((item, i) =>
@@ -427,7 +462,9 @@ const PlateletNC = () => {
                     : item
                 )
               );
-              setError(`No Platelet non-conforming stock found with serial ID: ${value.trim()}`);
+              setError(
+                `No Platelet non-conforming stock found with serial ID: ${value.trim()}`
+              );
             }
           } else {
             setDiscardItems((prev) =>
@@ -449,10 +486,15 @@ const PlateletNC = () => {
                   : item
               )
             );
-            setError(`No Platelet non-conforming stock found with serial ID: ${value.trim()}`);
+            setError(
+              `No Platelet non-conforming stock found with serial ID: ${value.trim()}`
+            );
           }
         } catch (err) {
-          console.error("Error fetching platelet non-conforming stock by serial ID:", err);
+          console.error(
+            "Error fetching platelet non-conforming stock by serial ID:",
+            err
+          );
           setError("Failed to fetch platelet non-conforming stock data");
           setDiscardItems((prev) =>
             prev.map((item, i) =>
@@ -469,7 +511,7 @@ const PlateletNC = () => {
       );
     }
   };
-  
+
   const addNewDiscardRow = () => {
     const newId = Math.max(...discardItems.map((item) => item.id), 0) + 1;
     setDiscardItems((prev) => [
@@ -484,21 +526,39 @@ const PlateletNC = () => {
         expiration: "",
         status: "Stored",
         category: "",
-        source: "Walk-In", 
+        source: "Walk-In",
         found: false,
       },
     ]);
   };
-  
+
   const removeDiscardRow = (index) => {
     if (discardItems.length > 1) {
       setDiscardItems((prev) => prev.filter((_, i) => i !== index));
     }
   };
-  
+
+  const handleDiscardFormDataChange = (field, value) => {
+    setDiscardFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+
+    // Clear validation error for this field when user starts typing
+    if (discardValidationErrors[field]) {
+      setDiscardValidationErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
+  };
+
   const handleDiscardProceed = async (e) => {
     e.preventDefault();
-    const validItems = discardItems.filter((item) => item.serialId && item.found);
+    const validItems = discardItems.filter(
+      (item) => item.serialId && item.found
+    );
     if (validItems.length === 0) {
       setError("Please select at least one valid item with a found serial ID");
       return;
@@ -507,27 +567,56 @@ const PlateletNC = () => {
     setShowDiscardModal(false);
     setShowDiscardDetailsModal(true);
   };
-  
+
   const confirmDiscard = async () => {
+    // Validate all fields
+    const errors = {};
+    if (
+      !discardFormData.responsiblePersonnel ||
+      discardFormData.responsiblePersonnel.trim() === ""
+    ) {
+      errors.responsiblePersonnel = "Responsible personnel is required";
+    }
+    if (!discardFormData.reasonForDiscarding) {
+      errors.reasonForDiscarding = "Reason for discarding is required";
+    }
+    if (
+      !discardFormData.authorizedBy ||
+      discardFormData.authorizedBy.trim() === ""
+    ) {
+      errors.authorizedBy = "Authorized by is required";
+    }
+    if (!discardFormData.dateOfDiscard) {
+      errors.dateOfDiscard = "Date of discard is required";
+    }
+    if (!discardFormData.timeOfDiscard) {
+      errors.timeOfDiscard = "Time of discard is required";
+    }
+    if (!discardFormData.methodOfDisposal) {
+      errors.methodOfDisposal = "Method of disposal is required";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setDiscardValidationErrors(errors);
+      return;
+    }
+
     try {
       setSaving(true);
       if (!window.electronAPI) {
-        setError("Electron API not available");
+        setDiscardValidationErrors({ api: "Electron API not available" });
         return;
       }
-      if (!discardFormData.responsiblePersonnel || !discardFormData.reasonForDiscarding || 
-          !discardFormData.authorizedBy || !discardFormData.dateOfDiscard || 
-          !discardFormData.timeOfDiscard || !discardFormData.methodOfDisposal) {
-        setError("Please fill in all required fields");
-        setSaving(false);
-        return;
-      }
-      const validItems = discardItems.filter((item) => item.serialId && item.found);
+
+      const validItems = discardItems.filter(
+        (item) => item.serialId && item.found
+      );
       if (validItems.length === 0) {
-        setError("No valid items to discard");
+        setDiscardValidationErrors({ items: "No valid items to discard" });
         setSaving(false);
         return;
       }
+
       const discardData = {
         serialIds: validItems.map((item) => item.serialId),
         responsiblePersonnel: discardFormData.responsiblePersonnel,
@@ -538,23 +627,28 @@ const PlateletNC = () => {
         methodOfDisposal: discardFormData.methodOfDisposal,
         remarks: discardFormData.remarks,
       };
-      const result = await window.electronAPI.discardPlateletNonConformingStock(discardData);
+
+      const result =
+        await window.electronAPI.discardPlateletNonConformingStock(discardData);
       if (result.success) {
         setShowDiscardDetailsModal(false);
         setShowDiscardModal(false);
-        setDiscardItems([{
-          id: 1,
-          serialId: "",
-          bloodType: "O",
-          rhFactor: "+",
-          volume: 100,
-          collection: "",
-          expiration: "",
-          status: "Stored",
-          category: "",
-          source: "Walk-In",
-          found: false,
-        }]);
+        setDiscardValidationErrors({});
+        setDiscardItems([
+          {
+            id: 1,
+            serialId: "",
+            bloodType: "O",
+            rhFactor: "+",
+            volume: 100,
+            collection: "",
+            expiration: "",
+            status: "Stored",
+            category: "",
+            source: "Walk-In",
+            found: false,
+          },
+        ]);
         setDiscardFormData({
           responsiblePersonnel: "",
           reasonForDiscarding: "",
@@ -574,7 +668,9 @@ const PlateletNC = () => {
       }
     } catch (err) {
       console.error("Error discarding platelet non-conforming stock:", err);
-      setError(`Failed to discard platelet non-conforming stock: ${err.message}`);
+      setDiscardValidationErrors({
+        save: `Failed to discard platelet non-conforming stock: ${err.message}`,
+      });
     } finally {
       setSaving(false);
     }
@@ -586,6 +682,15 @@ const PlateletNC = () => {
       updated.expiration = calculateExpiration(value);
     }
     setEditingItem(updated);
+
+    // Clear validation error for this field when user starts typing
+    if (editValidationErrors[field]) {
+      setEditValidationErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
   };
 
   const addNewRow = () => {
@@ -602,10 +707,11 @@ const PlateletNC = () => {
         expiration: "",
         status: "Stored",
         category: "",
-        source: "Walk-In", 
+        source: "Walk-In",
         found: false,
       },
     ]);
+    setValidationErrors({});
   };
 
   const removeRow = (index) => {
@@ -616,10 +722,31 @@ const PlateletNC = () => {
 
   const handleSaveAllStock = async (e) => {
     e.preventDefault();
+
+    // Validate all items
+    const errors = {};
+    let hasInvalidItems = false;
+
+    nonConformingItems.forEach((item, index) => {
+      if (!item.serialId || item.serialId.trim() === "") {
+        errors[`${index}-serialId`] = "Serial ID is required";
+        hasInvalidItems = true;
+      } else if (!item.found) {
+        errors[`${index}-serialId`] = "Serial ID not found or invalid";
+        hasInvalidItems = true;
+      }
+    });
+
+    if (hasInvalidItems || Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      setError("Please ensure all items have valid serial IDs");
+      return;
+    }
+
     try {
       setSaving(true);
       if (!window.electronAPI) {
-        setError("Electron API not available");
+        setValidationErrors({ api: "Electron API not available" });
         return;
       }
 
@@ -628,7 +755,9 @@ const PlateletNC = () => {
       );
 
       if (validItems.length === 0) {
-        setError("Please add at least one valid item with a found serial ID");
+        setValidationErrors({
+          items: "Please add at least one valid item with a found serial ID",
+        });
         setSaving(false);
         return;
       }
@@ -640,6 +769,7 @@ const PlateletNC = () => {
 
       if (result.success) {
         setShowAddModal(false);
+        setValidationErrors({});
         setNonConformingItems([
           {
             id: 1,
@@ -666,7 +796,31 @@ const PlateletNC = () => {
       }
     } catch (err) {
       console.error("Error transferring platelet to non-conforming:", err);
-      setError(`Failed to transfer platelet to non-conforming: ${err.message}`);
+
+      let errorMessage = err.message;
+
+      if (errorMessage.includes("already exists")) {
+        const serialIdMatch = errorMessage.match(
+          /Serial ID (\S+) already exists/
+        );
+        if (serialIdMatch) {
+          const duplicateSerialId = serialIdMatch[1];
+          const duplicateErrors = {};
+          nonConformingItems.forEach((item, index) => {
+            if (item.serialId === duplicateSerialId) {
+              duplicateErrors[`${index}-serialId`] =
+                `Serial ID ${duplicateSerialId} already exists in non-conforming`;
+            }
+          });
+          setValidationErrors(duplicateErrors);
+        } else {
+          setValidationErrors({ save: errorMessage });
+        }
+      } else {
+        setValidationErrors({
+          save: `Failed to transfer platelet to non-conforming: ${errorMessage}`,
+        });
+      }
     } finally {
       setSaving(false);
     }
@@ -697,13 +851,82 @@ const PlateletNC = () => {
 
   const handleSaveEdit = async (e) => {
     e.preventDefault();
-    
-    if (!editingItem.serial_id || !editingItem.collection) {
-      setError("Please fill in all required fields");
+
+    // Validate all fields
+    const errors = {};
+    if (!editingItem.serial_id || editingItem.serial_id.trim() === "") {
+      errors.serial_id = "Serial ID is required";
+    }
+    if (!editingItem.collection) {
+      errors.collection = "Collection date is required";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setEditValidationErrors(errors);
       return;
     }
-    
-    setShowEditConfirmModal(true);
+
+    try {
+      setSaving(true);
+      if (!window.electronAPI) {
+        setEditValidationErrors({ api: "Electron API not available" });
+        return;
+      }
+
+      const ncData = {
+        serial_id: editingItem.serial_id,
+        type: editingItem.type,
+        rhFactor: editingItem.rhFactor,
+        volume: editingItem.volume,
+        collection: editingItem.collection,
+        expiration: editingItem.expiration,
+        status: "Non-Conforming",
+        category: editingItem.category,
+        source: editingItem.source,
+      };
+
+      await window.electronAPI.updatePlateletNonConforming(
+        editingItem.id,
+        ncData
+      );
+      setShowEditModal(false);
+      setEditingItem(null);
+      setEditValidationErrors({});
+      await loadNonConformingData();
+      clearAllSelection();
+      setError(null);
+
+      setSuccessMessage({
+        title: "Non-Conforming Record Updated!",
+        description:
+          "The platelet non-conforming record has been successfully updated.",
+      });
+      setShowSuccessModal(true);
+    } catch (err) {
+      console.error("Error updating platelet non-conforming record:", err);
+
+      let errorMessage = err.message;
+
+      if (errorMessage.includes("already exists")) {
+        const serialIdMatch = errorMessage.match(
+          /Serial ID (\S+) already exists/
+        );
+        if (serialIdMatch) {
+          const duplicateSerialId = serialIdMatch[1];
+          setEditValidationErrors({
+            serial_id: `Serial ID ${duplicateSerialId} already exists`,
+          });
+        } else {
+          setEditValidationErrors({ save: errorMessage });
+        }
+      } else {
+        setEditValidationErrors({
+          save: `Failed to update platelet non-conforming record: ${errorMessage}`,
+        });
+      }
+    } finally {
+      setSaving(false);
+    }
   };
 
   const confirmEdit = async () => {
@@ -726,7 +949,10 @@ const PlateletNC = () => {
         source: editingItem.source,
       };
 
-      await window.electronAPI.updatePlateletNonConforming(editingItem.id, ncData);
+      await window.electronAPI.updatePlateletNonConforming(
+        editingItem.id,
+        ncData
+      );
       setShowEditConfirmModal(false);
       setShowEditModal(false);
       setEditingItem(null);
@@ -736,12 +962,15 @@ const PlateletNC = () => {
 
       setSuccessMessage({
         title: "Non-Conforming Record Updated!",
-        description: "The platelet non-conforming record has been successfully updated.",
+        description:
+          "The platelet non-conforming record has been successfully updated.",
       });
       setShowSuccessModal(true);
     } catch (err) {
       console.error("Error updating platelet non-conforming record:", err);
-      setError(`Failed to update platelet non-conforming record: ${err.message}`);
+      setError(
+        `Failed to update platelet non-conforming record: ${err.message}`
+      );
       setShowEditConfirmModal(false);
     } finally {
       setSaving(false);
@@ -752,9 +981,9 @@ const PlateletNC = () => {
     const selectedIds = bloodData
       .filter((item) => item.selected)
       .map((item) => item.id);
-    
+
     if (selectedIds.length === 0) return;
-    
+
     setShowDeleteConfirmModal(true);
   };
 
@@ -1125,10 +1354,11 @@ const PlateletNC = () => {
       backgroundColor: "#fee2e2",
       color: "#991b1b",
       padding: "12px 16px",
-      borderRadius: "8px",
-      marginBottom: "20px",
+      borderRadius: "6px",
+      marginTop: "16px",
+      fontSize: "14px",
       display: "flex",
-      alignItems: "center",
+      alignItems: "flex-start",
       gap: "8px",
     },
     refreshButton: {
@@ -1553,30 +1783,6 @@ const PlateletNC = () => {
         <h2 style={styles.title}>Platelet</h2>
         <p style={styles.subtitle}>Non-Conforming</p>
       </div>
-
-      {error && (
-        <div style={styles.errorContainer}>
-          <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
-            <path
-              fillRule="evenodd"
-              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-            />
-          </svg>
-          <span>{error}</span>
-          <button
-            style={{
-              ...styles.refreshButton,
-              ...(hoverStates.refresh ? styles.refreshButtonHover : {}),
-            }}
-            onClick={loadNonConformingData}
-            onMouseEnter={() => handleMouseEnter("refresh")}
-            onMouseLeave={() => handleMouseLeave("refresh")}
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
       <div style={styles.controlsBar}>
         <div style={styles.leftControls}>
           <div style={styles.searchContainer}>
@@ -1814,8 +2020,11 @@ const PlateletNC = () => {
               </div>
             )}
           </div>
-          
-          <button style={styles.releaseButton} onClick={() => setShowDiscardModal(true)}>
+
+          <button
+            style={styles.releaseButton}
+            onClick={() => setShowDiscardModal(true)}
+          >
             <Trash2 size={16} style={{ marginRight: "4px" }} />
             Discard
           </button>
@@ -1914,13 +2123,13 @@ const PlateletNC = () => {
                   (sortConfig.direction === "asc" ? "↑" : "↓")}
               </th>
               <th
-                  style={{ ...styles.th, width: "7%", cursor: "pointer" }}
-                  onClick={() => handleSort("source")}
-                >
-                  SOURCE{" "}
-                  {sortConfig.key === "source" &&
-                    (sortConfig.direction === "asc" ? "↑" : "↓")}
-                </th>
+                style={{ ...styles.th, width: "7%", cursor: "pointer" }}
+                onClick={() => handleSort("source")}
+              >
+                SOURCE{" "}
+                {sortConfig.key === "source" &&
+                  (sortConfig.direction === "asc" ? "↑" : "↓")}
+              </th>
               <th style={{ ...styles.th, width: "15%" }}>CREATED AT</th>
               <th style={{ ...styles.th, width: "15%" }}>MODIFIED AT</th>
             </tr>
@@ -2112,7 +2321,8 @@ const PlateletNC = () => {
           <div style={styles.confirmModal}>
             <h3 style={styles.confirmTitle}>Confirm Update</h3>
             <p style={styles.confirmDescription}>
-              Are you sure you want to update this platelet non-conforming record?
+              Are you sure you want to update this platelet non-conforming
+              record?
             </p>
             <div style={styles.confirmButtonGroup}>
               <button
@@ -2148,7 +2358,9 @@ const PlateletNC = () => {
           <div style={styles.confirmModal}>
             <h3 style={styles.confirmTitle}>Confirm Delete</h3>
             <p style={styles.confirmDescription}>
-              Are you sure you want to delete {selectedCount} platelet non-conforming record{selectedCount > 1 ? 's' : ''}? This action cannot be undone.
+              Are you sure you want to delete {selectedCount} platelet
+              non-conforming record{selectedCount > 1 ? "s" : ""}? This action
+              cannot be undone.
             </p>
             <div style={styles.confirmButtonGroup}>
               <button
@@ -2165,7 +2377,9 @@ const PlateletNC = () => {
               <button
                 style={{
                   ...styles.deleteConfirmButton,
-                  ...(hoverStates.confirmDelete ? styles.deleteConfirmButtonHover : {}),
+                  ...(hoverStates.confirmDelete
+                    ? styles.deleteConfirmButtonHover
+                    : {}),
                 }}
                 onClick={confirmDelete}
                 onMouseEnter={() => handleMouseEnter("confirmDelete")}
@@ -2180,7 +2394,10 @@ const PlateletNC = () => {
 
       {/* DISCARD MODAL - STEP 1: Item Selection */}
       {showDiscardModal && (
-        <div style={styles.modalOverlay} onClick={() => setShowDiscardModal(false)}>
+        <div
+          style={styles.modalOverlay}
+          onClick={() => setShowDiscardModal(false)}
+        >
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <div style={styles.modalTitleSection}>
@@ -2437,13 +2654,32 @@ const PlateletNC = () => {
                     </button>
                   </div>
                 ))}
+                {error && (
+                  <div style={styles.errorContainer}>
+                    <svg
+                      width="16"
+                      height="16"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                      style={{ flexShrink: 0, marginTop: "2px" }}
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                      />
+                    </svg>
+                    <span>{error}</span>
+                  </div>
+                )}
               </div>
 
               <button
                 type="button"
                 style={{
                   ...styles.addRowButton,
-                  ...(hoverStates.addDiscardRow ? styles.addRowButtonHover : {}),
+                  ...(hoverStates.addDiscardRow
+                    ? styles.addRowButtonHover
+                    : {}),
                 }}
                 onClick={addNewDiscardRow}
                 onMouseEnter={() => handleMouseEnter("addDiscardRow")}
@@ -2516,7 +2752,7 @@ const PlateletNC = () => {
         </div>
       )}
 
-{showDiscardDetailsModal && (
+      {showDiscardDetailsModal && (
         <div
           style={styles.modalOverlay}
           onClick={() => setShowDiscardDetailsModal(false)}
@@ -2535,8 +2771,12 @@ const PlateletNC = () => {
                     : {}),
                 }}
                 onClick={() => setShowDiscardDetailsModal(false)}
-                onMouseEnter={() => handleMouseEnter("closeDiscardDetailsModal")}
-                onMouseLeave={() => handleMouseLeave("closeDiscardDetailsModal")}
+                onMouseEnter={() =>
+                  handleMouseEnter("closeDiscardDetailsModal")
+                }
+                onMouseLeave={() =>
+                  handleMouseLeave("closeDiscardDetailsModal")
+                }
               >
                 ×
               </button>
@@ -2624,24 +2864,34 @@ const PlateletNC = () => {
               {/* Form Fields */}
               <div style={styles.filterContainer}>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Responsible Personnel *</label>
+                  <label style={styles.label}>Responsible Personnel</label>
                   <input
                     type="text"
-                    style={styles.fieldInput}
+                    style={{
+                      ...styles.fieldInput,
+                      borderColor: discardValidationErrors.responsiblePersonnel
+                        ? "#ef4444"
+                        : "#d1d5db",
+                    }}
                     value={discardFormData.responsiblePersonnel}
                     onChange={(e) =>
-                      setDiscardFormData({
-                        ...discardFormData,
-                        responsiblePersonnel: e.target.value,
-                      })
+                      handleDiscardFormDataChange(
+                        "responsiblePersonnel",
+                        e.target.value
+                      )
                     }
                     placeholder="Enter name"
                   />
                 </div>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Reason for Discarding *</label>
+                  <label style={styles.label}>Reason for Discarding</label>
                   <select
-                    style={styles.fieldSelect}
+                    style={{
+                      ...styles.fieldSelect,
+                      borderColor: discardValidationErrors.reasonForDiscarding
+                        ? "#ef4444"
+                        : "#d1d5db",
+                    }}
                     value={discardFormData.reasonForDiscarding}
                     onChange={(e) =>
                       setDiscardFormData({
@@ -2654,7 +2904,9 @@ const PlateletNC = () => {
                     <option value="Expired">Expired</option>
                     <option value="Reactive">Reactive</option>
                     <option value="Bloody Platelet">Bloody Platelet</option>
-                    <option value="TTI (Transfusion Transmitted Infection)">TTI (Transfusion Transmitted Infection)</option>
+                    <option value="TTI (Transfusion Transmitted Infection)">
+                      TTI (Transfusion Transmitted Infection)
+                    </option>
                     <option value="Chylous">Chylous</option>
                     <option value="Under Volume">Under Volume</option>
                     <option value="Icteric">Icteric</option>
@@ -2667,10 +2919,15 @@ const PlateletNC = () => {
 
               <div style={styles.filterContainer}>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Authorized by *</label>
+                  <label style={styles.label}>Authorized by</label>
                   <input
                     type="text"
-                    style={styles.fieldInput}
+                    style={{
+                      ...styles.fieldInput,
+                      borderColor: discardValidationErrors.authorizedBy
+                        ? "#ef4444"
+                        : "#d1d5db",
+                    }}
                     value={discardFormData.authorizedBy}
                     onChange={(e) =>
                       setDiscardFormData({
@@ -2682,10 +2939,15 @@ const PlateletNC = () => {
                   />
                 </div>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Date of Discard *</label>
+                  <label style={styles.label}>Date of Discard</label>
                   <input
                     type="date"
-                    style={styles.fieldInput}
+                    style={{
+                      ...styles.fieldInput,
+                      borderColor: discardValidationErrors.dateOfDiscard
+                        ? "#ef4444"
+                        : "#d1d5db",
+                    }}
                     value={discardFormData.dateOfDiscard}
                     onChange={(e) =>
                       setDiscardFormData({
@@ -2699,10 +2961,15 @@ const PlateletNC = () => {
 
               <div style={styles.filterContainer}>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Time of Discard *</label>
+                  <label style={styles.label}>Time of Discard</label>
                   <input
                     type="time"
-                    style={styles.fieldInput}
+                    style={{
+                      ...styles.fieldInput,
+                      borderColor: discardValidationErrors.timeOfDiscard
+                        ? "#ef4444"
+                        : "#d1d5db",
+                    }}
                     value={discardFormData.timeOfDiscard}
                     onChange={(e) =>
                       setDiscardFormData({
@@ -2713,9 +2980,14 @@ const PlateletNC = () => {
                   />
                 </div>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Method of Disposal *</label>
+                  <label style={styles.label}>Method of Disposal</label>
                   <select
-                    style={styles.fieldSelect}
+                    style={{
+                      ...styles.fieldSelect,
+                      borderColor: discardValidationErrors.methodOfDisposal
+                        ? "#ef4444"
+                        : "#d1d5db",
+                    }}
                     value={discardFormData.methodOfDisposal}
                     onChange={(e) =>
                       setDiscardFormData({
@@ -2727,7 +2999,9 @@ const PlateletNC = () => {
                     <option value="">Select classification</option>
                     <option value="Incineration">Incineration</option>
                     <option value="Autoclaving">Autoclaving</option>
-                    <option value="Chemical Treatment">Chemical Treatment</option>
+                    <option value="Chemical Treatment">
+                      Chemical Treatment
+                    </option>
                     <option value="Other">Other</option>
                   </select>
                 </div>
@@ -2751,8 +3025,62 @@ const PlateletNC = () => {
                   placeholder="Enter any additional notes"
                 />
               </div>
+              {Object.keys(discardValidationErrors).length > 0 && (
+                <div
+                  style={{
+                    backgroundColor: "#fee2e2",
+                    color: "#991b1b",
+                    padding: "12px 16px",
+                    borderRadius: "6px",
+                    marginTop: "16px",
+                    fontSize: "14px",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "8px",
+                  }}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                    style={{ flexShrink: 0, marginTop: "2px" }}
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  <div>
+                    {discardValidationErrors.api && (
+                      <div style={{ marginBottom: "4px" }}>
+                        {discardValidationErrors.api}
+                      </div>
+                    )}
+                    {discardValidationErrors.save && (
+                      <div style={{ marginBottom: "4px" }}>
+                        {discardValidationErrors.save}
+                      </div>
+                    )}
+                    {discardValidationErrors.items && (
+                      <div style={{ marginBottom: "4px" }}>
+                        {discardValidationErrors.items}
+                      </div>
+                    )}
+                    {Object.entries(discardValidationErrors)
+                      .filter(
+                        ([key]) => !["api", "save", "items"].includes(key)
+                      )
+                      .map(([key, message]) => (
+                        <div key={key} style={{ marginBottom: "4px" }}>
+                          • {message}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
             </div>
-
             <div style={styles.modalFooter}>
               <button
                 type="button"
@@ -2824,7 +3152,8 @@ const PlateletNC = () => {
                     key={item.id}
                     style={{
                       ...styles.dataRow,
-                      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
+                      gridTemplateColumns:
+                        "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
                       backgroundColor: item.found ? "#f0f9ff" : "#fef2f2",
                       padding: "8px 5px",
                       borderRadius: "4px",
@@ -3024,6 +3353,71 @@ const PlateletNC = () => {
                     </button>
                   </div>
                 ))}
+                {Object.keys(validationErrors).length > 0 && (
+                  <div
+                    style={{
+                      backgroundColor: "#fee2e2",
+                      color: "#991b1b",
+                      padding: "12px 16px",
+                      borderRadius: "6px",
+                      marginTop: "16px",
+                      fontSize: "14px",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "8px",
+                    }}
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                      style={{ flexShrink: 0, marginTop: "2px" }}
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    <div>
+                      {validationErrors.api && (
+                        <div style={{ marginBottom: "4px" }}>
+                          {validationErrors.api}
+                        </div>
+                      )}
+                      {validationErrors.save && (
+                        <div style={{ marginBottom: "4px" }}>
+                          {validationErrors.save}
+                        </div>
+                      )}
+                      {validationErrors.items && (
+                        <div style={{ marginBottom: "4px" }}>
+                          {validationErrors.items}
+                        </div>
+                      )}
+                      {Object.entries(validationErrors)
+                        .filter(([key]) => key.includes("-serialId"))
+                        .map(([key, message]) => (
+                          <div key={key} style={{ marginBottom: "4px" }}>
+                            • {message}
+                          </div>
+                        ))}
+                      {!validationErrors.api &&
+                        !validationErrors.save &&
+                        !validationErrors.items &&
+                        Object.keys(validationErrors).length > 0 &&
+                        Object.keys(validationErrors).every(
+                          (key) =>
+                            !validationErrors[key].includes("already exists")
+                        ) && (
+                          <div>
+                            Please ensure all items have valid serial IDs
+                          </div>
+                        )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <button
@@ -3120,7 +3514,6 @@ const PlateletNC = () => {
               </button>
             </div>
 
-            
             <div style={styles.modalContent}>
               <div
                 style={{
@@ -3150,7 +3543,12 @@ const PlateletNC = () => {
               >
                 <input
                   type="text"
-                  style={styles.fieldInput}
+                  style={{
+                    ...styles.fieldInput,
+                    borderColor: editValidationErrors.serial_id
+                      ? "#ef4444"
+                      : "#d1d5db",
+                  }}
                   value={editingItem.serial_id}
                   onChange={(e) =>
                     handleEditItemChange("serial_id", e.target.value)
@@ -3188,7 +3586,12 @@ const PlateletNC = () => {
                 />
                 <input
                   type="date"
-                  style={styles.fieldInput}
+                  style={{
+                    ...styles.fieldInput,
+                    borderColor: editValidationErrors.collection
+                      ? "#ef4444"
+                      : "#d1d5db",
+                  }}
                   value={editingItem.collection}
                   onChange={(e) =>
                     handleEditItemChange("collection", e.target.value)
@@ -3210,7 +3613,7 @@ const PlateletNC = () => {
                 />
                 <select
                   style={styles.fieldSelect}
-                  value={editingItem.source || 'Walk-In'} 
+                  value={editingItem.source || "Walk-In"}
                   onChange={(e) =>
                     handleEditItemChange("source", e.target.value)
                   }
@@ -3219,6 +3622,64 @@ const PlateletNC = () => {
                   <option value="Mobile">Mobile</option>
                 </select>
               </div>
+              {Object.keys(editValidationErrors).length > 0 && (
+                <div
+                  style={{
+                    backgroundColor: "#fee2e2",
+                    color: "#991b1b",
+                    padding: "12px 16px",
+                    borderRadius: "6px",
+                    marginTop: "16px",
+                    fontSize: "14px",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "8px",
+                  }}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                    style={{ flexShrink: 0, marginTop: "2px" }}
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  <div>
+                    {editValidationErrors.api && (
+                      <div style={{ marginBottom: "4px" }}>
+                        {editValidationErrors.api}
+                      </div>
+                    )}
+                    {editValidationErrors.save && (
+                      <div style={{ marginBottom: "4px" }}>
+                        {editValidationErrors.save}
+                      </div>
+                    )}
+                    {editValidationErrors.serial_id && (
+                      <div style={{ marginBottom: "4px" }}>
+                        • {editValidationErrors.serial_id}
+                      </div>
+                    )}
+                    {editValidationErrors.collection && (
+                      <div style={{ marginBottom: "4px" }}>
+                        • {editValidationErrors.collection}
+                      </div>
+                    )}
+                    {!editValidationErrors.api &&
+                      !editValidationErrors.save &&
+                      !editValidationErrors.serial_id &&
+                      !editValidationErrors.collection &&
+                      Object.keys(editValidationErrors).length > 0 && (
+                        <div>Please fill in all required fields</div>
+                      )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div style={styles.modalFooter}>
