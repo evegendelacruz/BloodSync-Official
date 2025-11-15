@@ -1,57 +1,38 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import Loader from "../components/Loader";
 
-const Signup = () => {
+const Portal = () => {
   const navigate = useNavigate();
-  const [isPageLoading, setIsPageLoading] = useState(true);
-  const [isRegistering, setIsRegistering] = useState(false);
+  const [error, setError] = useState("");
+  const [isRegionalLoading, setIsRegionalLoading] = useState(false);
+  const [isPartneredLoading, setIsPartneredLoading] = useState(false);
 
-  useEffect(() => {
-    // Simulate initial loading
-    const timer = setTimeout(() => {
-      setIsPageLoading(false);
-    }, 1500);
+  const handleRegionalClick = async () => {
+    setIsRegionalLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    navigate("/login");
+  };
   
-    return () => clearTimeout(timer);
-  }, []);
-
-  const handleSignup = async (e) => {
-    e.preventDefault();
-    setIsRegistering(true);
-  
-    try {
-      // Simulate signup API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      
-      // Add your signup logic here
-      navigate("/login");
-    } catch (err) {
-      console.error("Signup failed:", err);
-    } finally {
-      setIsRegistering(false);
-    }
+  const handlePartneredClick = async () => {
+    setIsPartneredLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    navigate("/login-org");
   };
 
   return (
     <>
-      {isPageLoading && <Loader />}
-
       <style>{`
         * {
           margin: 0;
           padding: 0;
           box-sizing: border-box;
         }
-
-        /* Header Styles */
         .bloodsync-header {
           background: #165c3c;
           padding: 5px 24px;
           box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
           border-bottom: 5px solid #93c242;
         }
-
         .header-container {
           display: flex;
           align-items: center;
@@ -59,48 +40,40 @@ const Signup = () => {
           max-width: 1280px;
           margin: 0 auto;
         }
-
         .doh-section {
           display: flex;
           align-items: center;
         }
-
         .bloodsync-logo {
           height: auto;
           width: 13.5rem;
           margin-left: -12px;
         }
-
         .doh-logo {
           height: auto;
           width: 15rem;
         }
-
         .doh-text {
           color: white;
           height: 4rem;
           width: 12rem;
           margin-right: 12px;
         }
-
         .bloodsync-title {
           font-size: 20px;
           font-weight: bold;
           margin: 0;
         }
-
         .bloodsync-subtitle {
           font-size: 10px;
           color: rgba(255, 255, 255, 0.8);
           margin: 0;
         }
-
         .doh-title {
           font-size: 12px;
           font-weight: 600;
           margin: 0 0 2px 0;
         }
-
         .doh-republic,
         .doh-tagalog {
           font-size: 10px;
@@ -123,14 +96,14 @@ const Signup = () => {
         }
 
         .login-container {
-          background: rgba(22, 92, 60, 0.8);
-          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+          background: rgba(22, 92, 60, 0.9);
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
           overflow: hidden;
-          width: 350px;
-          min-height: 400px; /* keeps a minimum size */
-          height: auto;      /* adjust based on content */
+          width: 400px;
+          min-height: 300px;
+          height: auto;
           display: flex;
-          flex-direction: column; /* keeps rows stacking */
+          flex-direction: column;
         }
 
         .reset-container {
@@ -146,26 +119,88 @@ const Signup = () => {
 
         .login-header {
           color: white;
-          padding: 25px 35px;
+          padding: 30px 40px 20px 40px;
           text-align: left;
         }
 
         .login-header h1 {
-          font-size: 26px;
+          font-size: 25px;
           font-weight: bold;
-          margin-bottom: 8px;
+          margin-bottom: 12px;
+          color: white;
+          font-family: 'Barlow';
         }
 
         .login-header p {
           opacity: 0.9;
-          font-size: 14px;
-          margin-top: 10px;
-          font-family: "Barlow";
-          font-weight: medium;
+          font-size: 16px;
+          margin-top: 8px;
+          font-family: "Arial";
+          font-weight: normal;
+          color: white;
         }
 
         .content {
-          padding: 0px 35px;
+          padding: 20px 40px 40px 40px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 20px;
+        }
+
+        .account-type-btn {
+          width: 100%;
+          padding: 18px 20px;
+          border: none;
+          font-size: 16px;
+          font-weight: 600;
+          transition: all 0.3s ease;
+          cursor: pointer;
+          text-align: center;
+          font-family: "Barlow", Arial, sans-serif;
+        }
+
+        .regional-btn {
+          background: #14AE5C;
+          color: white;
+          margin-bottom: 10px;
+        }
+
+        .regional-btn:hover {
+          background: #22c55e;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(74, 222, 128, 0.4);
+        }
+
+        .partnered-btn {
+          background: #93C242;
+          color: white;
+        }
+
+        .partnered-btn:hover {
+          background: #65a30d;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(132, 204, 22, 0.4);
+        }
+
+        .or-divider {
+          display: flex;
+          align-items: center;
+          width: 100%;
+          margin: 10px 0;
+        }
+
+        .or-line {
+          flex: 1;
+          height: 1px;
+          background: rgba(255, 255, 255, 0.3);
+        }
+
+        .or-text {
+          color: rgba(255, 255, 255, 0.8);
+          padding: 0 20px;
+          font-size: 14px;
+          font-weight: 500;
         }
 
         .form-group {
@@ -189,18 +224,7 @@ const Signup = () => {
           transition: border-color 0.2s;
         }
 
-        .form-group select {
-          width: 100%;
-          padding: 10px 16px;
-          border: 2px solid #e5e7eb;
-          font-size: 13px;
-          transition: border-color 0.2s;
-          background: white;
-          cursor: pointer;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus {
+        .form-group input:focus {
           outline: none;
           border-color: #15803d;
         }
@@ -286,7 +310,8 @@ const Signup = () => {
           }
 
           .login-container {
-            max-width: 100%;
+            max-width: 80%;
+            width: 80%;
           }
         }
 
@@ -335,98 +360,96 @@ const Signup = () => {
           }
       `}</style>
 
-    <div className="page-container">
-      <header className="bloodsync-header">
-        <div className="header-container">
-          <div className="left-section">
-            <img
-              src="/assets/Logo1.png"
-              alt="BloodSync Logo"
-              className="bloodsync-logo"
-            />
-          </div>
-          <div className="right-section">
-            <div className="doh-section">
+      <div className="page-container">
+        <header className="bloodsync-header">
+          <div className="header-container">
+            <div className="left-section">
               <img
-                src="/assets/DOH Logo.png"
-                alt="Department of Health"
-                className="doh-logo"
+                src="/assets/Logo1.png"
+                alt="BloodSync Logo"
+                className="bloodsync-logo"
               />
-              <div className="doh-text">
+            </div>
+            <div className="right-section">
+              <div className="doh-section">
                 <img
-                  src="/assets/Text Logo.png"
+                  src="/assets/DOH Logo.png"
                   alt="Department of Health"
-                  className="doh-text"
+                  className="doh-logo"
                 />
+                <div className="doh-text">
+                  <img
+                    src="/assets/Text Logo.png"
+                    alt="Department of Health"
+                    className="doh-text"
+                  />
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <div className="main-content">
-        <div className="login-container">
-          <div className="login-header">
-            <h1>Create an Account</h1>
-            <p>
-              Have an Account?&nbsp;
-              <button
+        {/* Main Content */}
+        <div className="main-content">
+          <div className="login-container">
+            {/* Account Type Selection Header */}
+            <div className="login-header">
+              <h1>Identify Your Account Type</h1>
+              <p>Select your role to access the BloodSync platform.</p>
+            </div>
+
+            {/* Account Type Selection Content */}
+            <div className="content">
+            <button
                 type="button"
-                onClick={() => navigate("/login")}
-                className="link"
+                onClick={handleRegionalClick}
+                className="account-type-btn regional-btn"
+                disabled={isRegionalLoading || isPartneredLoading}
               >
-                Click Here
-              </button>
-            </p>
-          </div>
-          <div className="content">
-            <form onSubmit={handleSignup}>
-              <div className="form-group">
-                <label htmlFor="name">Full Name:</label>
-                <input type="text" id="name" name="name" required />
-              </div>
-              <div className="form-group">
-                <label htmlFor="role">Role:</label>
-                <select id="role" name="role" required>
-                  <option value="">Select a role...</option>
-                  <option value="admin">Admin</option>
-                  <option value="doctor">Doctor</option>
-                  <option value="medical-technologist">Medical Technologist</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label htmlFor="email">Email:</label>
-                <input type="email" id="email" name="email" required />
-              </div>
-              <div className="form-group">
-                <label htmlFor="password">Password:</label>
-                <input type="password" id="password" name="password" required />
-              </div>
-              <div className="form-group">
-                <label htmlFor="password">Confirm Password:</label>
-                <input type="password" id="password" name="password" required />
-              </div>
-              <button type="submit" className="btn" style={{ marginBottom: "30px" }} disabled={isRegistering}>
-                {isRegistering ? (
+                {isRegionalLoading ? (
                   <div className="loading-dots">
                     <span></span>
                     <span></span>
                     <span></span>
                   </div>
                 ) : (
-                  "REGISTER"
+                  "REGIONAL BLOOD CENTER - DOH"
                 )}
               </button>
-            </form>
+
+              <div className="or-divider">
+                <div className="or-line"></div>
+                <span className="or-text">OR</span>
+                <div className="or-line"></div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handlePartneredClick}
+                className="account-type-btn partnered-btn"
+                disabled={isRegionalLoading || isPartneredLoading}
+              >
+                {isPartneredLoading ? (
+                  <div className="loading-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                ) : (
+                  "PARTNERED ORGANIZATION"
+                )}
+              </button>
+            </div>
           </div>
         </div>
+
+        {/* Footer */}
+        <footer className="footer">
+          <p>2025 © Copyright Code Red Corporation ver. 1.0</p>
+        </footer>
       </div>
-      <footer className="footer">
-        <p>2025 © Copyright Code Red Corporation ver. 1.0</p>
-      </footer>
-    </div>
     </>
   );
 };
 
-export default Signup;
+export default Portal;

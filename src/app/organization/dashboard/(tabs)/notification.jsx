@@ -1,6 +1,6 @@
 import React from 'react';
 
-const NotificationComponent = () => {
+const NotificationOrg = () => {
   return (
     <div>
       <h2>Notification</h2>
@@ -9,4 +9,4 @@ const NotificationComponent = () => {
   );
 };
 
-export default NotificationComponent; // Make sure this is present
+export default NotificationOrg; // Make sure this is present

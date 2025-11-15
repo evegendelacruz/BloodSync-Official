@@ -1,11 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import Loader from "../components/Loader";
 
-const ForgotPassword = () => {
+const ForgotPasswordOrg = () => {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
-  const [isPageLoading, setIsPageLoading] = useState(true);
   const [formData, setFormData] = useState({
     email: "",
     recoveryCode: "",
@@ -15,15 +13,6 @@ const ForgotPassword = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-
-  useEffect(() => {
-    // Simulate initial loading
-    const timer = setTimeout(() => {
-      setIsPageLoading(false);
-    }, 1500);
-  
-    return () => clearTimeout(timer);
-  }, []);
 
   const handleInputChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -98,8 +87,6 @@ const ForgotPassword = () => {
 
   return (
     <>
-      {isPageLoading && <Loader />}
-
       <style>{`
         * {
           margin: 0;
@@ -353,38 +340,6 @@ const ForgotPassword = () => {
           margin: 0;
           padding: 0;
         }
-        .loading-dots {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          justify-content: center;
-        }
-        
-        .loading-dots span {
-          width: 6px;
-          height: 6px;
-          background-color: white;
-          border-radius: 50%;
-          animation: buttonBounce 1.4s infinite ease-in-out both;
-        }
-        
-        .loading-dots span:nth-child(1) {
-          animation-delay: -0.32s;
-        }
-        
-        .loading-dots span:nth-child(2) {
-          animation-delay: -0.16s;
-        }
-        
-        @keyframes buttonBounce {
-          0%, 80%, 100% {
-            transform: scale(0);
-            opacity: 0.5;
-          }
-          40% {
-            transform: scale(1);
-            opacity: 1;
-          }
       `}</style>
     <div className="page-container">
       <header className="bloodsync-header">
@@ -487,16 +442,8 @@ const ForgotPassword = () => {
 
             {error && <p style={{ margin: "20px 0", color: "yellow" }}>{error}</p>}
 
-            <button type="submit" className="btn" disabled={loading}>
-              {loading ? (
-                <div className="loading-dots">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-              ) : (
-                step === 1 ? "SEND CODE" : "RESET PASSWORD"
-              )}
+            <button type="submit" className="btn">
+              {step === 1 ? "SEND CODE" : "RESET PASSWORD"}
             </button>
 
             <button
@@ -521,4 +468,4 @@ const ForgotPassword = () => {
   );
 };
 
-export default ForgotPassword;
+export default ForgotPasswordOrg;
