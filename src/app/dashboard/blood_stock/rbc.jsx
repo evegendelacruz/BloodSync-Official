@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import Loader from "../../../components/loader";
+import Loader from "../../../components/Loader";
 
 const RedBloodCell = () => {
   const [bloodData, setBloodData] = useState([]);
@@ -52,7 +52,9 @@ const RedBloodCell = () => {
     requestReference: "",
     releasedBy: "",
   });
-
+  const [validationErrors, setValidationErrors] = useState({});
+  const [editValidationErrors, setEditValidationErrors] = useState({});
+  const [releaseValidationErrors, setReleaseValidationErrors] = useState({});
   const sortDropdownRef = useRef(null);
   const filterDropdownRef = useRef(null);
 
@@ -176,6 +178,7 @@ const RedBloodCell = () => {
     return expiration.toISOString().split("T")[0];
   };
 
+  // Modified handleStockItemChange function
   const handleStockItemChange = (id, field, value) => {
     setStockItems((prev) =>
       prev.map((item) => {
@@ -189,6 +192,15 @@ const RedBloodCell = () => {
         return item;
       })
     );
+    
+    // Clear validation error for this field when user starts typing
+    if (validationErrors[`${id}-${field}`]) {
+      setValidationErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[`${id}-${field}`];
+        return newErrors;
+      });
+    }
   };
 
   const handleEditItemChange = (field, value) => {
@@ -197,6 +209,15 @@ const RedBloodCell = () => {
       updated.expiration = calculateExpiration(value);
     }
     setEditingItem(updated);
+    
+    // Clear validation error for this field when user starts typing
+    if (editValidationErrors[field]) {
+      setEditValidationErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
   };
 
   const addNewRow = () => {
@@ -215,6 +236,7 @@ const RedBloodCell = () => {
         source: "Walk-In", 
       },
     ]);
+    setValidationErrors({});
   };
 
   const removeRow = (id) => {
@@ -223,21 +245,31 @@ const RedBloodCell = () => {
     }
   };
 
+  // Modified handleSaveAllStock function
   const handleSaveAllStock = async (e) => {
     e.preventDefault();
+    
+    // Validate all fields
+    const errors = {};
+    stockItems.forEach((item) => {
+      if (!item.serial_id || item.serial_id.trim() === "") {
+        errors[`${item.id}-serial_id`] = "Serial ID is required";
+      }
+      if (!item.collection) {
+        errors[`${item.id}-collection`] = "Collection date is required";
+      }
+    });
+    
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
+    
     try {
       setSaving(true);
       if (!window.electronAPI) {
-        setError("Electron API not available");
+        setValidationErrors({ api: "Electron API not available" });
         return;
-      }
-  
-      for (const item of stockItems) {
-        if (!item.serial_id || !item.collection) {
-          setError("Please fill in all required fields for all items");
-          setSaving(false);
-          return;
-        }
       }
   
       for (const item of stockItems) {
@@ -249,12 +281,13 @@ const RedBloodCell = () => {
           collection: item.collection,
           expiration: item.expiration,
           status: item.status,
-          source: item.source, 
+          source: item.source,
         };
         await window.electronAPI.addBloodStock(stockData);
       }
   
       setShowAddModal(false);
+      setValidationErrors({});
       setStockItems([
         {
           id: 1,
@@ -265,7 +298,7 @@ const RedBloodCell = () => {
           collection: "",
           expiration: "",
           status: "Stored",
-          source: "Walk-In", 
+          source: "Walk-In",
         },
       ]);
       await loadBloodData();
@@ -279,7 +312,30 @@ const RedBloodCell = () => {
       setShowSuccessModal(true);
     } catch (err) {
       console.error("Error adding blood stock:", err);
-      setError(`Failed to add blood stock: ${err.message}`);
+      
+      // Extract the error message
+      let errorMessage = err.message;
+      
+      // Check if it's a duplicate serial ID error
+      if (errorMessage.includes("already exists")) {
+        // Extract serial ID from error message
+        const serialIdMatch = errorMessage.match(/Serial ID (\S+) already exists/);
+        if (serialIdMatch) {
+          const duplicateSerialId = serialIdMatch[1];
+          // Find which item has the duplicate serial ID and mark it with specific error
+          const duplicateErrors = {};
+          stockItems.forEach((item) => {
+            if (item.serial_id === duplicateSerialId) {
+              duplicateErrors[`${item.id}-serial_id`] = `Serial ID ${duplicateSerialId} already exists`;
+            }
+          });
+          setValidationErrors(duplicateErrors);
+        } else {
+          setValidationErrors({ save: errorMessage });
+        }
+      } else {
+        setValidationErrors({ save: `Failed to add blood stock: ${errorMessage}` });
+      }
     } finally {
       setSaving(false);
     }
@@ -310,16 +366,25 @@ const RedBloodCell = () => {
 
   const handleSaveEdit = async (e) => {
     e.preventDefault();
+    
+    // Validate all fields
+    const errors = {};
+    if (!editingItem.serial_id || editingItem.serial_id.trim() === "") {
+      errors.serial_id = "Serial ID is required";
+    }
+    if (!editingItem.collection) {
+      errors.collection = "Collection date is required";
+    }
+    
+    if (Object.keys(errors).length > 0) {
+      setEditValidationErrors(errors);
+      return;
+    }
+    
     try {
       setSaving(true);
       if (!window.electronAPI) {
-        setError("Electron API not available");
-        return;
-      }
-  
-      if (!editingItem.serial_id || !editingItem.collection) {
-        setError("Please fill in all required fields");
-        setSaving(false);
+        setEditValidationErrors({ api: "Electron API not available" });
         return;
       }
   
@@ -337,11 +402,11 @@ const RedBloodCell = () => {
       await window.electronAPI.updateBloodStock(editingItem.id, stockData);
       setShowEditModal(false);
       setEditingItem(null);
+      setEditValidationErrors({});
       await loadBloodData();
       clearAllSelection();
       setError(null);
   
-      // Show success modal
       setSuccessMessage({
         title: "Stock Updated Successfully!",
         description: "The red blood cell stock information has been updated.",
@@ -349,7 +414,22 @@ const RedBloodCell = () => {
       setShowSuccessModal(true);
     } catch (err) {
       console.error("Error updating blood stock:", err);
-      setError(`Failed to update blood stock: ${err.message}`);
+      
+      let errorMessage = err.message;
+      
+      if (errorMessage.includes("already exists")) {
+        const serialIdMatch = errorMessage.match(/Serial ID (\S+) already exists/);
+        if (serialIdMatch) {
+          const duplicateSerialId = serialIdMatch[1];
+          setEditValidationErrors({ 
+            serial_id: `Serial ID ${duplicateSerialId} already exists`
+          });
+        } else {
+          setEditValidationErrors({ save: errorMessage });
+        }
+      } else {
+        setEditValidationErrors({ save: `Failed to update blood stock: ${errorMessage}` });
+      }
     } finally {
       setSaving(false);
     }
@@ -600,38 +680,83 @@ const RedBloodCell = () => {
       ...prev,
       [field]: value,
     }));
+    
+    // Clear validation error for this field when user starts typing
+    if (releaseValidationErrors[field]) {
+      setReleaseValidationErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
   };
 
   const confirmRelease = async () => {
+    // Validate all fields
+    const errors = {};
+    if (!releaseData.receivingFacility || releaseData.receivingFacility.trim() === "") {
+      errors.receivingFacility = "Receiving facility is required";
+    }
+    if (!releaseData.classification) {
+      errors.classification = "Classification is required";
+    }
+    if (!releaseData.authorizedRecipient || releaseData.authorizedRecipient.trim() === "") {
+      errors.authorizedRecipient = "Authorized recipient is required";
+    }
+    if (!releaseData.address || releaseData.address.trim() === "") {
+      errors.address = "Address is required";
+    }
+    if (!releaseData.contactNumber || releaseData.contactNumber === "+63") {
+      errors.contactNumber = "Contact number is required";
+    }
+    if (!releaseData.recipientDesignation || releaseData.recipientDesignation.trim() === "") {
+      errors.recipientDesignation = "Recipient designation is required";
+    }
+    if (!releaseData.dateOfRelease) {
+      errors.dateOfRelease = "Date of release is required";
+    }
+    if (!releaseData.conditionUponRelease) {
+      errors.conditionUponRelease = "Condition upon release is required";
+    }
+    if (!releaseData.releasedBy || releaseData.releasedBy.trim() === "") {
+      errors.releasedBy = "Released by is required";
+    }
+    
+    if (Object.keys(errors).length > 0) {
+      setReleaseValidationErrors(errors);
+      return;
+    }
+    
     try {
       setReleasing(true);
       if (!window.electronAPI) {
-        setError("Electron API not available");
+        setReleaseValidationErrors({ api: "Electron API not available" });
         return;
       }
-
+  
       const validItems = selectedItems.filter(
         (item) => item.found && item.serialId
       );
-
+  
       if (validItems.length === 0) {
-        setError("No valid items to release");
+        setReleaseValidationErrors({ items: "No valid items to release" });
         setReleasing(false);
         return;
       }
-
+  
       const serialIds = validItems.map((item) => item.serialId);
       const releasePayload = {
         ...releaseData,
         serialIds: serialIds,
       };
-
+  
       const result = await window.electronAPI.releaseBloodStock(releasePayload);
-
+  
       if (result.success) {
         setShowReleaseDetailsModal(false);
         setShowReleaseModal(false);
-
+        setReleaseValidationErrors({});
+  
         setSelectedItems([
           {
             serialId: "",
@@ -644,7 +769,7 @@ const RedBloodCell = () => {
             found: false,
           },
         ]);
-
+  
         setReleaseData({
           receivingFacility: "",
           address: "",
@@ -657,11 +782,10 @@ const RedBloodCell = () => {
           requestReference: "",
           releasedBy: "",
         });
-
+  
         await loadBloodData();
         setError(null);
-
-        // Show success modal
+  
         setSuccessMessage({
           title: "Stock Released Successfully!",
           description:
@@ -671,7 +795,7 @@ const RedBloodCell = () => {
       }
     } catch (err) {
       console.error("Error releasing blood stock:", err);
-      setError(`Failed to release blood stock: ${err.message}`);
+      setReleaseValidationErrors({ save: `Failed to release blood stock: ${err.message}` });
     } finally {
       setReleasing(false);
     }
@@ -1014,14 +1138,15 @@ const RedBloodCell = () => {
       color: "#6b7280",
     },
     errorContainer: {
-      backgroundColor: "#fee2e2",
-      color: "#991b1b",
-      padding: "12px 16px",
-      borderRadius: "8px",
-      marginBottom: "20px",
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
+      backgroundColor: '#fee2e2',
+      color: '#991b1b',
+      padding: '12px 16px',
+      borderRadius: '6px',
+      marginTop: '16px',
+      fontSize: '14px',
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: '8px'
     },
     refreshButton: {
       backgroundColor: "#059669",
@@ -1423,29 +1548,6 @@ const RedBloodCell = () => {
         <h2 style={styles.title}>Red Blood Cell</h2>
         <p style={styles.subtitle}>Blood Stock</p>
       </div>
-
-      {error && (
-        <div style={styles.errorContainer}>
-          <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
-            <path
-              fillRule="evenodd"
-              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-            />
-          </svg>
-          <span>{error}</span>
-          <button
-            style={{
-              ...styles.refreshButton,
-              ...(hoverStates.refresh ? styles.refreshButtonHover : {}),
-            }}
-            onClick={loadBloodData}
-            onMouseEnter={() => handleMouseEnter("refresh")}
-            onMouseLeave={() => handleMouseLeave("refresh")}
-          >
-            Retry
-          </button>
-        </div>
-      )}
 
       <div style={styles.controlsBar}>
         <div style={styles.leftControls}>
@@ -2194,114 +2296,164 @@ const RedBloodCell = () => {
               </div>
 
               <div style={styles.rowsContainer}>
-                {stockItems.map((item) => (
-                  <div key={item.id} style={styles.dataRow}>
-                    <input
-                      type="text"
-                      style={styles.fieldInput}
-                      value={item.serial_id}
-                      onChange={(e) =>
-                        handleStockItemChange(
-                          item.id,
-                          "serial_id",
-                          e.target.value
-                        )
-                      }
-                      placeholder="Enter Serial ID"
-                    />
-                    <select
-                      style={styles.fieldSelect}
-                      value={item.type}
-                      onChange={(e) =>
-                        handleStockItemChange(item.id, "type", e.target.value)
-                      }
-                    >
-                      <option value="O">O</option>
-                      <option value="A">A</option>
-                      <option value="B">B</option>
-                      <option value="AB">AB</option>
-                    </select>
-                    <select
-                      style={styles.fieldSelect}
-                      value={item.rhFactor}
-                      onChange={(e) =>
-                        handleStockItemChange(
-                          item.id,
-                          "rhFactor",
-                          e.target.value
-                        )
-                      }
-                    >
-                      <option value="+">+</option>
-                      <option value="-">-</option>
-                    </select>
-                    <input
-                      type="number"
-                      style={styles.fieldInput}
-                      value={item.volume}
-                      onChange={(e) =>
-                        handleStockItemChange(item.id, "volume", e.target.value)
-                      }
-                      min="1"
-                    />
-                    <input
-                      type="date"
-                      style={styles.fieldInput}
-                      value={item.collection}
-                      onChange={(e) =>
-                        handleStockItemChange(
-                          item.id,
-                          "collection",
-                          e.target.value
-                        )
-                      }
-                    />
-                    <input
-                      type="date"
-                      style={styles.fieldInputDisabled}
-                      value={item.expiration}
-                      readOnly
-                      disabled
-                    />
-                    <select
-                      style={styles.fieldSelect}
-                      value={item.source}
-                      onChange={(e) =>
-                        handleStockItemChange(item.id, "source", e.target.value)
-                      }
-                    >
-                      <option value="Walk-In">Walk-In</option>
-                      <option value="Mobile">Mobile</option>
-                    </select>
-                  </div>
-                ))}
-              </div>
-              <button
-                type="button"
-                style={{
-                  ...styles.addRowButton,
-                  ...(hoverStates.addRow ? styles.addRowButtonHover : {}),
-                }}
-                onClick={addNewRow}
-                onMouseEnter={() => handleMouseEnter("addRow")}
-                onMouseLeave={() => handleMouseLeave("addRow")}
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v16m8-8H4"
+              {stockItems.map((item) => (
+                <div key={item.id} style={styles.dataRow}>
+                  <input
+                    type="text"
+                    style={{
+                      ...styles.fieldInput,
+                      borderColor: validationErrors[`${item.id}-serial_id`] ? '#ef4444' : '#d1d5db'
+                    }}
+                    value={item.serial_id}
+                    onChange={(e) =>
+                      handleStockItemChange(
+                        item.id,
+                        "serial_id",
+                        e.target.value
+                      )
+                    }
+                    placeholder="Enter Serial ID"
                   />
+                  <select
+                    style={styles.fieldSelect}
+                    value={item.type}
+                    onChange={(e) =>
+                      handleStockItemChange(item.id, "type", e.target.value)
+                    }
+                  >
+                    <option value="O">O</option>
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="AB">AB</option>
+                  </select>
+                  <select
+                    style={styles.fieldSelect}
+                    value={item.rhFactor}
+                    onChange={(e) =>
+                      handleStockItemChange(
+                        item.id,
+                        "rhFactor",
+                        e.target.value
+                      )
+                    }
+                  >
+                    <option value="+">+</option>
+                    <option value="-">-</option>
+                  </select>
+                  <input
+                    type="number"
+                    style={styles.fieldInput}
+                    value={item.volume}
+                    onChange={(e) =>
+                      handleStockItemChange(item.id, "volume", e.target.value)
+                    }
+                    min="1"
+                  />
+                  <input
+                    type="date"
+                    style={{
+                      ...styles.fieldInput,
+                      borderColor: validationErrors[`${item.id}-collection`] ? '#ef4444' : '#d1d5db'
+                    }}
+                    value={item.collection}
+                    onChange={(e) =>
+                      handleStockItemChange(
+                        item.id,
+                        "collection",
+                        e.target.value
+                      )
+                    }
+                  />
+                  <input
+                    type="date"
+                    style={styles.fieldInputDisabled}
+                    value={item.expiration}
+                    readOnly
+                    disabled
+                  />
+                  <select
+                    style={styles.fieldSelect}
+                    value={item.source}
+                    onChange={(e) =>
+                      handleStockItemChange(item.id, "source", e.target.value)
+                    }
+                  >
+                    <option value="Walk-In">Walk-In</option>
+                    <option value="Mobile">Mobile</option>
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            {/* Error message display */}
+            {Object.keys(validationErrors).length > 0 && (
+              <div style={{
+                backgroundColor: '#fee2e2',
+                color: '#991b1b',
+                padding: '12px 16px',
+                borderRadius: '6px',
+                marginTop: '16px',
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px'
+              }}>
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0, marginTop: '2px' }}>
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
-                <span>Add New Row</span>
-              </button>
+                <div>
+                  {validationErrors.api && (
+                    <div style={{ marginBottom: '4px' }}>{validationErrors.api}</div>
+                  )}
+                  {validationErrors.save && (
+                    <div style={{ marginBottom: '4px' }}>{validationErrors.save}</div>
+                  )}
+                  {/* Show specific field errors */}
+                  {Object.entries(validationErrors)
+                    .filter(([key]) => key.includes('-serial_id') || key.includes('-collection'))
+                    .map(([key, message]) => (
+                      <div key={key} style={{ marginBottom: '4px' }}>
+                        • {message}
+                      </div>
+                    ))
+                  }
+                  {/* Show generic message only if there are validation errors but no specific messages shown */}
+                  {!validationErrors.api && 
+                  !validationErrors.save && 
+                  Object.keys(validationErrors).length > 0 &&
+                  Object.keys(validationErrors).every(key => !validationErrors[key].includes('already exists')) && (
+                    <div>Please fill in all required fields (Serial ID and Collection Date)</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <button
+              type="button"
+              style={{
+                ...styles.addRowButton,
+                ...(hoverStates.addRow ? styles.addRowButtonHover : {}),
+              }}
+              onClick={addNewRow}
+              onMouseEnter={() => handleMouseEnter("addRow")}
+              onMouseLeave={() => handleMouseLeave("addRow")}
+            >
+              <svg
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+              <span>Add New Row</span>
+            </button>
             </div>
 
             <div style={styles.modalFooter}>
@@ -2361,71 +2513,117 @@ const RedBloodCell = () => {
               </div>
 
               <div style={styles.dataRow}>
-                <input
-                  type="text"
-                  style={styles.fieldInput}
-                  value={editingItem.serial_id}
-                  onChange={(e) =>
-                    handleEditItemChange("serial_id", e.target.value)
-                  }
-                  placeholder="Enter Serial ID"
-                />
-                <select
-                  style={styles.fieldSelect}
-                  value={editingItem.type}
-                  onChange={(e) => handleEditItemChange("type", e.target.value)}
-                >
-                  <option value="O">O</option>
-                  <option value="A">A</option>
-                  <option value="B">B</option>
-                  <option value="AB">AB</option>
-                </select>
-                <select
-                  style={styles.fieldSelect}
-                  value={editingItem.rhFactor}
-                  onChange={(e) =>
-                    handleEditItemChange("rhFactor", e.target.value)
-                  }
-                >
-                  <option value="+">+</option>
-                  <option value="-">-</option>
-                </select>
-                <input
-                  type="number"
-                  style={styles.fieldInput}
-                  value={editingItem.volume}
-                  onChange={(e) =>
-                    handleEditItemChange("volume", e.target.value)
-                  }
-                  min="1"
-                />
-                <input
-                  type="date"
-                  style={styles.fieldInput}
-                  value={editingItem.collection}
-                  onChange={(e) =>
-                    handleEditItemChange("collection", e.target.value)
-                  }
-                />
-                <input
-                  type="date"
-                  style={styles.fieldInputDisabled}
-                  value={editingItem.expiration}
-                  readOnly
-                  disabled
-                />
-                <select
-                  style={styles.fieldSelect}
-                  value={editingItem.source || 'Walk-In'}
-                  onChange={(e) =>
-                    handleEditItemChange("source", e.target.value)
-                  }
-                >
-                  <option value="Walk-In">Walk-In</option>
-                  <option value="Mobile">Mobile</option>
-                </select>
-              </div>
+              <input
+                type="text"
+                style={{
+                  ...styles.fieldInput,
+                  borderColor: editValidationErrors.serial_id ? '#ef4444' : '#d1d5db'
+                }}
+                value={editingItem.serial_id}
+                onChange={(e) =>
+                  handleEditItemChange("serial_id", e.target.value)
+                }
+                placeholder="Enter Serial ID"
+              />
+              <select
+                style={styles.fieldSelect}
+                value={editingItem.type}
+                onChange={(e) => handleEditItemChange("type", e.target.value)}
+              >
+                <option value="O">O</option>
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="AB">AB</option>
+              </select>
+              <select
+                style={styles.fieldSelect}
+                value={editingItem.rhFactor}
+                onChange={(e) =>
+                  handleEditItemChange("rhFactor", e.target.value)
+                }
+              >
+                <option value="+">+</option>
+                <option value="-">-</option>
+              </select>
+              <input
+                type="number"
+                style={styles.fieldInput}
+                value={editingItem.volume}
+                onChange={(e) =>
+                  handleEditItemChange("volume", e.target.value)
+                }
+                min="1"
+              />
+              <input
+                type="date"
+                style={{
+                  ...styles.fieldInput,
+                  borderColor: editValidationErrors.collection ? '#ef4444' : '#d1d5db'
+                }}
+                value={editingItem.collection}
+                onChange={(e) =>
+                  handleEditItemChange("collection", e.target.value)
+                }
+              />
+              <input
+                type="date"
+                style={styles.fieldInputDisabled}
+                value={editingItem.expiration}
+                readOnly
+                disabled
+              />
+              <select
+                style={styles.fieldSelect}
+                value={editingItem.source || 'Walk-In'}
+                onChange={(e) =>
+                  handleEditItemChange("source", e.target.value)
+                }
+              >
+                <option value="Walk-In">Walk-In</option>
+                <option value="Mobile">Mobile</option>
+              </select>
             </div>
+          </div>
+
+            {/* Error message display for Edit Modal */}
+            {Object.keys(editValidationErrors).length > 0 && (
+              <div style={{
+                backgroundColor: '#fee2e2',
+                color: '#991b1b',
+                padding: '12px 16px',
+                borderRadius: '6px',
+                marginTop: '16px',
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px'
+              }}>
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0, marginTop: '2px' }}>
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <div>
+                  {editValidationErrors.api && (
+                    <div style={{ marginBottom: '4px' }}>{editValidationErrors.api}</div>
+                  )}
+                  {editValidationErrors.save && (
+                    <div style={{ marginBottom: '4px' }}>{editValidationErrors.save}</div>
+                  )}
+                  {editValidationErrors.serial_id && (
+                    <div style={{ marginBottom: '4px' }}>• {editValidationErrors.serial_id}</div>
+                  )}
+                  {editValidationErrors.collection && (
+                    <div style={{ marginBottom: '4px' }}>• {editValidationErrors.collection}</div>
+                  )}
+                  {!editValidationErrors.api && 
+                  !editValidationErrors.save && 
+                  !editValidationErrors.serial_id &&
+                  !editValidationErrors.collection &&
+                  Object.keys(editValidationErrors).length > 0 && (
+                    <div>Please fill in all required fields</div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div style={styles.modalFooter}>
               <button
@@ -2706,6 +2904,18 @@ const RedBloodCell = () => {
                     </button>
                   </div>
                 ))}
+                {error && (
+                  <div style={styles.errorContainer}>
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0, marginTop: '2px' }}>
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                      />
+                    </svg>
+                    <span>{error}</span>
+                  </div>
+                )}
+
               </div>
 
               <button
@@ -2894,168 +3104,230 @@ const RedBloodCell = () => {
               </div>
 
               <div style={styles.filterContainer}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Receiving Facility</label>
-                  <input
-                    type="text"
-                    style={styles.fieldInput}
-                    value={releaseData.receivingFacility}
-                    onChange={(e) =>
-                      handleReleaseDataChange(
-                        "receivingFacility",
-                        e.target.value
-                      )
-                    }
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Classification</label>
-                  <select
-                    style={styles.fieldSelect}
-                    value={releaseData.classification}
-                    onChange={(e) =>
-                      handleReleaseDataChange("classification", e.target.value)
-                    }
-                  >
-                    <option value="">Select classification</option>
-                    <option value="Emergency">Emergency</option>
-                    <option value="Routine">Routine</option>
-                    <option value="Urgent">Urgent</option>
-                  </select>
-                </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Receiving Facility</label>
+                <input
+                  type="text"
+                  style={{
+                    ...styles.fieldInput,
+                    borderColor: releaseValidationErrors.receivingFacility ? '#ef4444' : '#d1d5db'
+                  }}
+                  value={releaseData.receivingFacility}
+                  onChange={(e) =>
+                    handleReleaseDataChange(
+                      "receivingFacility",
+                      e.target.value
+                    )
+                  }
+                />
               </div>
-
-              <div style={styles.filterContainer}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Authorized Recipient</label>
-                  <input
-                    type="text"
-                    style={styles.fieldInput}
-                    value={releaseData.authorizedRecipient}
-                    onChange={(e) =>
-                      handleReleaseDataChange(
-                        "authorizedRecipient",
-                        e.target.value
-                      )
-                    }
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Address</label>
-                  <input
-                    type="text"
-                    style={styles.fieldInput}
-                    value={releaseData.address}
-                    onChange={(e) =>
-                      handleReleaseDataChange("address", e.target.value)
-                    }
-                  />
-                </div>
-              </div>
-
-              <div style={styles.filterContainer}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Contact Number</label>
-                  <input
-                    type="tel"
-                    style={styles.fieldInput}
-                    value={releaseData.contactNumber}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      // Remove +63 prefix if present to get the actual input
-                      const numberPart = value
-                        .replace("+63", "")
-                        .replace(/\D/g, "");
-                      // Limit to 10 digits
-                      const limitedNumber = numberPart.slice(0, 10);
-                      // Add +63 prefix back
-                      handleReleaseDataChange(
-                        "contactNumber",
-                        limitedNumber ? `+63${limitedNumber}` : "+63"
-                      );
-                    }}
-                    placeholder="+63"
-                    maxLength={13}
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>
-                    Authorized Recipient Designation
-                  </label>
-                  <input
-                    type="text"
-                    style={styles.fieldInput}
-                    value={releaseData.recipientDesignation}
-                    onChange={(e) =>
-                      handleReleaseDataChange(
-                        "recipientDesignation",
-                        e.target.value
-                      )
-                    }
-                  />
-                </div>
-              </div>
-
-              <div style={styles.filterContainer}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Date of Release</label>
-                  <input
-                    type="date"
-                    style={styles.fieldInput}
-                    value={releaseData.dateOfRelease}
-                    onChange={(e) =>
-                      handleReleaseDataChange("dateOfRelease", e.target.value)
-                    }
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Condition Upon Release</label>
-                  <select
-                    style={styles.fieldSelect}
-                    value={releaseData.conditionUponRelease}
-                    onChange={(e) =>
-                      handleReleaseDataChange(
-                        "conditionUponRelease",
-                        e.target.value
-                      )
-                    }
-                  >
-                    <option value="">Select Condition</option>
-                    <option value="Good">Good</option>
-                    <option value="Satisfactory">Satisfactory</option>
-                    <option value="Damaged">Damaged</option>
-                  </select>
-                </div>
-              </div>
-
-              <div style={styles.filterContainer}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Request Reference Number</label>
-                  <input
-                    type="text"
-                    style={{
-                      ...styles.fieldInput,
-                      backgroundColor: "#f9fafb",
-                      cursor: "not-allowed",
-                    }}
-                    value={releaseData.requestReference}
-                    readOnly
-                    disabled
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Released by</label>
-                  <input
-                    type="text"
-                    style={styles.fieldInput}
-                    value={releaseData.releasedBy}
-                    onChange={(e) =>
-                      handleReleaseDataChange("releasedBy", e.target.value)
-                    }
-                  />
-                </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Classification</label>
+                <select
+                  style={{
+                    ...styles.fieldSelect,
+                    borderColor: releaseValidationErrors.classification ? '#ef4444' : '#d1d5db'
+                  }}
+                  value={releaseData.classification}
+                  onChange={(e) =>
+                    handleReleaseDataChange("classification", e.target.value)
+                  }
+                >
+                  <option value="">Select classification</option>
+                  <option value="Emergency">Emergency</option>
+                  <option value="Routine">Routine</option>
+                  <option value="Urgent">Urgent</option>
+                </select>
               </div>
             </div>
+
+            <div style={styles.filterContainer}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Authorized Recipient</label>
+                <input
+                  type="text"
+                  style={{
+                    ...styles.fieldInput,
+                    borderColor: releaseValidationErrors.authorizedRecipient ? '#ef4444' : '#d1d5db'
+                  }}
+                  value={releaseData.authorizedRecipient}
+                  onChange={(e) =>
+                    handleReleaseDataChange(
+                      "authorizedRecipient",
+                      e.target.value
+                    )
+                  }
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Address</label>
+                <input
+                  type="text"
+                  style={{
+                    ...styles.fieldInput,
+                    borderColor: releaseValidationErrors.address ? '#ef4444' : '#d1d5db'
+                  }}
+                  value={releaseData.address}
+                  onChange={(e) =>
+                    handleReleaseDataChange("address", e.target.value)
+                  }
+                />
+              </div>
+            </div>
+
+            <div style={styles.filterContainer}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Contact Number</label>
+                <input
+                  type="tel"
+                  style={{
+                    ...styles.fieldInput,
+                    borderColor: releaseValidationErrors.contactNumber ? '#ef4444' : '#d1d5db'
+                  }}
+                  value={releaseData.contactNumber}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const numberPart = value
+                      .replace("+63", "")
+                      .replace(/\D/g, "");
+                    const limitedNumber = numberPart.slice(0, 10);
+                    handleReleaseDataChange(
+                      "contactNumber",
+                      limitedNumber ? `+63${limitedNumber}` : "+63"
+                    );
+                  }}
+                  placeholder="+63"
+                  maxLength={13}
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>
+                  Authorized Recipient Designation
+                </label>
+                <input
+                  type="text"
+                  style={{
+                    ...styles.fieldInput,
+                    borderColor: releaseValidationErrors.recipientDesignation ? '#ef4444' : '#d1d5db'
+                  }}
+                  value={releaseData.recipientDesignation}
+                  onChange={(e) =>
+                    handleReleaseDataChange(
+                      "recipientDesignation",
+                      e.target.value
+                    )
+                  }
+                />
+              </div>
+            </div>
+
+            <div style={styles.filterContainer}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Date of Release</label>
+                <input
+                  type="date"
+                  style={{
+                    ...styles.fieldInput,
+                    borderColor: releaseValidationErrors.dateOfRelease ? '#ef4444' : '#d1d5db'
+                  }}
+                  value={releaseData.dateOfRelease}
+                  onChange={(e) =>
+                    handleReleaseDataChange("dateOfRelease", e.target.value)
+                  }
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Condition Upon Release</label>
+                <select
+                  style={{
+                    ...styles.fieldSelect,
+                    borderColor: releaseValidationErrors.conditionUponRelease ? '#ef4444' : '#d1d5db'
+                  }}
+                  value={releaseData.conditionUponRelease}
+                  onChange={(e) =>
+                    handleReleaseDataChange(
+                      "conditionUponRelease",
+                      e.target.value
+                    )
+                  }
+                >
+                  <option value="">Select Condition</option>
+                  <option value="Good">Good</option>
+                  <option value="Satisfactory">Satisfactory</option>
+                  <option value="Damaged">Damaged</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={styles.filterContainer}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Request Reference Number</label>
+                <input
+                  type="text"
+                  style={{
+                    ...styles.fieldInput,
+                    backgroundColor: "#f9fafb",
+                    cursor: "not-allowed",
+                  }}
+                  value={releaseData.requestReference}
+                  readOnly
+                  disabled
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Released by</label>
+                <input
+                  type="text"
+                  style={{
+                    ...styles.fieldInput,
+                    borderColor: releaseValidationErrors.releasedBy ? '#ef4444' : '#d1d5db'
+                  }}
+                  value={releaseData.releasedBy}
+                  onChange={(e) =>
+                    handleReleaseDataChange("releasedBy", e.target.value)
+                  }
+                />
+              </div>
+            </div>
+
+            {/* Error message display for Release Modal - Add before closing modalContent */}
+            {Object.keys(releaseValidationErrors).length > 0 && (
+              <div style={{
+                backgroundColor: '#fee2e2',
+                color: '#991b1b',
+                padding: '12px 16px',
+                borderRadius: '6px',
+                marginTop: '16px',
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px'
+              }}>
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0, marginTop: '2px' }}>
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <div>
+                  {releaseValidationErrors.api && (
+                    <div style={{ marginBottom: '4px' }}>{releaseValidationErrors.api}</div>
+                  )}
+                  {releaseValidationErrors.save && (
+                    <div style={{ marginBottom: '4px' }}>{releaseValidationErrors.save}</div>
+                  )}
+                  {releaseValidationErrors.items && (
+                    <div style={{ marginBottom: '4px' }}>{releaseValidationErrors.items}</div>
+                  )}
+                  {Object.entries(releaseValidationErrors)
+                    .filter(([key]) => !['api', 'save', 'items'].includes(key))
+                    .map(([key, message]) => (
+                      <div key={key} style={{ marginBottom: '4px' }}>
+                        • {message}
+                      </div>
+                    ))
+                  }
+                </div>
+              </div>
+            )}
+          </div> 
 
             <div style={styles.modalFooter}>
               <button

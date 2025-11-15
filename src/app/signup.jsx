@@ -1,18 +1,42 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import Loader from "../components/Loader";
 
 const Signup = () => {
   const navigate = useNavigate();
+  const [isPageLoading, setIsPageLoading] = useState(true);
+  const [isRegistering, setIsRegistering] = useState(false);
 
-  const handleSignup = (e) => {
+  useEffect(() => {
+    // Simulate initial loading
+    const timer = setTimeout(() => {
+      setIsPageLoading(false);
+    }, 1500);
+  
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleSignup = async (e) => {
     e.preventDefault();
-    // Add your signup logic here
-    navigate("/login");
+    setIsRegistering(true);
+  
+    try {
+      // Simulate signup API call
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      
+      // Add your signup logic here
+      navigate("/login");
+    } catch (err) {
+      console.error("Signup failed:", err);
+    } finally {
+      setIsRegistering(false);
+    }
   };
 
   return (
-
     <>
+      {isPageLoading && <Loader />}
+
       <style>{`
         * {
           margin: 0;
@@ -277,6 +301,38 @@ const Signup = () => {
           margin: 0;
           padding: 0;
         }
+        .loading-dots {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          justify-content: center;
+        }
+        
+        .loading-dots span {
+          width: 6px;
+          height: 6px;
+          background-color: white;
+          border-radius: 50%;
+          animation: buttonBounce 1.4s infinite ease-in-out both;
+        }
+        
+        .loading-dots span:nth-child(1) {
+          animation-delay: -0.32s;
+        }
+        
+        .loading-dots span:nth-child(2) {
+          animation-delay: -0.16s;
+        }
+        
+        @keyframes buttonBounce {
+          0%, 80%, 100% {
+            transform: scale(0);
+            opacity: 0.5;
+          }
+          40% {
+            transform: scale(1);
+            opacity: 1;
+          }
       `}</style>
 
     <div className="page-container">
@@ -350,8 +406,16 @@ const Signup = () => {
                 <label htmlFor="password">Confirm Password:</label>
                 <input type="password" id="password" name="password" required />
               </div>
-              <button type="submit" className="btn" style={{ marginBottom: "30px" }}>
-                REGISTER
+              <button type="submit" className="btn" style={{ marginBottom: "30px" }} disabled={isRegistering}>
+                {isRegistering ? (
+                  <div className="loading-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                ) : (
+                  "REGISTER"
+                )}
               </button>
             </form>
           </div>

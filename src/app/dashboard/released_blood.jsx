@@ -77,15 +77,17 @@ const ReleasedBlood = () => {
       const [rbcData, plasmaData, plateletData] = await Promise.all([
         window.electronAPI.getReleasedBloodStock(),
         window.electronAPI.getReleasedPlasmaStock(),
-        window.electronAPI.getReleasedPlateletStock()
+        window.electronAPI.getReleasedPlateletStock(),
       ]);
 
-      const combinedData = [...rbcData, ...plasmaData, ...plateletData].sort((a, b) => {
-        const dateA = new Date(a.releasedAt);
-        const dateB = new Date(b.releasedAt);
-        return dateB - dateA;
-      });
-      
+      const combinedData = [...rbcData, ...plasmaData, ...plateletData].sort(
+        (a, b) => {
+          const dateA = new Date(a.releasedAt);
+          const dateB = new Date(b.releasedAt);
+          return dateB - dateA;
+        }
+      );
+
       setBloodData(combinedData);
     } catch (err) {
       console.error("Error loading released blood data:", err);
@@ -100,12 +102,13 @@ const ReleasedBlood = () => {
     setSearchTerm(value);
   };
 
-  const filteredData = bloodData.filter(item => 
-    item.serial_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.rhFactor?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.status?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.category?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredData = bloodData.filter(
+    (item) =>
+      item.serial_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.rhFactor?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.status?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.category?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handleSort = (key) => {
@@ -154,15 +157,15 @@ const ReleasedBlood = () => {
   const displayData = getSortedAndFilteredData();
 
   const toggleRowSelection = (id) => {
-    setBloodData(prevData => 
-      prevData.map(item => 
+    setBloodData((prevData) =>
+      prevData.map((item) =>
         item.id === id ? { ...item, selected: !item.selected } : item
       )
     );
   };
 
   const toggleAllSelection = () => {
-    const allSelected = displayData.every(item => item.selected);
+    const allSelected = displayData.every((item) => item.selected);
     setBloodData((prevData) =>
       prevData.map((item) => {
         if (displayData.find((d) => d.id === item.id)) {
@@ -174,12 +177,12 @@ const ReleasedBlood = () => {
   };
 
   const clearAllSelection = () => {
-    setBloodData(prevData => 
-      prevData.map(item => ({ ...item, selected: false }))
+    setBloodData((prevData) =>
+      prevData.map((item) => ({ ...item, selected: false }))
     );
   };
 
-  const selectedCount = displayData.filter(item => item.selected).length;
+  const selectedCount = displayData.filter((item) => item.selected).length;
   const singleSelected = selectedCount === 1;
 
   const getCategoryBadgeStyle = (category) => {
@@ -193,19 +196,19 @@ const ReleasedBlood = () => {
     };
 
     switch (category) {
-      case 'Red Blood Cell':
+      case "Red Blood Cell":
         return {
           ...baseStyle,
           backgroundColor: "#fef2f2",
           color: "#991b1b",
         };
-      case 'Plasma':
+      case "Plasma":
         return {
           ...baseStyle,
           backgroundColor: "#eff6ff",
           color: "#1e40af",
         };
-      case 'Platelet':
+      case "Platelet":
         return {
           ...baseStyle,
           backgroundColor: "#f0fdf4",
@@ -222,12 +225,12 @@ const ReleasedBlood = () => {
 
   const getCategoryDisplayName = (category) => {
     switch (category) {
-      case 'Red Blood Cell':
-        return 'RBC';
-      case 'Plasma':
-        return 'Plasma';
-      case 'Platelet':
-        return 'Platelet';
+      case "Red Blood Cell":
+        return "RBC";
+      case "Plasma":
+        return "Plasma";
+      case "Platelet":
+        return "Platelet";
       default:
         return category;
     }
@@ -290,7 +293,7 @@ const ReleasedBlood = () => {
         type: editingItem.type,
         rhFactor: editingItem.rhFactor,
         volume: editingItem.volume,
-        source: editingItem.source || 'Walk-In',
+        source: editingItem.source || "Walk-In",
         collection: editingItem.collection,
         expiration: editingItem.expiration,
         status: editingItem.status,
@@ -298,12 +301,21 @@ const ReleasedBlood = () => {
 
       // Update released blood directly without restoring
       // Use the correct API function names based on your backend
-      if (editingItem.category === 'Red Blood Cell') {
-        await window.electronAPI.updateReleasedBloodStock(editingItem.id, stockData);
-      } else if (editingItem.category === 'Plasma') {
-        await window.electronAPI.updateReleasedPlasmaStock(editingItem.id, stockData);
-      } else if (editingItem.category === 'Platelet') {
-        await window.electronAPI.updateReleasedPlateletStock(editingItem.id, stockData);
+      if (editingItem.category === "Red Blood Cell") {
+        await window.electronAPI.updateReleasedBloodStock(
+          editingItem.id,
+          stockData
+        );
+      } else if (editingItem.category === "Plasma") {
+        await window.electronAPI.updateReleasedPlasmaStock(
+          editingItem.id,
+          stockData
+        );
+      } else if (editingItem.category === "Platelet") {
+        await window.electronAPI.updateReleasedPlateletStock(
+          editingItem.id,
+          stockData
+        );
       }
 
       setShowEditModal(false);
@@ -337,31 +349,37 @@ const ReleasedBlood = () => {
       const selectedIds = bloodData
         .filter((item) => item.selected)
         .map((item) => ({ id: item.id, category: item.category }));
-      
+
       if (selectedIds.length === 0) return;
 
       // Group by category
       const itemsByCategory = {
-        'Red Blood Cell': [],
-        'Plasma': [],
-        'Platelet': []
+        "Red Blood Cell": [],
+        Plasma: [],
+        Platelet: [],
       };
 
-      selectedIds.forEach(item => {
+      selectedIds.forEach((item) => {
         if (itemsByCategory[item.category]) {
           itemsByCategory[item.category].push(item.id);
         }
       });
 
       // Delete from each category
-      if (itemsByCategory['Red Blood Cell'].length > 0) {
-        await window.electronAPI.deleteReleasedBloodStock(itemsByCategory['Red Blood Cell']);
+      if (itemsByCategory["Red Blood Cell"].length > 0) {
+        await window.electronAPI.deleteReleasedBloodStock(
+          itemsByCategory["Red Blood Cell"]
+        );
       }
-      if (itemsByCategory['Plasma'].length > 0) {
-        await window.electronAPI.deleteReleasedPlasmaStock(itemsByCategory['Plasma']);
+      if (itemsByCategory["Plasma"].length > 0) {
+        await window.electronAPI.deleteReleasedPlasmaStock(
+          itemsByCategory["Plasma"]
+        );
       }
-      if (itemsByCategory['Platelet'].length > 0) {
-        await window.electronAPI.deleteReleasedPlateletStock(itemsByCategory['Platelet']);
+      if (itemsByCategory["Platelet"].length > 0) {
+        await window.electronAPI.deleteReleasedPlateletStock(
+          itemsByCategory["Platelet"]
+        );
       }
 
       setShowConfirmDeleteModal(false);
@@ -429,17 +447,17 @@ const ReleasedBlood = () => {
           const [rbcData, plasmaData, plateletData] = await Promise.all([
             window.electronAPI.getReleasedBloodStock(),
             window.electronAPI.getReleasedPlasmaStock(),
-            window.electronAPI.getReleasedPlateletStock()
+            window.electronAPI.getReleasedPlateletStock(),
           ]);
 
           const allReleasedData = [...rbcData, ...plasmaData, ...plateletData];
-          
-          let stockData = allReleasedData.find(item => 
-            item.serial_id === value.trim()
+
+          let stockData = allReleasedData.find(
+            (item) => item.serial_id === value.trim()
           );
 
           if (!stockData) {
-            const partialMatches = allReleasedData.filter(item =>
+            const partialMatches = allReleasedData.filter((item) =>
               item.serial_id.toLowerCase().includes(value.trim().toLowerCase())
             );
             if (partialMatches.length > 0) {
@@ -457,7 +475,7 @@ const ReleasedBlood = () => {
                       bloodType: stockData.type,
                       rhFactor: stockData.rhFactor,
                       volume: stockData.volume,
-                      source: stockData.source || 'Walk-In',
+                      source: stockData.source || "Walk-In",
                       collection: stockData.collection,
                       expiration: stockData.expiration,
                       status: stockData.status,
@@ -488,10 +506,15 @@ const ReleasedBlood = () => {
                   : item
               )
             );
-            setError(`No released blood stock found with serial ID: ${value.trim()}`);
+            setError(
+              `No released blood stock found with serial ID: ${value.trim()}`
+            );
           }
         } catch (err) {
-          console.error("Error fetching released blood stock by serial ID:", err);
+          console.error(
+            "Error fetching released blood stock by serial ID:",
+            err
+          );
           setError("Failed to fetch released blood stock data");
           setSelectedItems((prev) =>
             prev.map((item, i) =>
@@ -547,34 +570,36 @@ const ReleasedBlood = () => {
         setError("Electron API not available");
         return;
       }
-  
+
       const validItems = selectedItems.filter(
         (item) => item.found && item.serialId
       );
-  
+
       if (validItems.length === 0) {
         setError("No valid items to restore");
         return;
       }
-  
+
       const itemsByCategory = {
-        'Red Blood Cell': [],
-        'Plasma': [],
-        'Platelet': []
+        "Red Blood Cell": [],
+        Plasma: [],
+        Platelet: [],
       };
-  
-      validItems.forEach(item => {
+
+      validItems.forEach((item) => {
         if (itemsByCategory[item.category]) {
           itemsByCategory[item.category].push(item.serialId);
         }
       });
-  
+
       let totalRestored = 0;
       const results = [];
-  
-      if (itemsByCategory['Red Blood Cell'].length > 0) {
+
+      if (itemsByCategory["Red Blood Cell"].length > 0) {
         try {
-          const result = await window.electronAPI.restoreBloodStock(itemsByCategory['Red Blood Cell']);
+          const result = await window.electronAPI.restoreBloodStock(
+            itemsByCategory["Red Blood Cell"]
+          );
           totalRestored += result.restoredCount;
           results.push(`RBC: ${result.restoredCount}`);
         } catch (err) {
@@ -582,10 +607,12 @@ const ReleasedBlood = () => {
           setError(`Failed to restore Red Blood Cell items: ${err.message}`);
         }
       }
-  
-      if (itemsByCategory['Plasma'].length > 0) {
+
+      if (itemsByCategory["Plasma"].length > 0) {
         try {
-          const result = await window.electronAPI.restorePlasmaStock(itemsByCategory['Plasma']);
+          const result = await window.electronAPI.restorePlasmaStock(
+            itemsByCategory["Plasma"]
+          );
           totalRestored += result.restoredCount;
           results.push(`Plasma: ${result.restoredCount}`);
         } catch (err) {
@@ -593,10 +620,12 @@ const ReleasedBlood = () => {
           setError(`Failed to restore Plasma items: ${err.message}`);
         }
       }
-  
-      if (itemsByCategory['Platelet'].length > 0) {
+
+      if (itemsByCategory["Platelet"].length > 0) {
         try {
-          const result = await window.electronAPI.restorePlateletStock(itemsByCategory['Platelet']);
+          const result = await window.electronAPI.restorePlateletStock(
+            itemsByCategory["Platelet"]
+          );
           totalRestored += result.restoredCount;
           results.push(`Platelet: ${result.restoredCount}`);
         } catch (err) {
@@ -604,7 +633,7 @@ const ReleasedBlood = () => {
           setError(`Failed to restore Platelet items: ${err.message}`);
         }
       }
-  
+
       setShowConfirmRestoreModal(false);
       setSelectedItems([
         {
@@ -620,14 +649,14 @@ const ReleasedBlood = () => {
           found: false,
         },
       ]);
-  
+
       await loadReleasedBloodData();
-      
+
       if (totalRestored > 0) {
         setError(null);
         setSuccessMessage({
           title: "Stock Restored Successfully!",
-          description: `${totalRestored} blood stock item(s) have been restored to inventory. ${results.join(', ')}`,
+          description: `${totalRestored} blood stock item(s) have been restored to inventory. ${results.join(", ")}`,
         });
         setShowSuccessModal(true);
       }
@@ -806,7 +835,7 @@ const ReleasedBlood = () => {
       padding: "12px 16px",
       fontSize: "12px",
       color: "#111827",
-      fontFamily: 'Arial',
+      fontFamily: "Arial",
       borderBottom: "1px solid rgba(163, 163, 163, 0.2)",
     },
     statusBadge: {
@@ -819,7 +848,7 @@ const ReleasedBlood = () => {
       color: "#065f46",
       borderRadius: "9999px",
     },
-  
+
     checkbox: {
       width: "16px",
       height: "16px",
@@ -843,7 +872,7 @@ const ReleasedBlood = () => {
       boxShadow: "0 8px 20px rgba(0, 0, 0, 0.3)",
       borderRadius: "8px",
       zIndex: 1000,
-      color: 'white',
+      color: "white",
       overflow: "hidden",
     },
     closeButton: {
@@ -905,10 +934,11 @@ const ReleasedBlood = () => {
       backgroundColor: "#fee2e2",
       color: "#991b1b",
       padding: "12px 16px",
-      borderRadius: "8px",
-      marginBottom: "20px",
+      borderRadius: "6px",
+      marginTop: "16px",
+      fontSize: "14px",
       display: "flex",
-      alignItems: "center",
+      alignItems: "flex-start",
       gap: "8px",
     },
     refreshButton: {
@@ -1199,7 +1229,7 @@ const ReleasedBlood = () => {
     },
     tableHeader: {
       display: "grid",
-      gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
+      gridTemplateColumns: "1.6fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr",
       gap: "15px",
       marginBottom: "15px",
       padding: "0 5px",
@@ -1213,13 +1243,17 @@ const ReleasedBlood = () => {
     },
   };
 
-  const allSelected = displayData.length > 0 && displayData.every(item => item.selected);
-  const someSelected = displayData.some(item => item.selected) && !allSelected;
+  const allSelected =
+    displayData.length > 0 && displayData.every((item) => item.selected);
+  const someSelected =
+    displayData.some((item) => item.selected) && !allSelected;
 
   if (loading) {
     return (
       <div style={styles.container}>
-        <div style={styles.loadingContainer}>Loading released blood data...</div>
+        <div style={styles.loadingContainer}>
+          Loading released blood data...
+        </div>
       </div>
     );
   }
@@ -1230,21 +1264,6 @@ const ReleasedBlood = () => {
         <h2 style={styles.title}>Released Blood</h2>
         <p style={styles.subtitle}>Blood Stock</p>
       </div>
-
-      {error && (
-        <div style={styles.errorContainer}>
-          <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
-            <path
-              fillRule="evenodd"
-              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-            />
-          </svg>
-          <span>{error}</span>
-          <button style={styles.refreshButton} onClick={loadReleasedBloodData}>
-            Retry
-          </button>
-        </div>
-      )}
 
       <div style={styles.controlsBar}>
         <div style={styles.leftControls}>
@@ -1482,12 +1501,12 @@ const ReleasedBlood = () => {
         <table style={styles.table}>
           <thead style={styles.thead}>
             <tr>
-              <th style={{...styles.th, width: "3%"}}>
+              <th style={{ ...styles.th, width: "3%" }}>
                 <input
                   type="checkbox"
                   style={styles.checkbox}
                   checked={allSelected}
-                  ref={input => {
+                  ref={(input) => {
                     if (input) {
                       input.indeterminate = someSelected;
                     }
@@ -1495,17 +1514,17 @@ const ReleasedBlood = () => {
                   onChange={toggleAllSelection}
                 />
               </th>
-              <th style={{...styles.th, width: "11%"}}>SERIAL ID</th>
-              <th style={{...styles.th, width: "8%"}}>CATEGORY</th>
-              <th style={{...styles.th, width: "7%"}}>BLOOD TYPE</th>
-              <th style={{...styles.th, width: "6%"}}>RH FACTOR</th>
-              <th style={{...styles.th, width: "7%"}}>VOLUME (ML)</th>
-              <th style={{...styles.th, width: "7%"}}>SOURCE</th>
-              <th style={{...styles.th, width: "10%"}}>DATE OF COLLECTION</th>
-              <th style={{...styles.th, width: "10%"}}>EXPIRATION DATE</th>
-              <th style={{...styles.th, width: "7%"}}>STATUS</th>
-              <th style={{...styles.th, width: "10%"}}>RELEASED AT</th>
-              <th style={{...styles.th, width: "10%"}}>MODIFIED AT</th>
+              <th style={{ ...styles.th, width: "11%" }}>SERIAL ID</th>
+              <th style={{ ...styles.th, width: "8%" }}>CATEGORY</th>
+              <th style={{ ...styles.th, width: "7%" }}>BLOOD TYPE</th>
+              <th style={{ ...styles.th, width: "6%" }}>RH FACTOR</th>
+              <th style={{ ...styles.th, width: "7%" }}>VOLUME (ML)</th>
+              <th style={{ ...styles.th, width: "7%" }}>SOURCE</th>
+              <th style={{ ...styles.th, width: "10%" }}>DATE OF COLLECTION</th>
+              <th style={{ ...styles.th, width: "10%" }}>EXPIRATION DATE</th>
+              <th style={{ ...styles.th, width: "7%" }}>STATUS</th>
+              <th style={{ ...styles.th, width: "10%" }}>RELEASED AT</th>
+              <th style={{ ...styles.th, width: "10%" }}>MODIFIED AT</th>
             </tr>
           </thead>
           <tbody style={styles.tbody}>
@@ -1515,16 +1534,18 @@ const ReleasedBlood = () => {
                   colSpan="11"
                   style={{ ...styles.td, textAlign: "center", padding: "40px" }}
                 >
-                  {searchTerm || filterConfig.value ? "No released blood records found matching your criteria" : "No released blood records found"}
+                  {searchTerm || filterConfig.value
+                    ? "No released blood records found matching your criteria"
+                    : "No released blood records found"}
                 </td>
               </tr>
             ) : (
               displayData.map((item, index) => (
-                <tr 
-                  key={item.id} 
+                <tr
+                  key={item.id}
                   style={{
                     ...(index % 2 === 1 ? styles.trEven : {}),
-                    ...(item.selected ? styles.trSelected : {})
+                    ...(item.selected ? styles.trSelected : {}),
                   }}
                 >
                   <td style={styles.td}>
@@ -1544,7 +1565,7 @@ const ReleasedBlood = () => {
                   <td style={styles.td}>{item.type}</td>
                   <td style={styles.td}>{item.rhFactor}</td>
                   <td style={styles.td}>{item.volume}</td>
-                  <td style={styles.td}>{item.source || 'Walk-In'}</td>
+                  <td style={styles.td}>{item.source || "Walk-In"}</td>
                   <td style={styles.td}>{item.collection}</td>
                   <td style={styles.td}>{item.expiration}</td>
                   <td style={styles.td}>
@@ -1562,29 +1583,62 @@ const ReleasedBlood = () => {
       {selectedCount > 0 && (
         <div style={styles.actionBar}>
           <button style={styles.closeButton} onClick={clearAllSelection}>
-            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <svg
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
-          
+
           <div style={styles.counterSection}>
             <span style={styles.counterText}>
-              {selectedCount} {selectedCount === 1 ? 'item' : 'items'} selected
+              {selectedCount} {selectedCount === 1 ? "item" : "items"} selected
             </span>
           </div>
-          
+
           {singleSelected && (
             <button style={styles.editButton} onClick={handleEditClick}>
-              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              <svg
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                />
               </svg>
               <span>Edit</span>
             </button>
           )}
-          
+
           <button style={styles.deleteButton} onClick={handleDeleteClick}>
-            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            <svg
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+              />
             </svg>
             <span>Delete</span>
           </button>
@@ -1653,9 +1707,9 @@ const ReleasedBlood = () => {
                 <div style={styles.tableHeaderCell}>Blood Type</div>
                 <div style={styles.tableHeaderCell}>Rh Factor</div>
                 <div style={styles.tableHeaderCell}>Volume (mL)</div>
-                <div style={styles.tableHeaderCell}>Source</div>
                 <div style={styles.tableHeaderCell}>Date of Collection</div>
                 <div style={styles.tableHeaderCell}>Expiration Date</div>
+                <div style={styles.tableHeaderCell}>Source</div>
               </div>
 
               <div style={styles.dataRow}>
@@ -1697,16 +1751,6 @@ const ReleasedBlood = () => {
                   }
                   min="1"
                 />
-                <select
-                  style={styles.fieldSelect}
-                  value={editingItem.source || 'Walk-In'}
-                  onChange={(e) =>
-                    handleEditItemChange("source", e.target.value)
-                  }
-                >
-                  <option value="Walk-In">Walk-In</option>
-                  <option value="Mobile">Mobile</option>
-                </select>
                 <input
                   type="date"
                   style={styles.fieldInput}
@@ -1722,7 +1766,28 @@ const ReleasedBlood = () => {
                   readOnly
                   disabled
                 />
+                <select
+                  style={styles.fieldSelect}
+                  value={editingItem.source || "Walk-In"}
+                  onChange={(e) =>
+                    handleEditItemChange("source", e.target.value)
+                  }
+                >
+                  <option value="Walk-In">Walk-In</option>
+                  <option value="Mobile">Mobile</option>
+                </select>
               </div>
+              {error && (
+                  <div style={styles.errorContainer}>
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20" style={{ flexShrink: 0, marginTop: '2px' }}>
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                      />
+                    </svg>
+                    <span>{error}</span>
+                  </div>
+                )}
             </div>
 
             <div style={styles.modalFooter}>
@@ -1748,7 +1813,9 @@ const ReleasedBlood = () => {
             <div style={styles.modalHeader}>
               <div style={styles.modalTitleSection}>
                 <h3 style={styles.modalTitle}>Restore Blood Stock</h3>
-                <p style={styles.modalSubtitle}>Return released items to blood stock</p>
+                <p style={styles.modalSubtitle}>
+                  Return released items to blood stock
+                </p>
               </div>
               <button
                 style={styles.modalCloseButton}
@@ -1772,7 +1839,8 @@ const ReleasedBlood = () => {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
+                  gridTemplateColumns:
+                    "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
                   gap: "15px",
                   marginBottom: "15px",
                   padding: "0 5px",
@@ -1792,18 +1860,19 @@ const ReleasedBlood = () => {
               <div style={styles.rowsContainer}>
                 {selectedItems.map((item, index) => (
                   <div
-                  key={index}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
-                    gap: "6px",
-                    marginBottom: "15px",
-                    alignItems: "center",
-                    backgroundColor: item.found ? "#f0f9ff" : "#fef2f2",
-                    padding: "8px 5px",
-                    borderRadius: "4px",
-                  }}
-                >
+                    key={index}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "2fr 1fr 1fr 1fr 1.5fr 1.5fr 1fr 1fr 1fr",
+                      gap: "6px",
+                      marginBottom: "15px",
+                      alignItems: "center",
+                      backgroundColor: item.found ? "#f0f9ff" : "#fef2f2",
+                      padding: "8px 5px",
+                      borderRadius: "4px",
+                    }}
+                  >
                     <div style={{ position: "relative" }}>
                       <style>{`
                         .serial-input::placeholder {
@@ -1953,16 +2022,16 @@ const ReleasedBlood = () => {
                     />
 
                     <input
-                        type="text"
-                        style={{
-                          ...styles.fieldInputDisabled,
-                          backgroundColor: item.found ? "#f0f9ff" : "#f9fafb",
-                          color: item.found ? "#374151" : "#9ca3af",
-                        }}
-                        value={item.source || 'Walk-In'}
-                        readOnly
-                        disabled
-                      />
+                      type="text"
+                      style={{
+                        ...styles.fieldInputDisabled,
+                        backgroundColor: item.found ? "#f0f9ff" : "#f9fafb",
+                        color: item.found ? "#374151" : "#9ca3af",
+                      }}
+                      value={item.source || "Walk-In"}
+                      readOnly
+                      disabled
+                    />
 
                     <input
                       type="text"
@@ -2026,6 +2095,23 @@ const ReleasedBlood = () => {
                     </button>
                   </div>
                 ))}
+                {error && (
+                  <div style={styles.errorContainer}>
+                    <svg
+                      width="16"
+                      height="16"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                      style={{ flexShrink: 0, marginTop: "2px" }}
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                      />
+                    </svg>
+                    <span>{error}</span>
+                  </div>
+                )}
               </div>
 
               <button
@@ -2088,8 +2174,8 @@ const ReleasedBlood = () => {
                 style={styles.confirmButton}
                 onClick={proceedToConfirmRestore}
               >
-                Proceed (
-                {selectedItems.filter((item) => item.found).length} items)
+                Proceed ({selectedItems.filter((item) => item.found).length}{" "}
+                items)
               </button>
             </div>
           </div>
@@ -2106,7 +2192,9 @@ const ReleasedBlood = () => {
             <div style={styles.modalHeader}>
               <div style={styles.modalTitleSection}>
                 <h3 style={styles.modalTitle}>Confirm Restore</h3>
-                <p style={styles.modalSubtitle}>Review items before restoring to blood stock</p>
+                <p style={styles.modalSubtitle}>
+                  Review items before restoring to blood stock
+                </p>
               </div>
               <button
                 style={styles.modalCloseButton}
@@ -2249,7 +2337,8 @@ const ReleasedBlood = () => {
                       lineHeight: "1.5",
                     }}
                   >
-                    These items will be moved from Released Blood back to the active Blood Stock inventory. This action cannot be undone.
+                    These items will be moved from Released Blood back to the
+                    active Blood Stock inventory. This action cannot be undone.
                   </p>
                 </div>
               </div>
@@ -2307,7 +2396,8 @@ const ReleasedBlood = () => {
                     margin: "0 0 12px 0",
                   }}
                 >
-                  Items to Delete ({bloodData.filter((item) => item.selected).length})
+                  Items to Delete (
+                  {bloodData.filter((item) => item.selected).length})
                 </h4>
                 <div
                   style={{
@@ -2421,7 +2511,8 @@ const ReleasedBlood = () => {
                       lineHeight: "1.5",
                     }}
                   >
-                    These items will be permanently deleted from the Released Blood records. This action cannot be undone.
+                    These items will be permanently deleted from the Released
+                    Blood records. This action cannot be undone.
                   </p>
                 </div>
               </div>
