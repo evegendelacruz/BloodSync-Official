@@ -1,11 +1,11 @@
-import React, { useState } from "react";
-import { Calendar, Mail, Bell, User } from "lucide-react";
+import React, { useState, useEffect } from "react"; // FIXED: Added useEffect import
+import { Calendar, Mail, Bell, User, Droplet } from "lucide-react";
 import SidePanel from "../../components/SidePanel";
 
 import MailComponent from "./(tabs)/mail";
 import CalendarComponent from "./(tabs)/calendar";
 import NotificationComponent from "./(tabs)/notification";
-import ProfileComponent from "././(tabs)/profile/profile";
+import ProfileComponent from "./(tabs)/profile/profile"; // FIXED: Removed extra dot
 import Login from "../login";
 import Plasma from "./blood_stock/plasma";
 import Platelet from "./blood_stock/platelet";
@@ -21,13 +21,508 @@ import PlateletNC from "./non-conforming/platelet";
 import RedBloodCellNC from "./non-conforming/rbc";
 
 const DashboardContent = () => {
+  const [dashboardData, setDashboardData] = useState({
+    totalStored: 0,
+    bloodTypes: {
+      "O+": 0,
+      "O-": 0,
+      "A+": 0,
+      "A-": 0,
+      "B+": 0,
+      "B-": 0,
+      "AB+": 0,
+      "AB-": 0,
+    },
+    expiringSoon: [],
+    components: {
+      rbc: 0,
+      plasma: 0,
+      platelet: 0,
+    },
+    releasedThisMonth: {
+      rbc: "",
+      plasma: "",
+      platelet: "",
+    },
+    walkInQuarterlyDonations: [0, 0, 0, 0],
+    mobileQuarterlyDonations: [0, 0, 0, 0],
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const extractMonthFromDate = (dateString) => {
+    if (!dateString) return null;
+    
+    // Handle YYYY-MM-DD format
+    const [year, month, day] = dateString.split("-").map(num => parseInt(num, 10));
+    return month; // Returns 1-12
+  };
+  
+  const extractYearFromDate = (dateString) => {
+    if (!dateString) return null;
+    
+    // Handle YYYY-MM-DD format
+    const [year, month, day] = dateString.split("-").map(num => parseInt(num, 10));
+    return year;
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      let dbService;
+
+      if (window.dbService) {
+        dbService = window.dbService;
+      } else if (window.electronAPI) {
+        console.log("✅ Using window.electronAPI");
+
+        // Get stored blood data
+        const [storedData, plasmaData, plateletData] = await Promise.all([
+          window.electronAPI.getAllBloodStock(),
+          window.electronAPI.getPlasmaStock(),
+          window.electronAPI.getPlateletStock(),
+        ]);
+
+        // Get released blood data - THESE ALREADY HAVE release_month and release_year
+        const releasedRBC = await window.electronAPI.getReleasedBloodStock();
+        const releasedPlasma =
+          await window.electronAPI.getReleasedPlasmaStock();
+        const releasedPlatelet =
+          await window.electronAPI.getReleasedPlateletStock();
+
+        console.log("✅ Raw Released Data:", {
+          rbc: releasedRBC,
+          plasma: releasedPlasma,
+          platelet: releasedPlatelet,
+        });
+
+        // Pass the data directly - no need to process
+        processAndSetDashboardData(
+          storedData,
+          plasmaData,
+          plateletData,
+          releasedRBC,
+          releasedPlasma,
+          releasedPlatelet
+        );
+        return;
+      } else if (typeof require !== "undefined") {
+        try {
+          dbService = require("./database/dbService");
+        } catch (err) {
+          console.error("Could not require dbService:", err);
+        }
+      }
+
+      if (dbService) {
+        console.log("✅ Using dbService directly");
+        const [
+          storedData,
+          plasmaData,
+          plateletData,
+          releasedRBC,
+          releasedPlasma,
+          releasedPlatelet,
+        ] = await Promise.all([
+          dbService.getAllBloodStock(),
+          dbService.getPlasmaStock(),
+          dbService.getPlateletStock(),
+          dbService.getReleasedBloodStockItems(),
+          dbService.getReleasedPlasmaStockItems(),
+          dbService.getReleasedPlateletStockItems(),
+        ]);
+
+        processAndSetDashboardData(
+          storedData,
+          plasmaData,
+          plateletData,
+          releasedRBC,
+          releasedPlasma,
+          releasedPlatelet
+        );
+      } else {
+        console.warn("Database service not available, using mock data");
+        setDashboardData({
+          totalStored: 145,
+          bloodTypes: {
+            "O+": 42,
+            "O-": 18,
+            "A+": 35,
+            "A-": 12,
+            "B+": 21,
+            "B-": 8,
+            "AB+": 7,
+            "AB-": 2,
+          },
+          expiringSoon: [],
+          components: {
+            rbc: 145,
+            plasma: 87,
+            platelet: 56,
+          },
+          releasedThisMonth: {
+            rbc: 23,
+            plasma: 15,
+            platelet: 9,
+          },
+          walkInQuarterlyDonations: [120, 135, 158, 145],
+          mobileQuarterlyDonations: [80, 95, 102, 88],
+        });
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+      setError(error.message);
+      setLoading(false);
+    }
+  };
+
+  const processAndSetDashboardData = (
+    storedData,
+    plasmaData,
+    plateletData,
+    releasedRBC,
+    releasedPlasma,
+    releasedPlatelet
+  ) => {
+    try {
+      // Count by blood type
+      const bloodTypeCounts = {
+        "O+": 0,
+        "O-": 0,
+        "A+": 0,
+        "A-": 0,
+        "B+": 0,
+        "B-": 0,
+        "AB+": 0,
+        "AB-": 0,
+      };
+  
+      storedData.forEach((item) => {
+        const bloodType = `${item.type}${item.rhFactor}`;
+        if (bloodTypeCounts.hasOwnProperty(bloodType)) {
+          bloodTypeCounts[bloodType]++;
+        }
+      });
+  
+      const totalStored = storedData.length;
+  
+      // Fetch expiring blood (within 7 days)
+      const today = new Date();
+      const sevenDaysLater = new Date(today);
+      sevenDaysLater.setDate(today.getDate() + 7);
+  
+      // Check RBC
+      const rbcData = storedData.filter((item) => {
+        const expirationDate = new Date(item.expiration);
+        return expirationDate <= sevenDaysLater && expirationDate >= today;
+      });
+  
+      // Check Plasma
+      const expiringPlasma = plasmaData.filter((item) => {
+        const expirationDate = new Date(item.expiration);
+        return expirationDate <= sevenDaysLater && expirationDate >= today;
+      });
+  
+      // Check Platelet
+      const expiringPlatelet = plateletData.filter((item) => {
+        const expirationDate = new Date(item.expiration);
+        return expirationDate <= sevenDaysLater && expirationDate >= today;
+      });
+  
+      // Group by blood type and component
+      const expirationMap = new Map();
+  
+      rbcData.forEach((item) => {
+        const key = `${item.type}${item.rhFactor}-RBC`;
+        if (!expirationMap.has(key)) {
+          expirationMap.set(key, {
+            type: `${item.type}${item.rhFactor}`,
+            component: "RBC",
+            units: 0,
+            expiration: item.expiration,
+            daysUntilExpiry: Math.ceil(
+              (new Date(item.expiration) - today) / (1000 * 60 * 60 * 24)
+            ),
+          });
+        }
+        expirationMap.get(key).units++;
+      });
+  
+      expiringPlasma.forEach((item) => {
+        const key = `${item.type}${item.rhFactor}-Plasma`;
+        if (!expirationMap.has(key)) {
+          expirationMap.set(key, {
+            type: `${item.type}${item.rhFactor}`,
+            component: "Plasma",
+            units: 0,
+            expiration: item.expiration,
+            daysUntilExpiry: Math.ceil(
+              (new Date(item.expiration) - today) / (1000 * 60 * 60 * 24)
+            ),
+          });
+        }
+        expirationMap.get(key).units++;
+      });
+  
+      expiringPlatelet.forEach((item) => {
+        const key = `${item.type}${item.rhFactor}-Platelet`;
+        if (!expirationMap.has(key)) {
+          expirationMap.set(key, {
+            type: `${item.type}${item.rhFactor}`,
+            component: "Platelet",
+            units: 0,
+            expiration: item.expiration,
+            daysUntilExpiry: Math.ceil(
+              (new Date(item.expiration) - today) / (1000 * 60 * 60 * 24)
+            ),
+          });
+        }
+        expirationMap.get(key).units++;
+      });
+  
+      const expiringList = Array.from(expirationMap.values())
+        .sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry)
+        .slice(0, 4);
+  
+      // Count components available
+      const components = {
+        rbc: storedData.length,
+        plasma: plasmaData.length,
+        platelet: plateletData.length,
+      };
+
+      // Count released this month
+      const currentMonth = today.getMonth() + 1; // 1-12
+      const currentYear = today.getFullYear();
+
+      const releasedThisMonth = {
+        rbc: 0,
+        plasma: 0,
+        platelet: 0,
+      };
+
+      // Count RBC released this month
+      if (Array.isArray(releasedRBC) && releasedRBC.length > 0) {
+        releasedRBC.forEach((item) => {
+          if (item.dateofrelease) {
+            // Split MM/DD/YYYY format (e.g., "11/15/2025")
+            const [month, day, year] = item.dateofrelease.split('/').map(Number);
+            
+            if (month === currentMonth && year === currentYear) {
+              releasedThisMonth.rbc++;
+            }
+          }
+        });
+      }
+
+      // Count Plasma released this month
+      if (Array.isArray(releasedPlasma) && releasedPlasma.length > 0) {
+        releasedPlasma.forEach((item) => {
+          if (item.dateofrelease) {
+            // Split MM/DD/YYYY format (e.g., "11/15/2025")
+            const [month, day, year] = item.dateofrelease.split('/').map(Number);
+            
+            if (month === currentMonth && year === currentYear) {
+              releasedThisMonth.plasma++;
+            }
+          }
+        });
+      }
+
+      // Count Platelet released this month
+      if (Array.isArray(releasedPlatelet) && releasedPlatelet.length > 0) {
+        releasedPlatelet.forEach((item) => {
+          if (item.dateofrelease) {
+            // Split MM/DD/YYYY format (e.g., "11/15/2025")
+            const [month, day, year] = item.dateofrelease.split('/').map(Number);
+            
+            if (month === currentMonth && year === currentYear) {
+              releasedThisMonth.platelet++;
+            }
+          }
+        });
+      }
+          // Calculate quarterly data by source (Mobile vs Walk-In) from blood_stock_history
+    const walkInQuarterlyData = [0, 0, 0, 0];
+    const mobileQuarterlyData = [0, 0, 0, 0];
+
+    // Fetch history data and count by quarter
+    const fetchQuarterlyHistory = async () => {
+      try {
+        if (window.electronAPI) {
+          const yearNumber = parseInt(currentYear, 10);
+          console.log('Fetching history for year:', yearNumber);
+          
+          const historyData = await window.electronAPI.getBloodStockHistory(yearNumber);
+          
+          // Process history data - group by quarter and source
+          historyData.forEach((item) => {
+            // Parse the bsh_timestamp field (YYYY-MM-DD format from database)
+            const timestamp = new Date(item.bsh_timestamp);
+            const month = timestamp.getMonth(); // 0-11
+            const year = timestamp.getFullYear();
+            
+            if (year === currentYear) {
+              const quarter = Math.floor(month / 3); // 0-3 (Q1, Q2, Q3, Q4)
+              
+              if (quarter >= 0 && quarter < 4) {
+                // Check the source and increment the appropriate counter
+                if (item.source === "Mobile") {
+                  mobileQuarterlyData[quarter]++;
+                } else {
+                  // Default to Walk-In if not Mobile
+                  walkInQuarterlyData[quarter]++;
+                }
+              }
+            }
+          });
+          
+          console.log('Walk-In Quarterly Data:', walkInQuarterlyData);
+          console.log('Mobile Quarterly Data:', mobileQuarterlyData);
+          
+          setDashboardData({
+            totalStored,
+            bloodTypes: bloodTypeCounts,
+            expiringSoon: expiringList,
+            components,
+            releasedThisMonth,
+            walkInQuarterlyDonations: walkInQuarterlyData,
+            mobileQuarterlyDonations: mobileQuarterlyData,
+          });
+          
+          setLoading(false);
+        } else {
+          // Fallback to current stored data if history not available
+          parseCreatedDateFromStored();
+        }
+      } catch (error) {
+        console.error("Error fetching quarterly history:", error);
+        // Fallback to current stored data
+        parseCreatedDateFromStored();
+      }
+    };
+
+    // Fallback function using stored data's created dates
+    const parseCreatedDateFromStored = () => {
+      const parseCreatedDate = (dateString) => {
+        if (!dateString) return null;
+        const datePart = dateString.split("-")[0];
+        const [month, day, year] = datePart
+          .split("/")
+          .map((num) => parseInt(num, 10));
+        return new Date(year, month - 1, day);
+      };
+
+      // Count RBC by quarter and source
+      storedData.forEach((item) => {
+        const createdDate = parseCreatedDate(item.created);
+        if (createdDate && createdDate.getFullYear() === currentYear) {
+          const monthNum = createdDate.getMonth();
+          const quarter = Math.floor(monthNum / 3);
+          if (quarter >= 0 && quarter < 4) {
+            if (item.source === "Mobile") {
+              mobileQuarterlyData[quarter]++;
+            } else {
+              walkInQuarterlyData[quarter]++;
+            }
+          }
+        }
+      });
+
+      // Count Plasma by quarter and source
+      plasmaData.forEach((item) => {
+        const createdDate = parseCreatedDate(item.created);
+        if (createdDate && createdDate.getFullYear() === currentYear) {
+          const monthNum = createdDate.getMonth();
+          const quarter = Math.floor(monthNum / 3);
+          if (quarter >= 0 && quarter < 4) {
+            if (item.source === "Mobile") {
+              mobileQuarterlyData[quarter]++;
+            } else {
+              walkInQuarterlyData[quarter]++;
+            }
+          }
+        }
+      });
+
+      // Count Platelet by quarter and source
+      plateletData.forEach((item) => {
+        const createdDate = parseCreatedDate(item.created);
+        if (createdDate && createdDate.getFullYear() === currentYear) {
+          const monthNum = createdDate.getMonth();
+          const quarter = Math.floor(monthNum / 3);
+          if (quarter >= 0 && quarter < 4) {
+            if (item.source === "Mobile") {
+              mobileQuarterlyData[quarter]++;
+            } else {
+              walkInQuarterlyData[quarter]++;
+            }
+          }
+        }
+      });
+
+      console.log('Walk-In Quarterly Data (Fallback):', walkInQuarterlyData);
+      console.log('Mobile Quarterly Data (Fallback):', mobileQuarterlyData);
+
+      setDashboardData({
+        totalStored,
+        bloodTypes: bloodTypeCounts,
+        expiringSoon: expiringList,
+        components,
+        releasedThisMonth,
+        walkInQuarterlyDonations: walkInQuarterlyData,
+        mobileQuarterlyDonations: mobileQuarterlyData,
+      });
+
+      setLoading(false);
+    };
+
+    // Call the async function to fetch quarterly history
+    fetchQuarterlyHistory();
+    
+  } catch (error) {
+    console.error("Error processing dashboard data:", error);
+    setError(error.message);
+    setLoading(false);
+  }
+};
+  
+  const formatDate = (dateString) => {
+    if (dateString.includes("/")) {
+      return dateString;
+    }
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+  };
+
+  const getStatusBadge = (daysUntilExpiry) => {
+    if (daysUntilExpiry <= 3) {
+      return { label: "Urgent", style: styles.statusUrgent };
+    }
+    return { label: "Alert", style: styles.statusAlert };
+  };
+
   const styles = {
+    dashboardContainer: {
+      minHeight: "100vh",
+      backgroundColor: "#edf4e6",
+      padding: "1rem",
+    },
     dashboardContent: {
       animation: "fadeIn 0.5s ease-out",
       display: "flex",
       flexDirection: "column",
       gap: "1.5rem",
-      padding: "1rem",
     },
     mainStatsSection: {
       display: "grid",
@@ -49,22 +544,26 @@ const DashboardContent = () => {
     bloodDropIcon: {
       fontSize: "2rem",
       marginBottom: "0.5rem",
+      color: "#dc2626",
     },
     mainStatsNumber: {
       fontSize: "4rem",
       fontWeight: "bold",
       color: "#dc2626",
       lineHeight: 1,
+      fontFamily: "Barlow, sans-serif",
     },
     mainStatsTitle: {
       fontSize: "1.25rem",
       fontWeight: 600,
       color: "#111827",
       marginBottom: "0.5rem",
+      fontFamily: "Barlow, sans-serif",
     },
     mainStatsSubtitle: {
       fontSize: "0.875rem",
       color: "#6b7280",
+      fontFamily: "Arial, sans-serif",
     },
     bloodTypeGrid: {
       display: "grid",
@@ -83,23 +582,26 @@ const DashboardContent = () => {
       gap: "0.25rem",
     },
     bloodTypeIcon: {
-      fontSize: "1.25rem",
       color: "#dc2626",
+      marginBottom: "0.25rem",
     },
     bloodTypeCount: {
       fontSize: "1.5rem",
       fontWeight: "bold",
       color: "#dc2626",
+      fontFamily: "Barlow, sans-serif",
     },
     bloodTypeLabel: {
       fontSize: "0.75rem",
       fontWeight: 500,
       color: "#111827",
       lineHeight: 1.2,
+      fontFamily: "Arial, sans-serif",
     },
     bloodTypeDate: {
       fontSize: "0.625rem",
       color: "#6b7280",
+      fontFamily: "Arial, sans-serif",
     },
     dashboardGrid: {
       display: "grid",
@@ -113,19 +615,19 @@ const DashboardContent = () => {
       padding: "1.5rem",
       boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
     },
-    analyticsCard: {
-      gridRow: "span 2",
-    },
+
     cardTitle: {
       fontSize: "1.125rem",
       fontWeight: 600,
       color: "#111827",
       margin: "0 0 0.25rem 0",
+      fontFamily: "Barlow, sans-serif",
     },
     cardSubtitle: {
       fontSize: "0.875rem",
       color: "#6b7280",
       margin: "0 0 1.5rem 0",
+      fontFamily: "Arial, sans-serif",
     },
     expirationSection: {
       marginTop: "1rem",
@@ -135,6 +637,7 @@ const DashboardContent = () => {
       fontWeight: 600,
       color: "#dc2626",
       margin: "0 0 1rem 0",
+      fontFamily: "Barlow, sans-serif",
     },
     expirationTable: {
       display: "flex",
@@ -146,19 +649,21 @@ const DashboardContent = () => {
       gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr",
       gap: "0.5rem",
       fontSize: "0.75rem",
-      fontWeight: 600,
+      fontWeight: 500,
       color: "#6b7280",
       paddingBottom: "0.5rem",
       borderBottom: "1px solid #e5e7eb",
+      fontFamily: "Barlow",
     },
     tableRow: {
       display: "grid",
-      gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr",
+      gridTemplateColumns: "1fr 1fr 0.3fr 1fr 0.5fr",
       gap: "0.5rem",
-      fontSize: "0.75rem",
+      fontSize: "0.70rem",
       color: "#111827",
       padding: "0.5rem 0",
       alignItems: "center",
+      fontFamily: "Arial, sans-serif",
     },
     statusBadge: {
       padding: "0.25rem 0.5rem",
@@ -166,6 +671,7 @@ const DashboardContent = () => {
       fontSize: "0.625rem",
       fontWeight: 600,
       textAlign: "center",
+      fontFamily: "Arial, sans-serif",
     },
     statusAlert: {
       backgroundColor: "#fef3c7",
@@ -188,25 +694,36 @@ const DashboardContent = () => {
       borderBottom: "1px solid #f3f4f6",
     },
     componentLabel: {
-      fontSize: "0.875rem",
+      fontSize: "0.7rem",
       fontWeight: 500,
       color: "#111827",
+      fontFamily: "Arial, sans-serif",
     },
     componentCount: {
       fontSize: "1.5rem",
       fontWeight: "bold",
       color: "#dc2626",
+      fontFamily: "Barlow, sans-serif",
     },
+    analyticsCard: {
+      gridRow: "span 2",
+      display: "flex",
+      flexDirection: "column",
+    },
+
     chartContainer: {
       width: "100%",
-      height: "200px",
+      flex: 1,
       display: "flex",
-      alignItems: "center",
+      alignItems: "flex-end",
       justifyContent: "center",
+      padding: "0.5rem",
+      minHeight: "0",
     },
     analyticsChart: {
-      width: "100%",
-      height: "100%",
+      width: "90%",
+      height: "70%",
+      maxHeight: "70%",
     },
     releasedStats: {
       display: "flex",
@@ -224,219 +741,505 @@ const DashboardContent = () => {
       fontWeight: 500,
       color: "#6b7280",
       marginBottom: "0.5rem",
+      fontFamily: "Arial, sans-serif",
     },
     releasedCount: {
       fontSize: "2rem",
       fontWeight: "bold",
       color: "#dc2626",
+      fontFamily: "Barlow, sans-serif",
     },
-    upcomingDrives: {
+    loadingContainer: {
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      minHeight: "400px",
+      fontFamily: "Arial, sans-serif",
+      backgroundColor: "white",
+      borderRadius: "0.75rem",
+      padding: "2rem",
+      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+    },
+    errorContainer: {
       display: "flex",
       flexDirection: "column",
-      gap: "0.75rem",
+      justifyContent: "center",
+      alignItems: "center",
+      minHeight: "400px",
+      fontFamily: "Arial, sans-serif",
+      backgroundColor: "white",
+      borderRadius: "0.75rem",
+      padding: "2rem",
+      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+      gap: "1rem",
     },
-    driveItem: {
-      padding: "0.75rem",
-      backgroundColor: "#f9fafb",
-      borderRadius: "0.5rem",
-      borderLeft: "4px solid #10b981",
-    },
-    driveText: {
-      fontSize: "0.875rem",
-      color: "#111827",
-    },
-    seeMore: {
+    errorText: {
+      color: "#dc2626",
+      fontSize: "1rem",
       textAlign: "center",
-      marginTop: "0.5rem",
     },
-    seeMoreBtn: {
-      backgroundColor: "transparent",
+    retryButton: {
+      padding: "0.5rem 1.5rem",
+      backgroundColor: "#dc2626",
+      color: "white",
       border: "none",
-      color: "#059669",
-      fontSize: "0.875rem",
+      borderRadius: "0.5rem",
       cursor: "pointer",
-      padding: "0.5rem",
-      borderRadius: "0.25rem",
-      transition: "background-color 0.2s",
+      fontSize: "0.875rem",
+      fontWeight: 500,
+    },
+    noDataText: {
+      textAlign: "center",
+      color: "#6b7280",
+      fontSize: "0.875rem",
+      padding: "1rem",
+      fontFamily: "Arial, sans-serif",
     },
   };
 
-  return (
-    <div style={styles.dashboardContent}>
-      {/* Main Stats Section */}
-      <div style={styles.mainStatsSection}>
-        {/* Total Stored Blood - Large Card */}
-        <div style={styles.mainStatsCard}>
-          <div style={styles.bloodDropIcon}>🩸</div>
-          <div style={styles.mainStatsNumber}>628</div>
-          <div style={styles.mainStatsTitle}>Total Stored Blood</div>
-          <div style={styles.mainStatsSubtitle}>Updated - 11 March 2025 at 1:00 PM</div>
-        </div>
-
-        {/* Blood Type Grid */}
-        <div style={styles.bloodTypeGrid}>
-          {[
-            { type: "AB +", count: 85, date: "2025-03-11 13:00:00" },
-            { type: "A +", count: 96, date: "2025-03-11 13:00:00" },
-            { type: "B +", count: 102, date: "2025-03-11 13:00:00" },
-            { type: "O +", count: 78, date: "2025-03-11 13:00:00" },
-            { type: "AB -", count: 74, date: "2025-03-11 13:00:00" },
-            { type: "A -", count: 58, date: "2025-03-11 13:00:00" },
-            { type: "B -", count: 47, date: "2025-03-11 13:00:00" },
-            { type: "O -", count: 88, date: "2025-03-11 13:00:00" },
-          ].map((bloodType, index) => (
-            <div key={index} style={styles.bloodTypeCard}>
-              <div style={styles.bloodTypeIcon}>🩸</div>
-              <div style={styles.bloodTypeCount}>{bloodType.count}</div>
-              <div style={styles.bloodTypeLabel}>Total Stored {bloodType.type}</div>
-              <div style={styles.bloodTypeDate}>{bloodType.date}</div>
-            </div>
-          ))}
+  if (loading) {
+    return (
+      <div style={styles.dashboardContainer}>
+        <div style={styles.loadingContainer}>
+          <p>Loading dashboard data...</p>
         </div>
       </div>
+    );
+  }
 
-      {/* Dashboard Grid Section */}
-      <div style={styles.dashboardGrid}>
-        {/* Blood Expiration Report */}
-        <div style={styles.dashboardCard}>
-          <h3 style={styles.cardTitle}>Blood Expiration Report</h3>
-          <p style={styles.cardSubtitle}>Month of March 2025</p>
-          <div style={styles.expirationSection}>
-            <h4 style={styles.expirationTitle}>Expiring Soon</h4>
-            <div style={styles.expirationTable}>
-              <div style={styles.tableHeader}>
-                <span>Blood Type</span>
-                <span>Component</span>
-                <span>Units</span>
-                <span>Expiration Date</span>
-                <span>Status</span>
-              </div>
-              {[
-                { type: "O +", component: "RBC", units: 17, date: "2025-03-16", status: "Alert" },
-                { type: "A +", component: "Plasma", units: 8, date: "2025-03-17", status: "Alert" },
-                { type: "B +", component: "Platelets", units: 15, date: "2025-03-19", status: "Urgent" },
-                { type: "AB -", component: "RBC", units: 22, date: "2025-03-18", status: "Alert" },
-              ].map((item, index) => (
-                <div key={index} style={styles.tableRow}>
-                  <span>{item.type}</span>
-                  <span>{item.component}</span>
-                  <span>{item.units}</span>
-                  <span>{item.date}</span>
-                  <span style={{...styles.statusBadge, ...(item.status === "Urgent" ? styles.statusUrgent : styles.statusAlert)}}>
-                    {item.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+  if (error) {
+    return (
+      <div style={styles.dashboardContainer}>
+        <div style={styles.errorContainer}>
+          <p style={styles.errorText}>Error loading dashboard: {error}</p>
+          <button style={styles.retryButton} onClick={fetchDashboardData}>
+            Retry
+          </button>
         </div>
+      </div>
+    );
+  }
 
-        {/* Components Available */}
-        <div style={styles.dashboardCard}>
-          <h3 style={styles.cardTitle}>Components Available</h3>
-          <p style={styles.cardSubtitle}>Month of March 2025</p>
-          <div style={styles.componentsList}>
-            <div style={styles.componentItem}>
-              <span style={styles.componentLabel}>RED BLOOD CELL</span>
-              <span style={styles.componentCount}>236</span>
+  const currentDate = new Date().toLocaleString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  const maxQuarterValue = Math.max(
+    ...dashboardData.walkInQuarterlyDonations,
+    ...dashboardData.mobileQuarterlyDonations,
+    1
+  );
+  const chartHeight = 130;
+  const chartWidth = 320;
+  const barWidth = 50;
+  const spacing = 18;
+
+  return (
+    <div style={styles.dashboardContainer}>
+      <div style={styles.dashboardContent}>
+        {/* Main Stats Section */}
+        <div style={styles.mainStatsSection}>
+          {/* Total Stored Blood - Large Card */}
+          <div style={styles.mainStatsCard}>
+            <Droplet fill="#dc2626" size={48} style={styles.bloodDropIcon} />
+            <div style={styles.mainStatsNumber}>
+              {dashboardData.totalStored}
             </div>
-            <div style={styles.componentItem}>
-              <span style={styles.componentLabel}>PLASMA</span>
-              <span style={styles.componentCount}>205</span>
-            </div>
-            <div style={styles.componentItem}>
-              <span style={styles.componentLabel}>PLATELET</span>
-              <span style={styles.componentCount}>187</span>
-            </div>
+            <div style={styles.mainStatsTitle}>Total Stored Blood</div>
+            <div style={styles.mainStatsSubtitle}>Updated - {currentDate}</div>
           </div>
-        </div>
 
-        {/* Blood Donation Analytics */}
-        <div style={{...styles.dashboardCard, ...styles.analyticsCard}}>
-          <h3 style={styles.cardTitle}>Blood Donation Analytics</h3>
-          <p style={styles.cardSubtitle}>Monthly participation as of 2025</p>
-          <div style={styles.chartContainer}>
-            <svg style={styles.analyticsChart} viewBox="0 0 300 150">
-              <defs>
-                <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stopColor="#10b981" stopOpacity="0.3"/>
-                  <stop offset="100%" stopColor="#10b981" stopOpacity="0.1"/>
-                </linearGradient>
-              </defs>
-              <path
-                d="M 20 120 L 80 100 L 140 80 L 200 60 L 260 70 L 260 140 L 20 140 Z"
-                fill="url(#areaGradient)"
-              />
-              <path
-                d="M 20 120 L 80 100 L 140 80 L 200 60 L 260 70"
-                stroke="#10b981"
-                strokeWidth="3"
-                fill="none"
-              />
-              {[
-                { x: 20, y: 120 },
-                { x: 80, y: 100 },
-                { x: 140, y: 80 },
-                { x: 200, y: 60 },
-                { x: 260, y: 70 },
-              ].map((point, index) => (
-                <circle
-                  key={index}
-                  cx={point.x}
-                  cy={point.y}
-                  r="4"
-                  fill="#10b981"
-                  stroke="white"
-                  strokeWidth="2"
+          {/* Blood Type Grid */}
+          <div style={styles.bloodTypeGrid}>
+            {Object.entries(dashboardData.bloodTypes).map(([type, count]) => (
+              <div key={type} style={styles.bloodTypeCard}>
+                <Droplet
+                  fill="#dc2626"
+                  size={24}
+                  style={styles.bloodTypeIcon}
                 />
-              ))}
-              <text x="50" y="145" fontSize="12" fill="#6b7280" textAnchor="middle">January</text>
-              <text x="110" y="145" fontSize="12" fill="#6b7280" textAnchor="middle">February</text>
-              <text x="170" y="145" fontSize="12" fill="#6b7280" textAnchor="middle">March</text>
-              <text x="230" y="145" fontSize="12" fill="#6b7280" textAnchor="middle">April</text>
-              <text x="10" y="125" fontSize="12" fill="#6b7280">10</text>
-              <text x="10" y="105" fontSize="12" fill="#6b7280">20</text>
-              <text x="10" y="85" fontSize="12" fill="#6b7280">30</text>
-              <text x="10" y="65" fontSize="12" fill="#6b7280">40</text>
-              <text x="10" y="45" fontSize="12" fill="#6b7280">50</text>
-            </svg>
+                <div style={styles.bloodTypeCount}>{count}</div>
+                <div style={styles.bloodTypeLabel}>Total Stored {type}</div>
+                <div style={styles.bloodTypeDate}>{currentDate}</div>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Blood Released */}
-        <div style={styles.dashboardCard}>
-          <h3 style={styles.cardTitle}>Blood Released</h3>
-          <p style={styles.cardSubtitle}>Month of March 2025</p>
-          <div style={styles.releasedStats}>
-            <div style={styles.releasedItem}>
-              <span style={styles.releasedLabel}>RBC</span>
-              <span style={styles.releasedCount}>80</span>
-            </div>
-            <div style={styles.releasedItem}>
-              <span style={styles.releasedLabel}>Plasma</span>
-              <span style={styles.releasedCount}>80</span>
-            </div>
-            <div style={styles.releasedItem}>
-              <span style={styles.releasedLabel}>Platelet</span>
-              <span style={styles.releasedCount}>80</span>
+        {/* Dashboard Grid Section */}
+        <div style={styles.dashboardGrid}>
+          {/* Blood Expiration Report */}
+          <div style={styles.dashboardCard}>
+            <h3 style={styles.cardTitle}>Blood Expiration Report</h3>
+            <p style={styles.cardSubtitle}>
+              {new Date().toLocaleString("en-US", {
+                month: "long",
+                year: "numeric",
+              })}
+            </p>
+            <div style={styles.expirationSection}>
+              <h4 style={styles.expirationTitle}>Expiring Soon</h4>
+              <div style={styles.expirationTable}>
+                <div style={styles.tableHeader}>
+                  <span>Blood Type</span>
+                  <span>Component</span>
+                  <span>Units</span>
+                  <span>Expiration Date</span>
+                  <span>Status</span>
+                </div>
+                {dashboardData.expiringSoon.length > 0 ? (
+                  dashboardData.expiringSoon.map((item, index) => {
+                    const status = getStatusBadge(item.daysUntilExpiry);
+                    return (
+                      <div key={index} style={styles.tableRow}>
+                        <span>{item.type}</span>
+                        <span>{item.component}</span>
+                        <span>{item.units}</span>
+                        <span>{formatDate(item.expiration)}</span>
+                        <span
+                          style={{ ...styles.statusBadge, ...status.style }}
+                        >
+                          {status.label}
+                        </span>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div style={styles.noDataText}>
+                    No blood units expiring soon
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Upcoming Drive */}
-        <div style={styles.dashboardCard}>
-          <h3 style={styles.cardTitle}>Upcoming Drive</h3>
-          <p style={styles.cardSubtitle}>Month of March 2025</p>
-          <div style={styles.upcomingDrives}>
-            <div style={styles.driveItem}>
-              <span style={styles.driveText}>CDO Scholarship Office: 2025-03-10</span>
+          {/* Components Available */}
+          <div style={styles.dashboardCard}>
+            <h3 style={styles.cardTitle}>Components Available</h3>
+            <p style={styles.cardSubtitle}>
+              {new Date().toLocaleString("en-US", {
+                month: "long",
+                year: "numeric",
+              })}
+            </p>
+            <div style={styles.componentsList}>
+              <div style={styles.componentItem}>
+                <span style={styles.componentLabel}>RED BLOOD CELL</span>
+                <span style={styles.componentCount}>
+                  {dashboardData.components.rbc}
+                </span>
+              </div>
+              <div style={styles.componentItem}>
+                <span style={styles.componentLabel}>PLASMA</span>
+                <span style={styles.componentCount}>
+                  {dashboardData.components.plasma}
+                </span>
+              </div>
+              <div style={styles.componentItem}>
+                <span style={styles.componentLabel}>PLATELET</span>
+                <span style={styles.componentCount}>
+                  {dashboardData.components.platelet}
+                </span>
+              </div>
             </div>
-            <div style={styles.driveItem}>
-              <span style={styles.driveText}>Barangay Patag: 2025-03-11</span>
+          </div>
+
+          {/* Blood Donation Analytics */}
+          <div style={{ ...styles.dashboardCard, ...styles.analyticsCard }}>
+            <h3 style={styles.cardTitle}>Blood Donation Analytics</h3>
+            <p style={styles.cardSubtitle}>
+              Quarterly participation as of {new Date().getFullYear()}
+            </p>
+
+            {/* Walk-In Graph */}
+            <div style={{ marginBottom: "1.5rem" }}>
+              <h4
+                style={{
+                  fontSize: "0.875rem",
+                  fontWeight: 600,
+                  color: "#059669",
+                  margin: "0 0 0.75rem 0",
+                  fontFamily: "Barlow, sans-serif",
+                }}
+              >
+                Walk-In Donations
+              </h4>
+              <div style={{ ...styles.chartContainer, minHeight: "160px", paddingTop: "20px" }}>
+                <svg
+                  style={styles.analyticsChart}
+                  viewBox={`0 0 ${chartWidth} ${chartHeight + 40}`}
+                  preserveAspectRatio="xMidYMid meet"
+                >
+                  <defs>
+                    <linearGradient
+                      id="walkInGradient"
+                      x1="0%"
+                      y1="0%"
+                      x2="0%"
+                      y2="100%"
+                    >
+                      <stop offset="0%" stopColor="#10b981" stopOpacity="0.8" />
+                      <stop offset="100%" stopColor="#059669" stopOpacity="1" />
+                    </linearGradient>
+                  </defs>
+
+                  {/* Y-axis grid lines */}
+                  {[0, 25, 50, 75, 100].map((percent) => {
+                    const maxValue = Math.max(
+                      ...dashboardData.walkInQuarterlyDonations,
+                      1
+                    );
+                    const y = 20 + chartHeight - (percent / 100) * chartHeight;
+                    return (
+                      <g key={percent}>
+                        <line
+                          x1="30"
+                          y1={y}
+                          x2={chartWidth}
+                          y2={y}
+                          stroke="#e5e7eb"
+                          strokeWidth="1"
+                        />
+                        <text
+                          x="5"
+                          y={y + 4}
+                          fontSize="10"
+                          fill="#6b7280"
+                          fontFamily="Arial, sans-serif"
+                        >
+                          {Math.round((percent / 100) * maxValue)}
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  {/* Bars */}
+                  {dashboardData.walkInQuarterlyDonations.map((value, index) => {
+                    const maxValue = Math.max(
+                      ...dashboardData.walkInQuarterlyDonations,
+                      1
+                    );
+                    const x = 40 + index * (barWidth + spacing);
+                    const barHeight = (value / maxValue) * chartHeight;
+                    const y = 20 + chartHeight - barHeight;
+
+                    return (
+                      <g key={index}>
+                        <rect
+                          x={x}
+                          y={y}
+                          width={barWidth}
+                          height={barHeight}
+                          fill="url(#walkInGradient)"
+                          rx="4"
+                        />
+                        <text
+                          x={x + barWidth / 2}
+                          y={y - 8}
+                          fontSize="12"
+                          fill="#059669"
+                          textAnchor="middle"
+                          fontWeight="600"
+                          fontFamily="Barlow, sans-serif"
+                        >
+                          {value}
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  {/* X-axis labels */}
+                  {["Q1", "Q2", "Q3", "Q4"].map((label, index) => {
+                    const x = 40 + index * (barWidth + spacing) + barWidth / 2;
+                    return (
+                      <text
+                        key={label}
+                        x={x}
+                        y={20 + chartHeight + 20}
+                        fontSize="12"
+                        fill="#6b7280"
+                        textAnchor="middle"
+                        fontFamily="Arial, sans-serif"
+                      >
+                        {label}
+                      </text>
+                    );
+                  })}
+                </svg>
+              </div>
             </div>
-            <div style={styles.seeMore}>
-              <button style={styles.seeMoreBtn}>See more ⌄</button>
+
+            {/* Mobile Graph */}
+            <div>
+              <h4
+                style={{
+                  fontSize: "0.875rem",
+                  fontWeight: 600,
+                  color: "#3b82f6",
+                  margin: "0 0 0.75rem 0",
+                  fontFamily: "Barlow, sans-serif",
+                }}
+              >
+                Mobile Donations
+              </h4>
+              <div style={{ ...styles.chartContainer, minHeight: "160px", paddingTop: "20px" }}>
+                <svg
+                  style={styles.analyticsChart}
+                  viewBox={`0 0 ${chartWidth} ${chartHeight + 40}`}
+                  preserveAspectRatio="xMidYMid meet"
+                >
+                  <defs>
+                    <linearGradient
+                      id="mobileGradient"
+                      x1="0%"
+                      y1="0%"
+                      x2="0%"
+                      y2="100%"
+                    >
+                      <stop offset="0%" stopColor="#60a5fa" stopOpacity="0.8" />
+                      <stop offset="100%" stopColor="#3b82f6" stopOpacity="1" />
+                    </linearGradient>
+                  </defs>
+
+                  {/* Y-axis grid lines */}
+                  {[0, 25, 50, 75, 100].map((percent) => {
+                    const maxValue = Math.max(
+                      ...dashboardData.mobileQuarterlyDonations,
+                      1
+                    );
+                    const y = 20 + chartHeight - (percent / 100) * chartHeight;
+                    return (
+                      <g key={percent}>
+                        <line
+                          x1="30"
+                          y1={y}
+                          x2={chartWidth}
+                          y2={y}
+                          stroke="#e5e7eb"
+                          strokeWidth="1"
+                        />
+                        <text
+                          x="5"
+                          y={y + 4}
+                          fontSize="10"
+                          fill="#6b7280"
+                          fontFamily="Arial, sans-serif"
+                        >
+                          {Math.round((percent / 100) * maxValue)}
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  {/* Bars */}
+                  {dashboardData.mobileQuarterlyDonations.map((value, index) => {
+                    const maxValue = Math.max(
+                      ...dashboardData.mobileQuarterlyDonations,
+                      1
+                    );
+                    const x = 40 + index * (barWidth + spacing);
+                    const barHeight = (value / maxValue) * chartHeight;
+                    const y = 20 + chartHeight - barHeight;
+
+                    return (
+                      <g key={index}>
+                        <rect
+                          x={x}
+                          y={y}
+                          width={barWidth}
+                          height={barHeight}
+                          fill="url(#mobileGradient)"
+                          rx="4"
+                        />
+                        <text
+                          x={x + barWidth / 2}
+                          y={y - 8}
+                          fontSize="12"
+                          fill="#3b82f6"
+                          textAnchor="middle"
+                          fontWeight="600"
+                          fontFamily="Barlow, sans-serif"
+                        >
+                          {value}
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  {/* X-axis labels */}
+                  {["Q1", "Q2", "Q3", "Q4"].map((label, index) => {
+                    const x = 40 + index * (barWidth + spacing) + barWidth / 2;
+                    return (
+                      <text
+                        key={label}
+                        x={x}
+                        y={20 + chartHeight + 20}
+                        fontSize="12"
+                        fill="#6b7280"
+                        textAnchor="middle"
+                        fontFamily="Arial, sans-serif"
+                      >
+                        {label}
+                      </text>
+                    );
+                  })}
+                </svg>
+              </div>
             </div>
+          </div>
+
+          {/* Blood Released */}
+          <div style={styles.dashboardCard}>
+            <h3 style={styles.cardTitle}>Blood Released</h3>
+            <p style={styles.cardSubtitle}>
+              {new Date().toLocaleString("en-US", {
+                month: "long",
+                year: "numeric",
+              })}
+            </p>
+            <div style={styles.releasedStats}>
+              <div style={styles.releasedItem}>
+                <span style={styles.releasedLabel}>RBC</span>
+                <span style={styles.releasedCount}>
+                  {typeof dashboardData.releasedThisMonth.rbc === 'number' 
+                    ? dashboardData.releasedThisMonth.rbc 
+                    : 0}
+                </span>
+              </div>
+              <div style={styles.releasedItem}>
+                <span style={styles.releasedLabel}>Plasma</span>
+                <span style={styles.releasedCount}>
+                  {typeof dashboardData.releasedThisMonth.plasma === 'number' 
+                    ? dashboardData.releasedThisMonth.plasma 
+                    : 0}
+                </span>
+              </div>
+              <div style={styles.releasedItem}>
+                <span style={styles.releasedLabel}>Platelet</span>
+                <span style={styles.releasedCount}>
+                  {typeof dashboardData.releasedThisMonth.platelet === 'number' 
+                    ? dashboardData.releasedThisMonth.platelet 
+                    : 0}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Upcoming Drive - Placeholder */}
+          <div style={styles.dashboardCard}>
+            <h3 style={styles.cardTitle}>Upcoming Drive</h3>
+            <p style={styles.cardSubtitle}>
+              {new Date().toLocaleString("en-US", {
+                month: "long",
+                year: "numeric",
+              })}
+            </p>
+            <div style={styles.noDataText}>No upcoming drives scheduled</div>
           </div>
         </div>
       </div>
@@ -581,15 +1384,21 @@ const LogoutDialog = ({ isOpen, onConfirm, onCancel }) => {
         <h3 style={styles.dialogTitle}>Confirm Logout</h3>
         <p style={styles.dialogMessage}>Are you sure you want to logout?</p>
         <div style={styles.dialogActions}>
-          <button style={{...styles.dialogButton, ...styles.cancelButton}} onClick={onCancel}>
+          <button
+            style={{ ...styles.dialogButton, ...styles.cancelButton }}
+            onClick={onCancel}
+          >
             Cancel
           </button>
-          <button style={{...styles.dialogButton, ...styles.confirmButton}} onClick={onConfirm}>
+          <button
+            style={{ ...styles.dialogButton, ...styles.confirmButton }}
+            onClick={onConfirm}
+          >
             Yes, Logout
           </button>
         </div>
       </div>
-      
+
       <style>{`
         @keyframes fadeIn {
           from { opacity: 0; }
@@ -617,7 +1426,8 @@ const Dashboard = () => {
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [isCalendarDropdownOpen, setIsCalendarDropdownOpen] = useState(false);
   const [isMailDropdownOpen, setIsMailDropdownOpen] = useState(false);
-  const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false);
+  const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] =
+    useState(false);
   const [isLoggedOut, setIsLoggedOut] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
 
@@ -671,7 +1481,7 @@ const Dashboard = () => {
     },
     navButtonActive: {
       backgroundColor: "#059669",
-      color: 'white'
+      color: "white",
     },
     notificationBadge: {
       position: "absolute",
@@ -696,7 +1506,8 @@ const Dashboard = () => {
       marginTop: "0.5rem",
       backgroundColor: "white",
       borderRadius: "0.5rem",
-      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+      boxShadow:
+        "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
       border: "1px solid #e5e7eb",
       zIndex: 50,
       overflow: "hidden",
@@ -866,7 +1677,7 @@ const Dashboard = () => {
     },
     userAvatarActive: {
       backgroundColor: "#059669",
-      color: "white"
+      color: "white",
     },
     mainContent: {
       padding: "1.5rem",
@@ -1000,65 +1811,98 @@ const Dashboard = () => {
                 <button
                   style={{
                     ...styles.navButton,
-                    ...(activeScreen === "calendar" ? styles.navButtonActive : {}),
+                    ...(activeScreen === "calendar"
+                      ? styles.navButtonActive
+                      : {}),
                   }}
                   onClick={toggleCalendarDropdown}
                 >
                   <Calendar className="w-5 h-5 text-gray-600" />
                 </button>
                 {isCalendarDropdownOpen && (
-                  <div style={{...styles.dropdownMenu, ...styles.requestsDropdown}}>
+                  <div
+                    style={{
+                      ...styles.dropdownMenu,
+                      ...styles.requestsDropdown,
+                    }}
+                  >
                     <div style={styles.dropdownHeader}>
                       <h3 style={styles.dropdownTitle}>REQUESTS</h3>
                     </div>
                     <div style={styles.dropdownContent}>
                       <div style={styles.dropdownItem}>
                         <div>
-                          <div style={{...styles.iconCircle, ...styles.redBg}}>
+                          <div
+                            style={{ ...styles.iconCircle, ...styles.redBg }}
+                          >
                             <span style={styles.iconText}>🩸</span>
                           </div>
                         </div>
                         <div style={styles.requestDetails}>
-                          <p style={styles.requestTitle}>Blood letting Drive Partnership Request</p>
-                          <p style={styles.requestSubtitle}>Tacloban would like to have a schedule for bl...</p>
+                          <p style={styles.requestTitle}>
+                            Blood letting Drive Partnership Request
+                          </p>
+                          <p style={styles.requestSubtitle}>
+                            Tacloban would like to have a schedule for bl...
+                          </p>
                         </div>
                       </div>
                       <div style={styles.dropdownItem}>
                         <div>
-                          <div style={{...styles.iconCircle, ...styles.yellowBg}}>
+                          <div
+                            style={{ ...styles.iconCircle, ...styles.yellowBg }}
+                          >
                             <span style={styles.iconText}>S</span>
                           </div>
                         </div>
                         <div style={styles.requestDetails}>
                           <p style={styles.requestTitle}>Request Sync</p>
-                          <p style={styles.requestSubtitle}>Butuan Tokyo 39.3 would like to request an appraisal...</p>
+                          <p style={styles.requestSubtitle}>
+                            Butuan Tokyo 39.3 would like to request an
+                            appraisal...
+                          </p>
                         </div>
                       </div>
                       <div style={styles.dropdownItem}>
                         <div>
-                          <div style={{...styles.iconCircle, ...styles.blueBg}}>
+                          <div
+                            style={{ ...styles.iconCircle, ...styles.blueBg }}
+                          >
                             <span style={styles.iconText}>🩸</span>
                           </div>
                         </div>
                         <div style={styles.requestDetails}>
-                          <p style={styles.requestTitle}>Blood letting Drive Partnership Request</p>
-                          <p style={styles.requestSubtitle}>City Government Butuan would like to have a schedule...</p>
+                          <p style={styles.requestTitle}>
+                            Blood letting Drive Partnership Request
+                          </p>
+                          <p style={styles.requestSubtitle}>
+                            City Government Butuan would like to have a
+                            schedule...
+                          </p>
                         </div>
                       </div>
                       <div style={styles.dropdownItem}>
                         <div>
-                          <div style={{...styles.iconCircle, ...styles.greenBg}}>
+                          <div
+                            style={{ ...styles.iconCircle, ...styles.greenBg }}
+                          >
                             <span style={styles.iconText}>S</span>
                           </div>
                         </div>
                         <div style={styles.requestDetails}>
                           <p style={styles.requestTitle}>Request Sync</p>
-                          <p style={styles.requestSubtitle}>Philippine Eagles would like to request an approval...</p>
+                          <p style={styles.requestSubtitle}>
+                            Philippine Eagles would like to request an
+                            approval...
+                          </p>
                         </div>
                       </div>
                     </div>
                     <div style={styles.dropdownFooter}>
-                      <button style={styles.footerButton} onClick={() => handleNavigate("calendar")}>
+                      <button
+                        style={styles.footerButton}
+                        onClick={() => handleNavigate("calendar")}
+                      >
                         See All Requests
                       </button>
                     </div>
@@ -1078,35 +1922,70 @@ const Dashboard = () => {
                   <Mail className="w-5 h-5 text-gray-600" />
                 </button>
                 {isMailDropdownOpen && (
-                  <div style={{...styles.dropdownMenu, ...styles.messagesDropdown}}>
+                  <div
+                    style={{
+                      ...styles.dropdownMenu,
+                      ...styles.messagesDropdown,
+                    }}
+                  >
                     <div style={styles.dropdownHeader}>
                       <h3 style={styles.dropdownTitle}>MESSAGES</h3>
                     </div>
                     <div style={styles.dropdownContent}>
                       <div style={styles.dropdownItem}>
-                        <div style={{...styles.messageAvatar, ...styles.blueAvatar}}>JS</div>
+                        <div
+                          style={{
+                            ...styles.messageAvatar,
+                            ...styles.blueAvatar,
+                          }}
+                        >
+                          JS
+                        </div>
                         <div style={styles.requestDetails}>
                           <p style={styles.requestTitle}>John Smith</p>
-                          <p style={styles.requestSubtitle}>Thank you for the quick response regarding...</p>
+                          <p style={styles.requestSubtitle}>
+                            Thank you for the quick response regarding...
+                          </p>
                         </div>
                       </div>
                       <div style={styles.dropdownItem}>
-                        <div style={{...styles.messageAvatar, ...styles.greenAvatar}}>MH</div>
+                        <div
+                          style={{
+                            ...styles.messageAvatar,
+                            ...styles.greenAvatar,
+                          }}
+                        >
+                          MH
+                        </div>
                         <div style={styles.requestDetails}>
                           <p style={styles.requestTitle}>Metro Hospital</p>
-                          <p style={styles.requestSubtitle}>Urgent blood request for emergency surgery...</p>
+                          <p style={styles.requestSubtitle}>
+                            Urgent blood request for emergency surgery...
+                          </p>
                         </div>
                       </div>
                       <div style={styles.dropdownItem}>
-                        <div style={{...styles.messageAvatar, ...styles.purpleAvatar}}>DR</div>
+                        <div
+                          style={{
+                            ...styles.messageAvatar,
+                            ...styles.purpleAvatar,
+                          }}
+                        >
+                          DR
+                        </div>
                         <div style={styles.requestDetails}>
                           <p style={styles.requestTitle}>Dr. Rodriguez</p>
-                          <p style={styles.requestSubtitle}>Weekly blood inventory report is ready...</p>
+                          <p style={styles.requestSubtitle}>
+                            Weekly blood inventory report is ready...
+                          </p>
                         </div>
                       </div>
                     </div>
                     <div style={styles.dropdownFooter}>
-                      <button style={styles.footerButton} onClick={() => handleNavigate("mail")}>
+                      <button
+                        style={styles.footerButton}
+                        onClick={() => handleNavigate("mail")}
+                      >
                         View All Messages
                       </button>
                     </div>
@@ -1119,7 +1998,9 @@ const Dashboard = () => {
                 <button
                   style={{
                     ...styles.navButton,
-                    ...(activeScreen === "notification" ? styles.navButtonActive : {}),
+                    ...(activeScreen === "notification"
+                      ? styles.navButtonActive
+                      : {}),
                   }}
                   onClick={toggleNotificationDropdown}
                 >
@@ -1127,47 +2008,74 @@ const Dashboard = () => {
                   <span style={styles.notificationBadge}>3</span>
                 </button>
                 {isNotificationDropdownOpen && (
-                  <div style={{...styles.dropdownMenu, ...styles.notificationsDropdown}}>
+                  <div
+                    style={{
+                      ...styles.dropdownMenu,
+                      ...styles.notificationsDropdown,
+                    }}
+                  >
                     <div style={styles.dropdownHeader}>
                       <h3 style={styles.dropdownTitle}>NOTIFICATIONS</h3>
                     </div>
                     <div style={styles.dropdownContent}>
                       <div style={styles.dropdownItem}>
                         <div>
-                          <div style={{...styles.iconCircle, ...styles.redBg}}>
+                          <div
+                            style={{ ...styles.iconCircle, ...styles.redBg }}
+                          >
                             <span style={styles.iconText}>🩸</span>
                           </div>
                         </div>
                         <div style={styles.requestDetails}>
                           <p style={styles.requestTitle}>Blood Stock Update</p>
-                          <p style={styles.requestSubtitle}>Current stored blood: 628 units. Updated on March 1, 2025, at 1:00 PM.</p>
+                          <p style={styles.requestSubtitle}>
+                            Current stored blood: 628 units. Updated on March 1,
+                            2025, at 1:00 PM.
+                          </p>
                         </div>
                       </div>
                       <div style={styles.dropdownItem}>
                         <div>
-                          <div style={{...styles.iconCircle, ...styles.orangeBg}}>
+                          <div
+                            style={{ ...styles.iconCircle, ...styles.orangeBg }}
+                          >
                             <span style={styles.iconText}>⚠️</span>
                           </div>
                         </div>
                         <div style={styles.requestDetails}>
-                          <p style={styles.requestTitle}>Blood Expiration Alert</p>
-                          <p style={styles.requestSubtitle}>Warning: 10 units of blood (Type A+) will expire in 3 days.</p>
+                          <p style={styles.requestTitle}>
+                            Blood Expiration Alert
+                          </p>
+                          <p style={styles.requestSubtitle}>
+                            Warning: 10 units of blood (Type A+) will expire in
+                            3 days.
+                          </p>
                         </div>
                       </div>
                       <div style={styles.dropdownItem}>
                         <div>
-                          <div style={{...styles.iconCircle, ...styles.greenBg}}>
+                          <div
+                            style={{ ...styles.iconCircle, ...styles.greenBg }}
+                          >
                             <span style={styles.iconText}>✓</span>
                           </div>
                         </div>
                         <div style={styles.requestDetails}>
-                          <p style={styles.requestTitle}>Blood Release Confirmation</p>
-                          <p style={styles.requestSubtitle}>30 units of blood (Type B+) were successfully released</p>
+                          <p style={styles.requestTitle}>
+                            Blood Release Confirmation
+                          </p>
+                          <p style={styles.requestSubtitle}>
+                            30 units of blood (Type B+) were successfully
+                            released
+                          </p>
                         </div>
                       </div>
                     </div>
                     <div style={styles.dropdownFooter}>
-                      <button style={styles.footerButton} onClick={() => handleNavigate("notification")}>
+                      <button
+                        style={styles.footerButton}
+                        onClick={() => handleNavigate("notification")}
+                      >
                         See All Notifications
                       </button>
                     </div>
@@ -1181,14 +2089,21 @@ const Dashboard = () => {
                 <div
                   style={{
                     ...styles.userAvatar,
-                    ...(activeScreen === "profile" ? styles.userAvatarActive : {}),
+                    ...(activeScreen === "profile"
+                      ? styles.userAvatarActive
+                      : {}),
                   }}
                   onClick={toggleProfileDropdown}
                 >
                   <User className="w-4 h-4 text-gray-600" />
 
                   {isProfileDropdownOpen && (
-                    <div style={{...styles.dropdownMenu, ...styles.profileDropdown}}>
+                    <div
+                      style={{
+                        ...styles.dropdownMenu,
+                        ...styles.profileDropdown,
+                      }}
+                    >
                       <button
                         style={styles.profileMenuItem}
                         onClick={() => handleProfileAction("edit-profile")}
@@ -1212,7 +2127,7 @@ const Dashboard = () => {
         <main style={styles.mainContent}>{renderActiveScreen()}</main>
       </div>
 
-      <LogoutDialog 
+      <LogoutDialog
         isOpen={showLogoutDialog}
         onConfirm={handleLogoutConfirm}
         onCancel={handleLogoutCancel}
@@ -1282,4 +2197,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard
+export default Dashboard;

@@ -739,6 +739,22 @@ ipcMain.handle('generate-all-historical-reports', async () => {
     throw error;
   }
 });
+//==================DASHBOARD METHODS ==================
+  ipcMain.handle('getReleasedBloodStock', async () => {
+    return await dbService.getReleasedBloodStockItems(); 
+  });
+
+  ipcMain.handle('getReleasedPlasmaStock', async () => {
+    return await dbService.getReleasedPlasmaStockItems(); 
+  });
+
+  ipcMain.handle('getReleasedPlateletStock', async () => {
+    return await dbService.getReleasedPlateletStockItems(); 
+  });
+
+  ipcMain.handle('db:getBloodStockHistory', async (event, year) => {
+    return await dbService.getBloodStockHistory(year);
+  });
 }; 
 
 // Electron app lifecycle

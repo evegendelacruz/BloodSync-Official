@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Search } from "lucide-react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import Loader from "../../components/loader";
+import Loader from "../../components/Loader";
 
 const Reports = () => {
   const [searchTerm, setSearchTerm] = useState("");
