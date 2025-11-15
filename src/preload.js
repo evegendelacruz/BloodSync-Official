@@ -1,5 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+
 console.log('Preload script loading...');
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -527,7 +528,19 @@ transferPlateletToNonConforming: async (serialIds) => {
   
   // ========== REPORTS ==========
   generateAllHistoricalReports: () => ipcRenderer.invoke('generate-all-historical-reports'),
+  //========== DASHBOARD METHODS ==========
+  getAllBloodStock: () => ipcRenderer.invoke('db:getAllBloodStock'),
+  getPlasmaStock: () => ipcRenderer.invoke('db:getPlasmaStock'),
+  getPlateletStock: () => ipcRenderer.invoke('db:getPlateletStock'),
+  getReleasedBloodStock: () => ipcRenderer.invoke('db:getReleasedBloodStock'),
+  getReleasedPlasmaStock: () => ipcRenderer.invoke('db:getReleasedPlasmaStock'),
+  getReleasedPlateletStock: () => ipcRenderer.invoke('db:getReleasedPlateletStock'),
+  getBloodStockHistory: (year) => ipcRenderer.invoke("db:getBloodStockHistory", year),
+  
 });
+
+
+
 
 
 
