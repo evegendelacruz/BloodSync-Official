@@ -1,7 +1,22 @@
 // ProfileSettings.jsx
-import React from 'react';
+import React, { useState } from 'react';
+import { Eye, EyeOff, CheckCircle, XCircle } from 'lucide-react';
 
-const ProfileSettings = ({ profileData, handleInputChange, handleSaveChanges, handleCancel }) => {
+const ProfileSettings = ({ profileData }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [formData, setFormData] = useState({
+    currentPassword: '',
+    newPassword: ''
+  });
+  const [showModal, setShowModal] = useState(false);
+  const [modalContent, setModalContent] = useState({ type: '', message: '' });
+  const [fieldErrors, setFieldErrors] = useState({
+    currentPassword: '',
+    newPassword: ''
+  });
+
   const styles = {
     container: {
       backgroundColor: 'white',
@@ -25,6 +40,12 @@ const ProfileSettings = ({ profileData, handleInputChange, handleSaveChanges, ha
       display: 'flex',
       flexDirection: 'column'
     },
+    fieldError: {
+      color: '#dc2626',
+      fontSize: '12px',
+      marginTop: '4px',
+      display: 'block'
+    },
     label: {
       fontSize: '14px',
       fontWeight: '500',
@@ -42,15 +63,45 @@ const ProfileSettings = ({ profileData, handleInputChange, handleSaveChanges, ha
       backgroundColor: 'white',
       boxSizing: 'border-box'
     },
-    inputFocus: {
-      borderColor: '#059669',
-      boxShadow: '0 0 0 2px rgba(5, 150, 105, 0.2)'
+    inputDisabled: {
+      backgroundColor: '#f3f4f6',
+      cursor: 'not-allowed',
+      color: '#6b7280'
+    },
+    passwordWrapper: {
+      position: 'relative',
+      width: '100%'
+    },
+    eyeButton: {
+      position: 'absolute',
+      right: '12px',
+      top: '50%',
+      transform: 'translateY(-50%)',
+      background: 'none',
+      border: 'none',
+      cursor: 'pointer',
+      color: '#6b7280',
+      padding: '4px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
     },
     buttonContainer: {
       display: 'flex',
       gap: '16px',
       marginTop: '32px',
       flexWrap: 'wrap'
+    },
+    editButton: {
+      backgroundColor: '#165C3C',
+      color: 'white',
+      padding: '12px 24px',
+      borderRadius: '6px',
+      border: 'none',
+      fontWeight: '600',
+      cursor: 'pointer',
+      fontSize: '14px',
+      transition: 'background-color 0.2s'
     },
     saveButton: {
       backgroundColor: '#22c55e',
@@ -63,9 +114,6 @@ const ProfileSettings = ({ profileData, handleInputChange, handleSaveChanges, ha
       fontSize: '14px',
       transition: 'background-color 0.2s'
     },
-    saveButtonHover: {
-      backgroundColor: '#16a34a'
-    },
     cancelButton: {
       backgroundColor: '#9ca3af',
       color: 'white',
@@ -77,116 +125,317 @@ const ProfileSettings = ({ profileData, handleInputChange, handleSaveChanges, ha
       fontSize: '14px',
       transition: 'background-color 0.2s'
     },
-    cancelButtonHover: {
-      backgroundColor: '#6b7280'
+    modalOverlay: {
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    },
+    modalContent: {
+      backgroundColor: 'white',
+      borderRadius: '12px',
+      padding: '32px',
+      maxWidth: '400px',
+      width: '90%',
+      textAlign: 'center',
+      boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+    },
+    modalIcon: {
+      marginBottom: '16px'
+    },
+    modalTitle: {
+      fontSize: '20px',
+      fontWeight: 'bold',
+      marginBottom: '8px',
+      color: '#1f2937'
+    },
+    modalMessage: {
+      fontSize: '14px',
+      color: '#6b7280',
+      marginBottom: '24px'
+    },
+    modalButton: {
+      backgroundColor: '#165C3C',
+      color: 'white',
+      padding: '12px 32px',
+      borderRadius: '6px',
+      border: 'none',
+      fontWeight: '600',
+      cursor: 'pointer',
+      fontSize: '14px',
+      transition: 'background-color 0.2s'
     }
   };
 
-  // Media query for mobile responsiveness
-  const isMobile = window.innerWidth <= 768;
+  const handleEdit = () => {
+    setIsEditing(true);
+    setFieldErrors({ currentPassword: '', newPassword: '' });
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    setFormData({
+      currentPassword: '',
+      newPassword: ''
+    });
+    setShowCurrentPassword(false);
+    setShowNewPassword(false);
+    setFieldErrors({ currentPassword: '', newPassword: '' });
+  };
+
+  const validatePassword = (password) => {
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    return passwordRegex.test(password);
+  };
+
+  const handlePasswordChange = (field, value) => {
+    setFormData({...formData, [field]: value});
+    
+    if (fieldErrors[field]) {
+      setFieldErrors({...fieldErrors, [field]: ''});
+    }
+    
+    if (field === 'newPassword' && value) {
+      if (value.length < 8) {
+        setFieldErrors({...fieldErrors, newPassword: 'Password must be at least 8 characters long'});
+      } else if (!validatePassword(value)) {
+        setFieldErrors({...fieldErrors, newPassword: 'Password must contain uppercase, lowercase, number and special character'});
+      } else {
+        setFieldErrors({...fieldErrors, newPassword: ''});
+      }
+    }
+  };
+
+  const showModalMessage = (type, message) => {
+    setModalContent({ type, message });
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    if (modalContent.type === 'success') {
+      handleCancel();
+    }
+  };
+
+  const handleSaveChanges = async () => {
+    let errors = { currentPassword: '', newPassword: '' };
+    let hasError = false;
   
-  if (isMobile) {
-    styles.container.padding = '24px';
-    styles.formGrid2.gridTemplateColumns = '1fr';
-  }
+    if (!formData.currentPassword) {
+      errors.currentPassword = 'Current password is required';
+      hasError = true;
+    }
+  
+    if (!formData.newPassword) {
+      errors.newPassword = 'New password is required';
+      hasError = true;
+    } else if (formData.newPassword.length < 8) {
+      errors.newPassword = 'Password must be at least 8 characters long';
+      hasError = true;
+    } else if (!validatePassword(formData.newPassword)) {
+      errors.newPassword = 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&)';
+      hasError = true;
+    }
+  
+    if (hasError) {
+      setFieldErrors(errors);
+      return;
+    }
+  
+    try {
+      // Get the logged-in user's ID from localStorage or context
+      const loggedInUser = JSON.parse(localStorage.getItem('user'));
+      
+      if (!loggedInUser || !loggedInUser.id) {
+        showModalMessage('error', 'User session not found. Please login again.');
+        return;
+      }
+  
+      // Use the logged-in user's internal database ID (not DOH ID)
+      const result = await window.electronAPI.updateUserPassword(
+        loggedInUser.id,  // Use the internal database ID from logged-in user
+        formData.currentPassword,
+        formData.newPassword
+      );
+  
+      if (!result.success) {
+        if (result.message === 'Current password is incorrect') {
+          setFieldErrors({ ...errors, currentPassword: 'Current password is incorrect' });
+        } else {
+          showModalMessage('error', result.message || 'Failed to update password. Please try again.');
+        }
+        return;
+      }
+  
+      showModalMessage('success', 'Password updated successfully!');
+    } catch (error) {
+      console.error('Error updating password:', error);
+      showModalMessage('error', 'Failed to update password. Please try again.');
+    }
+  };
 
   return (
-    <div style={styles.container}>
-      <h2 style={styles.title}>Account Settings</h2>
-      
-      <div style={styles.formGrid2}>
-        <div style={styles.formGroup}>
-          <label style={styles.label}>User ID</label>
-          <input
-            type="text"
-            value={profileData.userId}
-            onChange={(e) => handleInputChange('userId', e.target.value)}
-            style={styles.input}
-            onFocus={(e) => {
-              e.target.style.borderColor = styles.inputFocus.borderColor;
-              e.target.style.boxShadow = styles.inputFocus.boxShadow;
-            }}
-            onBlur={(e) => {
-              e.target.style.borderColor = styles.input.borderColor;
-              e.target.style.boxShadow = 'none';
-            }}
-          />
+    <>
+      <div style={styles.container}>
+        <h2 style={styles.title}>Account Settings</h2>
+        
+        <div style={styles.formGrid2}>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>DOH ID</label>
+            <input
+              type="text"
+              value={profileData.userId || ''}
+              disabled
+              style={{
+                ...styles.input,
+                ...styles.inputDisabled
+              }}
+            />
+          </div>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Email</label>
+            <input
+              type="email"
+              value={profileData.email || ''}
+              disabled
+              style={{
+                ...styles.input,
+                ...styles.inputDisabled
+              }}
+            />
+          </div>
         </div>
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Email</label>
-          <input
-            type="email"
-            value={profileData.email}
-            onChange={(e) => handleInputChange('email', e.target.value)}
-            style={styles.input}
-            onFocus={(e) => {
-              e.target.style.borderColor = styles.inputFocus.borderColor;
-              e.target.style.boxShadow = styles.inputFocus.boxShadow;
-            }}
-            onBlur={(e) => {
-              e.target.style.borderColor = styles.input.borderColor;
-              e.target.style.boxShadow = 'none';
-            }}
-          />
+
+        <div style={styles.formGrid2}>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Current Password</label>
+            <div style={styles.passwordWrapper}>
+              <input
+                type={showCurrentPassword ? "text" : "password"}
+                value={formData.currentPassword}
+                onChange={(e) => handlePasswordChange('currentPassword', e.target.value)}
+                disabled={!isEditing}
+                placeholder={isEditing ? "Enter current password" : ""}
+                style={{
+                  ...styles.input,
+                  paddingRight: '45px',
+                  ...(!isEditing && styles.inputDisabled),
+                  ...(fieldErrors.currentPassword && { borderColor: '#dc2626' })
+                }}
+              />
+              {isEditing && (
+                <button
+                  type="button"
+                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                  style={styles.eyeButton}
+                >
+                  {showCurrentPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              )}
+            </div>
+            {fieldErrors.currentPassword && (
+              <span style={styles.fieldError}>{fieldErrors.currentPassword}</span>
+            )}
+          </div>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>New Password</label>
+            <div style={styles.passwordWrapper}>
+              <input
+                type={showNewPassword ? "text" : "password"}
+                value={formData.newPassword}
+                onChange={(e) => handlePasswordChange('newPassword', e.target.value)}
+                disabled={!isEditing}
+                placeholder={isEditing ? "Enter new password" : ""}
+                style={{
+                  ...styles.input,
+                  paddingRight: '45px',
+                  ...(!isEditing && styles.inputDisabled),
+                  ...(fieldErrors.newPassword && { borderColor: '#dc2626' })
+                }}
+              />
+              {isEditing && (
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  style={styles.eyeButton}
+                >
+                  {showNewPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              )}
+            </div>
+            {fieldErrors.newPassword && (
+              <span style={styles.fieldError}>{fieldErrors.newPassword}</span>
+            )}
+          </div>
+        </div>
+
+        <div style={styles.buttonContainer}>
+          {!isEditing ? (
+            <button
+              onClick={handleEdit}
+              style={styles.editButton}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#059669'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#165C3C'}
+            >
+              Edit Account Password
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={handleSaveChanges}
+                style={styles.saveButton}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#16a34a'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = '#22c55e'}
+              >
+                Save Changes
+              </button>
+              <button
+                onClick={handleCancel}
+                style={styles.cancelButton}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#6b7280'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = '#9ca3af'}
+              >
+                Cancel
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      <div style={styles.formGrid2}>
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Password</label>
-          <input
-            type="password"
-            value={profileData.password}
-            onChange={(e) => handleInputChange('password', e.target.value)}
-            style={styles.input}
-            onFocus={(e) => {
-              e.target.style.borderColor = styles.inputFocus.borderColor;
-              e.target.style.boxShadow = styles.inputFocus.boxShadow;
-            }}
-            onBlur={(e) => {
-              e.target.style.borderColor = styles.input.borderColor;
-              e.target.style.boxShadow = 'none';
-            }}
-          />
+      {/* Modal Overlay */}
+      {showModal && (
+        <div style={styles.modalOverlay} onClick={closeModal}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalIcon}>
+              {modalContent.type === 'success' ? (
+                <CheckCircle size={64} color="#22c55e" style={{ margin: '0 auto' }} />
+              ) : (
+                <XCircle size={64} color="#ef4444" style={{ margin: '0 auto' }} />
+              )}
+            </div>
+            <h3 style={styles.modalTitle}>
+              {modalContent.type === 'success' ? 'Success!' : 'Error'}
+            </h3>
+            <p style={styles.modalMessage}>{modalContent.message}</p>
+            <button
+              onClick={closeModal}
+              style={styles.modalButton}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#059669'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#165C3C'}
+            >
+              Close
+            </button>
+          </div>
         </div>
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Phone Number</label>
-          <input
-            type="tel"
-            value={profileData.phoneNumber}
-            onChange={(e) => handleInputChange('phoneNumber', e.target.value)}
-            style={styles.input}
-            onFocus={(e) => {
-              e.target.style.borderColor = styles.inputFocus.borderColor;
-              e.target.style.boxShadow = styles.inputFocus.boxShadow;
-            }}
-            onBlur={(e) => {
-              e.target.style.borderColor = styles.input.borderColor;
-              e.target.style.boxShadow = 'none';
-            }}
-          />
-        </div>
-      </div>
-
-      <div style={styles.buttonContainer}>
-        <button
-          onClick={handleSaveChanges}
-          style={styles.saveButton}
-          onMouseEnter={(e) => e.target.style.backgroundColor = styles.saveButtonHover.backgroundColor}
-          onMouseLeave={(e) => e.target.style.backgroundColor = styles.saveButton.backgroundColor}
-        >
-          Save Changes
-        </button>
-        <button
-          onClick={handleCancel}
-          style={styles.cancelButton}
-          onMouseEnter={(e) => e.target.style.backgroundColor = styles.cancelButtonHover.backgroundColor}
-          onMouseLeave={(e) => e.target.style.backgroundColor = styles.cancelButton.backgroundColor}
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
+      )}
+    </>
   );
 };
 

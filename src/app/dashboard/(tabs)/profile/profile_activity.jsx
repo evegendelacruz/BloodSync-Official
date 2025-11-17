@@ -1,8 +1,16 @@
 // ProfileActivity.jsx
-import React from "react";
-import { User } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { User, ChevronLeft, ChevronRight } from "lucide-react";
 
-const ProfileActivity = () => {
+const ProfileActivity = ({ userId }) => {
+  const [activities, setActivities] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [currentDate, setCurrentDate] = useState("");
+  const [totalCount, setTotalCount] = useState(0);
+  const itemsPerPage = 6;
+
   const styles = {
     container: {
       backgroundColor: "white",
@@ -28,6 +36,7 @@ const ProfileActivity = () => {
       display: "flex",
       flexDirection: "column",
       gap: "20px",
+      minHeight: "400px",
     },
     activityItem: {
       display: "flex",
@@ -61,7 +70,7 @@ const ProfileActivity = () => {
       color: "#6b7280",
       paddingTop: "4px",
       flexShrink: 0,
-      fontFamily: 'Arial'
+      fontFamily: "Arial",
     },
     pagination: {
       backgroundColor: "white",
@@ -78,100 +87,125 @@ const ProfileActivity = () => {
       border: "none",
       cursor: "pointer",
       padding: "4px 8px",
+      display: "flex",
+      alignItems: "center",
+      gap: "4px",
+      transition: "color 0.2s",
     },
-    paginationButtonHover: {
-      color: "#047857",
+    paginationButtonDisabled: {
+      fontSize: "14px",
+      color: "#d1d5db",
+      backgroundColor: "transparent",
+      border: "none",
+      cursor: "not-allowed",
+      padding: "4px 8px",
+      display: "flex",
+      alignItems: "center",
+      gap: "4px",
     },
     paginationText: {
       fontSize: "12px",
       color: "#6b7280",
       fontFamily: "Arial",
     },
+    loadingText: {
+      textAlign: "center",
+      color: "#6b7280",
+      fontSize: "14px",
+      padding: "40px",
+    },
+    emptyText: {
+      textAlign: "center",
+      color: "#6b7280",
+      fontSize: "14px",
+      padding: "40px",
+    },
   };
 
-  // Media query for mobile responsiveness
-  const isMobile = window.innerWidth <= 768;
+  useEffect(() => {
+    if (userId) {
+      fetchActivities();
+    }
+  }, [currentPage, userId]);
 
-  if (isMobile) {
-    styles.container.padding = "24px";
-    styles.activityItem.flexWrap = "wrap";
-    styles.activityTime.paddingTop = "8px";
-    styles.activityTime.width = "100%";
-    styles.activityTime.order = "2";
-    styles.activityContent.order = "1";
-    styles.pagination.justifyContent = "center";
-  }
+  const fetchActivities = async () => {
+    setLoading(true);
+    try {
+      const offset = (currentPage - 1) * itemsPerPage;
+      
+      // Direct database query using window.electronAPI
+      const dbService = window.electronAPI;
+      
+      // Get activity logs and total count directly from database
+      const logs = await dbService.getUserActivityLog(userId, itemsPerPage, offset);
+      const count = await dbService.getUserActivityLogCount(userId);
+      
+      console.log('Fetched activities:', logs);
+      console.log('Total count:', count);
+      
+      setActivities(logs || []);
+      setTotalCount(count);
+      setTotalPages(Math.ceil(count / itemsPerPage));
+      
+      // Set current date
+      const today = new Date();
+      setCurrentDate(
+        today.toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+      );
+    } catch (error) {
+      console.error("Error fetching activities:", error);
+      setActivities([]);
+      setTotalCount(0);
+      setTotalPages(1);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const activities = [
-    {
-      text: "Added 10 units of Type O+ Red Blood Cells to inventory",
-      time: "08:12 AM",
-    },
-    {
-      text: "Released 25 units of Type A- Plasma to Northern Mindanao Medical Center",
-      time: "09:45 AM",
-    },
-    {
-      text: "Approved donor information syncing from Barangay Carmen",
-      time: "10:30 AM",
-    },
-    {
-      text: "Modified blood stock details (Updated collection date for Type B+ Platelets)",
-      time: "02:20 PM",
-    },
-    {
-      text: "Released 10 unit of Type AB+ Red Blood Cells to Maria Reyna - Xavier University Hospital",
-      time: "03:55 PM",
-    },
-    { text: "Added 5 units of Type O- Plasma to inventory", time: "05:10 PM" },
-  ];
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
 
   return (
     <div style={styles.container}>
-      <h2 style={styles.title}>Recent Activity</h2>
+      <h2 style={styles.title}>User Log</h2>
 
       <div style={styles.dateSection}>
-        <h3 style={styles.dateTitle}>March 11, 2025</h3>
+        <h3 style={styles.dateTitle}>{currentDate}</h3>
 
         <div style={styles.activityList}>
-          {activities.map((activity, index) => (
-            <div key={index} style={styles.activityItem}>
-              <div style={styles.iconContainer}>
-                <User size={16} color="#6b7280" />
+          {loading ? (
+            <div style={styles.loadingText}>Loading activity log...</div>
+          ) : activities.length === 0 ? (
+            <div style={styles.emptyText}>No activity log found</div>
+          ) : (
+            activities.map((activity, index) => (
+              <div key={activity.id || index} style={styles.activityItem}>
+                <div style={styles.iconContainer}>
+                  <User size={16} color="#6b7280" />
+                </div>
+                <div style={styles.activityContent}>
+                  <p style={styles.activityText}>{activity.description}</p>
+                </div>
+                <span style={styles.activityTime}>
+                  {activity.date} {activity.time}
+                </span>
               </div>
-              <div style={styles.activityContent}>
-                <p style={styles.activityText}>{activity.text}</p>
-              </div>
-              <span style={styles.activityTime}>{activity.time}</span>
-            </div>
-          ))}
+            ))
+          )}
         </div>
-      </div>
-
-      <div style={styles.pagination}>
-        <button
-          style={styles.paginationButton}
-          onMouseEnter={(e) =>
-            (e.target.style.color = styles.paginationButtonHover.color)
-          }
-          onMouseLeave={(e) =>
-            (e.target.style.color = styles.paginationButton.color)
-          }
-        >
-          Previous
-        </button>
-        <span style={styles.paginationText}>Page 1 of 20</span>
-        <button
-          style={styles.paginationButton}
-          onMouseEnter={(e) =>
-            (e.target.style.color = styles.paginationButtonHover.color)
-          }
-          onMouseLeave={(e) =>
-            (e.target.style.color = styles.paginationButton.color)
-          }
-        >
-          Next
-        </button>
       </div>
     </div>
   );

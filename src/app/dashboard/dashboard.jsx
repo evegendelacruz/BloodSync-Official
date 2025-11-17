@@ -1332,23 +1332,55 @@ const LogoutDialog = ({ isOpen, onConfirm, onCancel }) => {
     dialogContent: {
       backgroundColor: "white",
       padding: "2rem",
-      borderRadius: "0.5rem",
+      borderRadius: "12px",
       boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
       maxWidth: "400px",
       width: "90%",
       textAlign: "center",
       animation: "slideIn 0.3s ease-out",
+      position: "relative",
+    },
+    closeButton: {
+      position: "absolute",
+      top: "16px",
+      right: "16px",
+      background: "none",
+      border: "none",
+      fontSize: "24px",
+      color: "#9ca3af",
+      cursor: "pointer",
+      padding: "4px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      width: "32px",
+      height: "32px",
+      borderRadius: "4px",
+      transition: "background-color 0.2s ease",
+    },
+    iconContainer: {
+      width: "64px",
+      height: "64px",
+      backgroundColor: "#fee2e2",
+      borderRadius: "50%",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      margin: "0 auto 1.5rem",
     },
     dialogTitle: {
-      fontSize: "1.125rem",
+      fontSize: "1.25rem",
       fontWeight: 600,
       color: "#111827",
-      margin: "0 0 0.75rem 0",
+      margin: "0 0 0.5rem 0",
+      fontFamily: "Barlow, sans-serif",
     },
     dialogMessage: {
       color: "#6b7280",
-      margin: "0 0 1.5rem 0",
+      margin: "0 0 2rem 0",
       fontSize: "0.875rem",
+      lineHeight: "1.5",
+      fontFamily: "Arial, sans-serif",
     },
     dialogActions: {
       display: "flex",
@@ -1356,43 +1388,72 @@ const LogoutDialog = ({ isOpen, onConfirm, onCancel }) => {
       justifyContent: "center",
     },
     dialogButton: {
-      padding: "0.5rem 1.5rem",
-      borderRadius: "0.375rem",
+      padding: "0.625rem 1.5rem",
+      borderRadius: "6px",
       fontSize: "0.875rem",
-      fontWeight: 500,
+      fontWeight: 600,
       cursor: "pointer",
       transition: "all 0.2s",
-      border: "1px solid",
+      border: "none",
+      fontFamily: "Barlow, sans-serif",
+      minWidth: "100px",
     },
     cancelButton: {
-      backgroundColor: "white",
-      color: "#6b7280",
-      borderColor: "#d1d5db",
+      backgroundColor: "#f3f4f6",
+      color: "#374151",
     },
     confirmButton: {
       backgroundColor: "#ef4444",
       color: "white",
-      borderColor: "#ef4444",
     },
   };
 
   if (!isOpen) return null;
 
   return (
-    <div style={styles.dialogOverlay}>
-      <div style={styles.dialogContent}>
+    <div style={styles.dialogOverlay} onClick={onCancel}>
+      <div style={styles.dialogContent} onClick={(e) => e.stopPropagation()}>
+        <button
+          style={styles.closeButton}
+          onClick={onCancel}
+          className="close-button"
+        >
+          ×
+        </button>
+
+        <div style={styles.iconContainer}>
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#ef4444"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+        </div>
+
         <h3 style={styles.dialogTitle}>Confirm Logout</h3>
-        <p style={styles.dialogMessage}>Are you sure you want to logout?</p>
+        <p style={styles.dialogMessage}>
+          Are you sure you want to logout from your account?
+        </p>
         <div style={styles.dialogActions}>
           <button
             style={{ ...styles.dialogButton, ...styles.cancelButton }}
             onClick={onCancel}
+            className="cancel-button"
           >
             Cancel
           </button>
           <button
             style={{ ...styles.dialogButton, ...styles.confirmButton }}
             onClick={onConfirm}
+            className="confirm-button"
           >
             Yes, Logout
           </button>
@@ -1414,6 +1475,26 @@ const LogoutDialog = ({ isOpen, onConfirm, onCancel }) => {
             opacity: 1;
             transform: translateY(0) scale(1);
           }
+        }
+
+        .close-button:hover {
+          background-color: #f3f4f6;
+        }
+
+        .cancel-button:hover {
+          background-color: #e5e7eb;
+        }
+
+        .confirm-button:hover {
+          background-color: #dc2626;
+        }
+
+        .cancel-button:active {
+          background-color: #d1d5db;
+        }
+
+        .confirm-button:active {
+          background-color: #b91c1c;
         }
       `}</style>
     </div>

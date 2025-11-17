@@ -6,28 +6,135 @@ const Signup = () => {
   const navigate = useNavigate();
   const [isPageLoading, setIsPageLoading] = useState(true);
   const [isRegistering, setIsRegistering] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const [formData, setFormData] = useState({
+    fullName: "",
+    role: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+  });
 
   useEffect(() => {
-    // Simulate initial loading
     const timer = setTimeout(() => {
       setIsPageLoading(false);
     }, 1500);
-  
+
     return () => clearTimeout(timer);
   }, []);
 
+  const validatePassword = (password) => {
+    const minLength = 8;
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumber = /[0-9]/.test(password);
+    const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
+  
+    if (password.length < minLength) {
+      return "Password must be at least 8 characters long";
+    }
+    if (!hasUpperCase) {
+      return "Password must contain at least one uppercase letter";
+    }
+    if (!hasLowerCase) {
+      return "Password must contain at least one lowercase letter";
+    }
+    if (!hasNumber) {
+      return "Password must contain at least one number";
+    }
+    if (!hasSpecialChar) {
+      return "Password must contain at least one special character";
+    }
+    return null;
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+    setError(""); // Clear error when user types
+  };
+
+  const validateForm = () => {
+    if (!formData.fullName.trim()) {
+      setError("Full name is required");
+      return false;
+    }
+    if (!formData.role) {
+      setError("Please select a role");
+      return false;
+    }
+    if (!formData.email.trim()) {
+      setError("Email is required");
+      return false;
+    }
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setError("Please enter a valid email address");
+      return false;
+    }
+    const passwordError = validatePassword(formData.password);
+    if (passwordError) {
+      setError(passwordError);
+      return false;
+    }
+    if (formData.password !== formData.confirmPassword) {
+      setError("Passwords do not match");
+      return false;
+    }
+    return true;
+  };
+
   const handleSignup = async (e) => {
     e.preventDefault();
+
+    if (!validateForm()) {
+      return;
+    }
+
     setIsRegistering(true);
-  
+    setError("");
+    setSuccess("");
+
     try {
-      // Simulate signup API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      
-      // Add your signup logic here
-      navigate("/login");
+      const userData = {
+        fullName: formData.fullName.trim(),
+        role: formData.role,
+        email: formData.email.trim().toLowerCase(),
+        password: formData.password,
+      };
+
+      const result = await window.electronAPI.register(userData);
+
+      if (result.success) {
+        setSuccess(
+          "Registration successful! You'll receive an email once your account is verified. Redirecting to login…"
+        );
+
+        // Clear form
+        setFormData({
+          fullName: "",
+          role: "",
+          email: "",
+          password: "",
+          confirmPassword: "",
+        });
+
+        // Redirect to login after 3 seconds
+        setTimeout(() => {
+          navigate("/login");
+        }, 3000);
+      }
     } catch (err) {
       console.error("Signup failed:", err);
+      setError(err.message || "Registration failed. Please try again.");
     } finally {
       setIsRegistering(false);
     }
@@ -44,7 +151,6 @@ const Signup = () => {
           box-sizing: border-box;
         }
 
-        /* Header Styles */
         .bloodsync-header {
           background: #165c3c;
           padding: 5px 24px;
@@ -83,31 +189,6 @@ const Signup = () => {
           margin-right: 12px;
         }
 
-        .bloodsync-title {
-          font-size: 20px;
-          font-weight: bold;
-          margin: 0;
-        }
-
-        .bloodsync-subtitle {
-          font-size: 10px;
-          color: rgba(255, 255, 255, 0.8);
-          margin: 0;
-        }
-
-        .doh-title {
-          font-size: 12px;
-          font-weight: 600;
-          margin: 0 0 2px 0;
-        }
-
-        .doh-republic,
-        .doh-tagalog {
-          font-size: 10px;
-          color: rgba(255, 255, 255, 0.8);
-          margin: 0;
-        }
-
         .page-container {
           min-height: 100vh;
           display: flex;
@@ -127,21 +208,10 @@ const Signup = () => {
           box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
           overflow: hidden;
           width: 350px;
-          min-height: 400px; /* keeps a minimum size */
-          height: auto;      /* adjust based on content */
+          min-height: 400px;
+          height: auto;
           display: flex;
-          flex-direction: column; /* keeps rows stacking */
-        }
-
-        .reset-container {
-          background: rgba(22, 92, 60, 0.8);
-          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-          overflow: hidden;
-          width: 350px;
-          min-height: 300px; /* keeps a minimum size */
-          height: auto;      /* adjust based on content */
-          display: flex;
-          flex-direction: column; /* keeps rows stacking */
+          flex-direction: column;
         }
 
         .login-header {
@@ -181,7 +251,7 @@ const Signup = () => {
           color: white;
         }
 
-        .form-group input {
+        .form-group input, .form-group select {
           width: 100%;
           padding: 10px 16px;
           border: 2px solid #e5e7eb;
@@ -190,19 +260,46 @@ const Signup = () => {
         }
 
         .form-group select {
-          width: 100%;
-          padding: 10px 16px;
-          border: 2px solid #e5e7eb;
-          font-size: 13px;
-          transition: border-color 0.2s;
           background: white;
           cursor: pointer;
         }
 
-        .form-group input:focus,
-        .form-group select:focus {
+        .form-group input:focus, .form-group select:focus {
           outline: none;
           border-color: #15803d;
+        }
+
+        .password-input-wrapper {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+
+        .password-input-wrapper input {
+          padding-right: 45px;
+        }
+
+        .password-toggle-btn {
+          position: absolute;
+          right: 12px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #6b7280;
+          transition: color 0.2s;
+        }
+
+        .password-toggle-btn:hover {
+          color: #374151;
+        }
+
+        .password-toggle-btn svg {
+          width: 20px;
+          height: 20px;
         }
 
         .btn {
@@ -216,9 +313,10 @@ const Signup = () => {
           transition: transform 0.2s;
           margin-bottom: 16px;
           font-family: Arial;
+          cursor: pointer;
         }
 
-        .btn:hover {
+        .btn:hover:not(:disabled) {
           transform: translateY(-2px);
         }
 
@@ -245,6 +343,7 @@ const Signup = () => {
           text-decoration: none;
           font-weight: bold;
           font-family: inherit;
+          cursor: pointer;
         }
 
         .link:hover {
@@ -252,24 +351,26 @@ const Signup = () => {
         }
 
         .error {
-          color: #ef4444;
+          color: #ff6b6b;
+          background-color: rgba(255, 107, 107, 0.1);
+          border: 1px solid #ff6b6b;
+          padding: 10px;
+          border-radius: 4px;
           font-size: 14px;
-          margin-top: 8px;
-          display: none;
+          margin-bottom: 16px;
+          display: block;
         }
 
         .success {
-          color: #10b981;
+          color: #ffcf35;
+          background: rgba(255, 255, 255, 0.1);
+          padding: 10px;
+          border-radius: 4px;
           font-size: 14px;
-          margin-top: 8px;
+          margin-bottom: 16px;
+          text-align: justified;
         }
 
-        .loading {
-          opacity: 0.6;
-          pointer-events: none;
-        }
-
-        /* Footer styling */
         .footer {
           background: #ffcf35;
           color: black;
@@ -279,28 +380,15 @@ const Signup = () => {
           font-family: Arial;
         }
 
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-          .main-content {
-            padding: 20px 16px;
-          }
-
-          .login-container {
-            max-width: 100%;
-          }
-        }
-
         body {
           font-family: "Barlow", "Arial", "Barlow-Medium", sans-serif;
-          background:
-             #EDF4E6
-            /* Image background */ url("../assets/Background.png") no-repeat
-            center center fixed;
+          background: #EDF4E6 url("../assets/Background.png") no-repeat center center fixed;
           background-size: cover;
           min-height: 100vh;
           margin: 0;
           padding: 0;
         }
+
         .loading-dots {
           display: inline-flex;
           align-items: center;
@@ -333,98 +421,205 @@ const Signup = () => {
             transform: scale(1);
             opacity: 1;
           }
+        }
       `}</style>
 
-    <div className="page-container">
-      <header className="bloodsync-header">
-        <div className="header-container">
-          <div className="left-section">
-            <img
-              src="/assets/Logo1.png"
-              alt="BloodSync Logo"
-              className="bloodsync-logo"
-            />
-          </div>
-          <div className="right-section">
-            <div className="doh-section">
+      <div className="page-container">
+        <header className="bloodsync-header">
+          <div className="header-container">
+            <div className="left-section">
               <img
-                src="/assets/DOH Logo.png"
-                alt="Department of Health"
-                className="doh-logo"
+                src="/assets/Logo1.png"
+                alt="BloodSync Logo"
+                className="bloodsync-logo"
               />
-              <div className="doh-text">
+            </div>
+            <div className="right-section">
+              <div className="doh-section">
                 <img
-                  src="/assets/Text Logo.png"
+                  src="/assets/DOH Logo.png"
                   alt="Department of Health"
-                  className="doh-text"
+                  className="doh-logo"
                 />
+                <div className="doh-text">
+                  <img
+                    src="/assets/Text Logo.png"
+                    alt="Department of Health"
+                    className="doh-text"
+                  />
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <div className="main-content">
-        <div className="login-container">
-          <div className="login-header">
-            <h1>Create an Account</h1>
-            <p>
-              Have an Account?&nbsp;
-              <button
-                type="button"
-                onClick={() => navigate("/login")}
-                className="link"
-              >
-                Click Here
-              </button>
-            </p>
-          </div>
-          <div className="content">
-            <form onSubmit={handleSignup}>
-              <div className="form-group">
-                <label htmlFor="name">Full Name:</label>
-                <input type="text" id="name" name="name" required />
-              </div>
-              <div className="form-group">
-                <label htmlFor="role">Role:</label>
-                <select id="role" name="role" required>
-                  <option value="">Select a role...</option>
-                  <option value="admin">Admin</option>
-                  <option value="doctor">Doctor</option>
-                  <option value="medical-technologist">Medical Technologist</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label htmlFor="email">Email:</label>
-                <input type="email" id="email" name="email" required />
-              </div>
-              <div className="form-group">
-                <label htmlFor="password">Password:</label>
-                <input type="password" id="password" name="password" required />
-              </div>
-              <div className="form-group">
-                <label htmlFor="password">Confirm Password:</label>
-                <input type="password" id="password" name="password" required />
-              </div>
-              <button type="submit" className="btn" style={{ marginBottom: "30px" }} disabled={isRegistering}>
-                {isRegistering ? (
-                  <div className="loading-dots">
-                    <span></span>
-                    <span></span>
-                    <span></span>
+        <div className="main-content">
+          <div className="login-container">
+            <div className="login-header">
+              <h1>Create an Account</h1>
+              <p>
+                Have an Account?&nbsp;
+                <button
+                  type="button"
+                  onClick={() => navigate("/login")}
+                  className="link"
+                >
+                  Click Here
+                </button>
+              </p>
+            </div>
+            <div className="content">
+              <form onSubmit={handleSignup}>
+                <div className="form-group">
+                  <label htmlFor="fullName">Full Name:</label>
+                  <input
+                    type="text"
+                    id="fullName"
+                    name="fullName"
+                    value={formData.fullName}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="role">Role:</label>
+                  <select
+                    id="role"
+                    name="role"
+                    value={formData.role}
+                    onChange={handleChange}
+                    required
+                  >
+                    <option value="">Select a role...</option>
+                    <option value="Admin">Admin</option>
+                    <option value="Inventory Staff">Inventory Staff</option>
+                    <option value="Non-Conforming Staff">
+                      Non-Conforming Staff
+                    </option>
+                    <option value="Scheduler">Scheduler</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="email">Email:</label>
+                  <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="password">Password:</label>
+                  <div className="password-input-wrapper">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      id="password"
+                      name="password"
+                      value={formData.password}
+                      onChange={handleChange}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowPassword(!showPassword)}
+                      aria-label="Toggle password visibility"
+                    >
+                      {showPassword ? (
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                          <line x1="1" y1="1" x2="23" y2="23" />
+                        </svg>
+                      ) : (
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      )}
+                    </button>
                   </div>
-                ) : (
-                  "REGISTER"
-                )}
-              </button>
-            </form>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="confirmPassword">Confirm Password:</label>
+                  <div className="password-input-wrapper">
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      id="confirmPassword"
+                      name="confirmPassword"
+                      value={formData.confirmPassword}
+                      onChange={handleChange}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() =>
+                        setShowConfirmPassword(!showConfirmPassword)
+                      }
+                      aria-label="Toggle confirm password visibility"
+                    >
+                      {showConfirmPassword ? (
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                          <line x1="1" y1="1" x2="23" y2="23" />
+                        </svg>
+                      ) : (
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
+                {error && <div className="error">{error}</div>}
+                {success && <div className="success">{success}</div>}
+                <button
+                  type="submit"
+                  className="btn"
+                  style={{ marginBottom: "30px" }}
+                  disabled={isRegistering}
+                >
+                  {isRegistering ? (
+                    <div className="loading-dots">
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                    </div>
+                  ) : (
+                    "REGISTER"
+                  )}
+                </button>
+              </form>
+            </div>
           </div>
         </div>
+        <footer className="footer">
+          <p>2025 © Copyright Code Red Corporation ver. 1.0</p>
+        </footer>
       </div>
-      <footer className="footer">
-        <p>2025 © Copyright Code Red Corporation ver. 1.0</p>
-      </footer>
-    </div>
     </>
   );
 };
