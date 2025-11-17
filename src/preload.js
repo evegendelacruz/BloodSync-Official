@@ -536,7 +536,77 @@ transferPlateletToNonConforming: async (serialIds) => {
   getReleasedPlasmaStock: () => ipcRenderer.invoke('db:getReleasedPlasmaStock'),
   getReleasedPlateletStock: () => ipcRenderer.invoke('db:getReleasedPlateletStock'),
   getBloodStockHistory: (year) => ipcRenderer.invoke("db:getBloodStockHistory", year),
+
+  // ========== AUTHENTICATION METHODS ==========
+  register: async (userData) => {
+    try {
+      return await ipcRenderer.invoke('auth:register', userData);
+    } catch (error) {
+      console.error('Preload Error - register:', error);
+      throw error;
+    }
+  },
+
+  login: async (email, password) => {
+    try {
+      console.log("Preload - Login request for:", email);
+      const result = await ipcRenderer.invoke('auth:login', email, password);
+      console.log("Preload - Login result:", result);
+      
+      if (!result) {
+        return {
+          success: false,
+          message: "No response from server"
+        };
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Preload Error - login:', error);
+      return {
+        success: false,
+        message: error.message || "Login failed"
+      };
+    }
+  },
+
+  verifyUser: async (token) => {
+    try {
+      console.log('Preload - verifying user with token:', token);
+      return await ipcRenderer.invoke('auth:verify', token);
+    } catch (error) {
+      console.error('Preload Error - verifyUser:', error);
+      throw error;
+    }
+  },
+
+  getPendingUsers: () => ipcRenderer.invoke('get-pending-users'),
+  getVerifiedUsers: () => ipcRenderer.invoke('get-verified-users'),
+  verifyUserById: (userId) => ipcRenderer.invoke('verify-user-by-id', userId),
+  rejectUser: (userId) => ipcRenderer.invoke('reject-user', userId),
+  updateUserRole: (userId, newRole) => ipcRenderer.invoke('update-user-role', userId, newRole),
+  removeUser: (userId) => ipcRenderer.invoke('remove-user', userId),
+  getUserProfileById: (userId) => ipcRenderer.invoke('get-user-profile', userId),
+  updateUserProfile: (userId, data) => ipcRenderer.invoke('update-user-profile', userId, data),
+  updateUserProfileImage: (userId, image) => ipcRenderer.invoke('update-profile-image', userId, image),
+
+  //=================== USER ACTIVITY LOG METHODS ===================
+  getUserActivityLog: (userId, limit, offset) => {
+    return ipcRenderer.invoke('get-user-activity-log', userId, limit, offset);
+  },
   
+  getUserActivityLogCount: (userId) => {
+    return ipcRenderer.invoke('get-user-activity-log-count', userId);
+  },
+  
+  logUserActivity: (userId, action, description) => {
+    return ipcRenderer.invoke('log-user-activity', userId, action, description);
+  },
+
+  updateUserPassword: (userId, currentPassword, newPassword) => 
+    ipcRenderer.invoke('update-user-password', userId, currentPassword, newPassword),
+  
+    
 });
 
 
