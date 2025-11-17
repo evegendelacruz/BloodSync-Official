@@ -1,4 +1,6 @@
 const { Pool } = require("pg");
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 // Database connection configuration
 const pool = new Pool({
@@ -36,6 +38,19 @@ const testConnection = async () => {
 
 // Call test connection
 testConnection();
+
+const emailTransporter = nodemailer.createTransport({
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // Use TLS
+  auth: {
+    user: 'bloodsync.doh@gmail.com',
+    pass: 'ouks otjf ajgu yxfc' // Your App Password without spaces
+  },
+  tls: {
+    rejectUnauthorized: false
+  }
+});
 
 // Database service functions
 const dbService = {
@@ -5287,6 +5302,758 @@ const dbService = {
       throw error;
     }
   },
+
+// ========== USER AUTHENTICATION METHODS ==========
+
+// Register new user
+async registerUser(userData) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Check if email already exists
+    const checkEmailQuery = `
+      SELECT u_id FROM users WHERE u_email = $1
+    `;
+    const emailCheck = await client.query(checkEmailQuery, [userData.email]);
+
+    if (emailCheck.rows.length > 0) {
+      throw new Error("Email already registered");
+    }
+
+    // Generate DOH ID
+    const dohIdQuery = `SELECT generate_doh_id() as doh_id`;
+    const dohIdResult = await client.query(dohIdQuery);
+    const dohId = dohIdResult.rows[0].doh_id;
+
+    // Generate verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+
+    // Hash password
+    const hashedPassword = crypto.createHash('sha256').update(userData.password).digest('hex');
+
+    // Insert new user
+    const insertQuery = `
+      INSERT INTO users (
+        u_doh_id, u_full_name, u_role, u_email, u_password,
+        u_verification_token, u_status, u_created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      RETURNING u_id, u_doh_id, u_email, u_full_name, u_role
+    `;
+
+    const values = [
+      dohId,
+      userData.fullName,
+      userData.role,
+      userData.email,
+      hashedPassword,
+      verificationToken,
+      'pending'
+    ];
+
+    const result = await client.query(insertQuery, values);
+    const newUser = result.rows[0];
+
+    const verificationUrl = `http://localhost:5173/verify-user?token=${verificationToken}`;
+
+    const mailOptions = {
+      from: 'bloodsync.doh@gmail.com',
+      to: 'bloodsync.doh@gmail.com',
+      subject: 'New User Registration - BloodSync',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: #165c3c; color: white; padding: 20px; text-align: center; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 5px; margin-top: 20px; }
+            .user-info { background: white; padding: 15px; border-left: 4px solid #93c242; margin: 20px 0; }
+            .token-box { background: #fff3cd; border: 2px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px; }
+            .token { font-family: monospace; font-size: 14px; word-break: break-all; color: #856404; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>New User Registration</h1>
+            </div>
+            <div class="content">
+              <h2>A new user has registered for BloodSync</h2>
+              <div class="user-info">
+                <p><strong>DOH ID:</strong> ${dohId}</p>
+                <p><strong>Full Name:</strong> ${userData.fullName}</p>
+                <p><strong>Role:</strong> ${userData.role}</p>
+                <p><strong>Email:</strong> ${userData.email}</p>
+                <p><strong>Registration Date:</strong> ${new Date().toLocaleString()}</p>
+              </div>
+              
+              <h3>Verification Instructions:</h3>
+              <ol>
+                <li>Open the BloodSync application</li>
+                <li>Go to Admin Dashboard → User Management</li>
+                <li>Find the pending user: ${userData.email}</li>
+                <li>Click "Verify" to approve their account</li>
+              </ol>
+              
+              <div class="token-box">
+                <p><strong>Or use this verification token:</strong></p>
+                <p class="token">${verificationToken}</p>
+                <p style="font-size: 12px; margin-top: 10px;">Copy this token and paste it in the app's verification form.</p>
+              </div>
+            </div>
+            <div class="footer">
+              <p>This is an automated message from BloodSync System</p>
+              <p>&copy; 2025 Code Red Corporation - BloodSync ver. 1.0</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    };
+
+    await emailTransporter.sendMail(mailOptions);
+
+    await client.query("COMMIT");
+
+    return {
+      success: true,
+      message: 'Registration successful! Please wait for admin approval.',
+      user: newUser
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error registering user:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
+// Verify user
+async verifyUser(token) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const query = `
+      UPDATE users 
+      SET u_status = 'verified', 
+          u_verified_at = NOW(),
+          u_verification_token = NULL
+      WHERE u_verification_token = $1
+      RETURNING u_id, u_doh_id, u_email, u_full_name, u_role
+    `;
+
+    const result = await client.query(query, [token]);
+
+    if (result.rows.length === 0) {
+      throw new Error("Invalid or expired verification token");
+    }
+
+    const verifiedUser = result.rows[0];
+
+    // Send confirmation email to user
+    const mailOptions = {
+      from: 'bloodsync.doh@gmail.com',
+      to: verifiedUser.u_email,
+      subject: 'Account Verified - BloodSync',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: #165c3c; color: white; padding: 20px; text-align: center; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 5px; margin-top: 20px; }
+            .success-box { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; border-radius: 5px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Account Verified!</h1>
+            </div>
+            <div class="content">
+              <div class="success-box">
+                <h2>✓ Your account has been verified</h2>
+              </div>
+              <p>Hello ${verifiedUser.u_full_name},</p>
+              <p>Your BloodSync account has been successfully verified by the administrator.</p>
+              <p><strong>Your DOH ID:</strong> ${verifiedUser.u_doh_id}</p>
+              <p>You can now log in to the system using your email and password.</p>
+            </div>
+            <div class="footer">
+              <p>&copy; 2025 Code Red Corporation - BloodSync ver. 1.0</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    };
+
+    await emailTransporter.sendMail(mailOptions);
+
+    await client.query("COMMIT");
+
+    return {
+      success: true,
+      message: 'User verified successfully',
+      user: verifiedUser
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error verifying user:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
+
+  // Get pending users
+async getPendingUsers() {
+  try {
+    const query = `
+      SELECT 
+        u_id as id,
+        u_doh_id as "dohId",
+        u_full_name as "fullName",
+        u_role as role,
+        u_email as email,
+        u_status as status,
+        TO_CHAR(u_created_at, 'MM/DD/YYYY HH24:MI') as "createdAt"
+      FROM users
+      WHERE u_status = 'pending'
+      ORDER BY u_created_at DESC
+    `;
+
+    const result = await pool.query(query);
+    return result.rows;
+  } catch (error) {
+    console.error("Error fetching pending users:", error);
+    throw error;
+  }
+},
+
+// Get verified users
+async getVerifiedUsers() {
+  try {
+    const query = `
+      SELECT 
+        u_id as id,
+        u_doh_id as "dohId",
+        u_full_name as "fullName",
+        u_role as role,
+        u_email as email,
+        u_status as status,
+        TO_CHAR(u_verified_at, 'MM/DD/YYYY HH24:MI') as "verifiedAt"
+      FROM users
+      WHERE u_status = 'verified'
+      ORDER BY u_verified_at DESC
+    `;
+
+    const result = await pool.query(query);
+    return result.rows;
+  } catch (error) {
+    console.error("Error fetching verified users:", error);
+    throw error;
+  }
+},
+
+// Verify user by ID (instead of token)
+async verifyUserById(userId) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const query = `
+      UPDATE users 
+      SET u_status = 'verified', 
+          u_verified_at = NOW(),
+          u_verification_token = NULL
+      WHERE u_id = $1
+      RETURNING u_id, u_doh_id, u_email, u_full_name, u_role
+    `;
+
+    const result = await client.query(query, [userId]);
+
+    if (result.rows.length === 0) {
+      throw new Error("User not found");
+    }
+
+    const verifiedUser = result.rows[0];
+
+    // Send confirmation email to user
+    const mailOptions = {
+      from: 'bloodsync.doh@gmail.com',
+      to: verifiedUser.u_email,
+      subject: 'Account Verified - BloodSync',
+      html: `
+        <h2>Your BloodSync account has been verified!</h2>
+        <p>Hello ${verifiedUser.u_full_name},</p>
+        <p>Your account has been approved. You can now log in to BloodSync.</p>
+        <p><strong>Your DOH ID:</strong> ${verifiedUser.u_doh_id}</p>
+      `
+    };
+
+    // Only send email if transporter is configured
+    try {
+      await emailTransporter.sendMail(mailOptions);
+    } catch (emailError) {
+      console.error("Email sending failed (non-critical):", emailError);
+    }
+
+    await client.query("COMMIT");
+
+    return {
+      success: true,
+      message: 'User verified successfully',
+      user: verifiedUser
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error verifying user by ID:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
+// Reject user
+async rejectUser(userId) {
+  try {
+    const query = `DELETE FROM users WHERE u_id = $1`;
+    await pool.query(query, [userId]);
+    return { success: true };
+  } catch (error) {
+    console.error("Error rejecting user:", error);
+    throw error;
+  }
+},
+
+// Update user role
+async updateUserRole(userId, newRole) {
+  try {
+    const query = `
+      UPDATE users 
+      SET u_role = $1
+      WHERE u_id = $2
+      RETURNING u_id, u_doh_id, u_email, u_full_name, u_role
+    `;
+
+    const result = await pool.query(query, [newRole, userId]);
+
+    if (result.rows.length === 0) {
+      throw new Error("User not found");
+    }
+
+    return {
+      success: true,
+      message: 'User role updated successfully',
+      user: result.rows[0]
+    };
+  } catch (error) {
+    console.error("Error updating user role:", error);
+    throw error;
+  }
+},
+
+// Remove user (delete from database)
+async removeUser(userId) {
+  try {
+    const query = `DELETE FROM users WHERE u_id = $1`;
+    await pool.query(query, [userId]);
+    return { success: true, message: 'User removed successfully' };
+  } catch (error) {
+    console.error("Error removing user:", error);
+    throw error;
+  }
+},
+
+async loginUser(email, password) {
+  try {
+    const normalizedEmail = email.trim().toLowerCase();
+    
+    const query = `
+      SELECT 
+        u_id as id,
+        u_doh_id as "dohId",
+        u_full_name as "fullName",
+        u_role as role,
+        u_email as email,
+        u_password as password,
+        u_status as status
+      FROM users
+      WHERE LOWER(TRIM(u_email)) = $1
+    `;
+
+    const result = await pool.query(query, [normalizedEmail]);
+
+    if (result.rows.length === 0) {
+      throw new Error("Invalid email or password");
+    }
+
+    const user = result.rows[0];
+
+    if (user.status !== 'verified') {
+      throw new Error("Account pending verification. Please wait for admin approval.");
+    }
+
+    const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
+    
+    if (user.password !== hashedPassword) {
+      throw new Error("Invalid email or password");
+    }
+
+    // Update last login
+    await pool.query('UPDATE users SET u_last_login = NOW() WHERE u_id = $1', [user.id]);
+
+    // Log the login activity
+    await this.logUserActivity(
+      user.id,
+      'LOGIN',
+      `User ${user.fullName} logged into the system`
+    );
+
+    delete user.password;
+
+    return {
+      success: true,
+      user
+    };
+  } catch (error) {
+    console.error("Error logging in user:", error);
+    throw error;
+  }
+},
+
+async getUserProfileById(userId) {
+  try {
+    const query = `
+      SELECT 
+        u_id as id,
+        u_doh_id as "dohId",
+        u_full_name as "fullName",
+        u_role as role,
+        u_email as email,
+        u_gender as gender,
+        TO_CHAR(u_date_of_birth, 'YYYY-MM-DD') as "dateOfBirth",
+        u_nationality as nationality,
+        u_civil_status as "civilStatus",
+        u_barangay as barangay,
+        u_phone_number as "phoneNumber",
+        u_blood_type as "bloodType",
+        u_rh_factor as "rhFactor",
+        u_profile_image as "profileImage",
+        u_status as status,
+        u_last_login as "lastLogin",
+        u_created_at as "createdAt"
+      FROM public.users
+      WHERE u_id = $1
+    `;
+    
+    const result = await pool.query(query, [userId]);
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+    
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error in getUserProfileById:', error);
+    throw error;
+  }
+},
+
+async updateUserProfile(userId, data) {
+  try {
+    const query = `
+      UPDATE public.users
+      SET 
+        u_full_name = $1,
+        u_gender = $2,
+        u_date_of_birth = $3,
+        u_nationality = $4,
+        u_civil_status = $5,
+        u_barangay = $6,
+        u_phone_number = $7,
+        u_blood_type = $8,
+        u_rh_factor = $9,
+        u_profile_image = $10,
+        u_modified_at = NOW()
+      WHERE u_id = $11
+      RETURNING 
+        u_id as id,
+        u_doh_id as "dohId",
+        u_full_name as "fullName",
+        u_role as role,
+        u_email as email,
+        u_gender as gender,
+        u_date_of_birth as "dateOfBirth",
+        u_nationality as nationality,
+        u_civil_status as "civilStatus",
+        u_barangay as barangay,
+        u_phone_number as "phoneNumber",
+        u_blood_type as "bloodType",
+        u_rh_factor as "rhFactor",
+        u_profile_image as "profileImage"
+    `;
+    
+    const values = [
+      data.fullName,
+      data.gender,
+      data.dateOfBirth,
+      data.nationality,
+      data.civilStatus,
+      data.barangay,
+      data.phoneNumber,
+      data.bloodType,
+      data.rhFactor,
+      data.profileImage,
+      userId
+    ];
+    
+    const result = await pool.query(query, values);
+    
+    if (result.rows.length === 0) {
+      return { success: false, message: 'User not found' };
+    }
+    
+    const user = result.rows[0];
+    return {
+      success: true,
+      user: {
+        u_id: user.id,
+        u_doh_id: user.dohId,
+        u_full_name: user.fullName,
+        u_role: user.role,
+        u_email: user.email,
+        u_gender: user.gender,
+        u_date_of_birth: user.dateOfBirth,
+        u_nationality: user.nationality,
+        u_civil_status: user.civilStatus,
+        u_barangay: user.barangay,
+        u_phone_number: user.phoneNumber,
+        u_blood_type: user.bloodType,
+        u_rh_factor: user.rhFactor,
+        u_profile_image: user.profileImage
+      }
+    };
+  } catch (error) {
+    console.error('Error in updateUserProfile:', error);
+    throw error;
+  }
+},
+
+async updateUserProfileImage(userId, imageData) {
+  try {
+    const query = `
+      UPDATE public.users
+      SET 
+        u_profile_image = $1,
+        u_modified_at = NOW()
+      WHERE u_id = $2
+      RETURNING 
+        u_id as id,
+        u_profile_image as "profileImage"
+    `;
+    
+    const result = await pool.query(query, [imageData, userId]);
+    
+    if (result.rows.length === 0) {
+      return { success: false, message: 'User not found' };
+    }
+    
+    return {
+      success: true,
+      user: result.rows[0]
+    };
+  } catch (error) {
+    console.error('Error in updateUserProfileImage:', error);
+    throw error;
+  }
+},
+
+// ========== USER ACTIVITY LOG METHODS ==========
+
+// Log user activity
+async logUserActivity(userId, action, description) {
+  try {
+    const query = `
+      INSERT INTO user_activity_log (
+        ual_user_id,
+        ual_action,
+        ual_description,
+        ual_timestamp
+      ) VALUES ($1, $2, $3, NOW())
+      RETURNING ual_id
+    `;
+
+    const result = await pool.query(query, [userId, action, description]);
+    return result.rows[0];
+  } catch (error) {
+    console.error("Error logging user activity:", error);
+    throw error;
+  }
+},
+
+// Get user activity log with pagination
+async getUserActivityLog(userId, limit = 20, offset = 0) {
+  try {
+    const query = `
+      SELECT 
+        ual_id as id,
+        ual_user_id as "userId",
+        ual_action as action,
+        ual_description as description,
+        TO_CHAR(ual_timestamp, 'MM/DD/YYYY') as date,
+        TO_CHAR(ual_timestamp, 'HH12:MI AM') as time,
+        ual_timestamp as timestamp
+      FROM user_activity_log
+      WHERE ual_user_id = $1
+      ORDER BY ual_timestamp DESC
+      LIMIT $2 OFFSET $3
+    `;
+
+    const result = await pool.query(query, [userId, limit, offset]);
+    return result.rows;
+  } catch (error) {
+    console.error("Error fetching user activity log:", error);
+    throw error;
+  }
+},
+
+// Get total count for pagination
+async getUserActivityLogCount(userId) {
+  try {
+    const query = `
+      SELECT COUNT(*) as total
+      FROM user_activity_log
+      WHERE ual_user_id = $1
+    `;
+
+    const result = await pool.query(query, [userId]);
+    return parseInt(result.rows[0].total);
+  } catch (error) {
+    console.error("Error fetching user activity log count:", error);
+    throw error;
+  }
+},
+
+// Update user password (in USER AUTHENTICATION METHODS section)
+async updateUserPassword(userId, currentPassword, newPassword) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    
+    console.log('Updating password for user ID:', userId);
+    
+    // Hash the current password to compare
+    const hashedCurrentPassword = crypto.createHash('sha256').update(currentPassword).digest('hex');
+    
+    // Verify current password - using the internal database ID (u_id)
+    const verifyQuery = `
+      SELECT u_id, u_password, u_email, u_full_name 
+      FROM users 
+      WHERE u_id = $1
+    `;
+    
+    const verifyResult = await client.query(verifyQuery, [userId]);
+    
+    if (verifyResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      console.error('User not found with ID:', userId);
+      return {
+        success: false,
+        message: "User not found"
+      };
+    }
+    
+    const user = verifyResult.rows[0];
+    console.log('Found user:', user.u_email);
+    
+    // Compare hashed passwords
+    if (user.u_password !== hashedCurrentPassword) {
+      await client.query("ROLLBACK");
+      console.log('Password mismatch for user:', user.u_email);
+      return {
+        success: false,
+        message: "Current password is incorrect"
+      };
+    }
+    
+    console.log('Current password verified successfully');
+    
+    // Hash the new password
+    const hashedNewPassword = crypto.createHash('sha256').update(newPassword).digest('hex');
+    
+    // Update password with the internal database ID
+    const updateQuery = `
+      UPDATE users 
+      SET u_password = $1, u_modified_at = NOW()
+      WHERE u_id = $2
+      RETURNING u_id, u_email, u_full_name
+    `;
+    
+    const result = await client.query(updateQuery, [hashedNewPassword, userId]);
+    
+    if (result.rows.length === 0) {
+      await client.query("ROLLBACK");
+      console.error('Update failed - no rows affected');
+      return {
+        success: false,
+        message: "Failed to update password"
+      };
+    }
+    
+    console.log('Password updated successfully for:', result.rows[0].u_email);
+    
+    // Log the password change activity
+    try {
+      const logQuery = `
+        INSERT INTO user_activity_log (
+          ual_user_id,
+          ual_action,
+          ual_description,
+          ual_timestamp
+        ) VALUES ($1, $2, $3, NOW())
+      `;
+      
+      await client.query(logQuery, [
+        userId,
+        'PASSWORD_CHANGE',
+        `User ${user.u_full_name} changed their password`
+      ]);
+      console.log('Activity logged successfully');
+    } catch (logError) {
+      console.error('Failed to log activity (non-critical):', logError);
+      // Don't fail the entire operation if logging fails
+    }
+    
+    await client.query("COMMIT");
+    
+    return {
+      success: true,
+      message: 'Password updated successfully'
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error updating user password:", error);
+    return {
+      success: false,
+      message: error.message || 'Failed to update password'
+    };
+  } finally {
+    client.release();
+  }
+},
+
+  
 };
 
 module.exports = dbService;
