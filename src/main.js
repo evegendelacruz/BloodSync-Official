@@ -1002,6 +1002,55 @@ ipcMain.handle('update-user-password', async (event, userId, currentPassword, ne
     };
   }
 });
+
+//===================== USER PERMISSION HANDLERS =====================
+
+ipcMain.handle("save-user-permissions", async (event, userId, permissions) => {
+  try {
+    return await dbService.saveUserPermissions(userId, permissions);
+  } catch (error) {
+    console.error("Error saving permissions:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("get-user-permissions", async (event, userId) => {
+  try {
+    return await dbService.getUserPermissions(userId);
+  } catch (error) {
+    console.error("Error getting permissions:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("get-verified-users-with-permissions", async () => {
+  try {
+    return await dbService.getVerifiedUsersWithPermissions();
+  } catch (error) {
+    console.error("Error fetching users with permissions:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle('get-user-by-id', async (event, userId) => {
+  try {
+    
+    // If using a database service
+    if (dbService) {
+      const user = await dbService.getUserById(userId);
+      return user;
+    }
+    
+    // Fallback: return user from localStorage data if available
+    console.log('Database service not available');
+    return null;
+  } catch (error) {
+    console.error('rror fetching user by ID:', error);
+    return null;
+  }
+});
+
+
 };
 
 // Electron app lifecycle

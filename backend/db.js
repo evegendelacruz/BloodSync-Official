@@ -6053,6 +6053,134 @@ async updateUserPassword(userId, currentPassword, newPassword) {
   }
 },
 
+
+// ========== USER PERMISSIONS METHODS ==========
+
+// Save user permissions
+async saveUserPermissions(userId, permissions) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const query = `
+      UPDATE users
+      SET u_permissions = $1::jsonb, u_modified_at = NOW()
+      WHERE u_id = $2
+      RETURNING u_id, u_permissions
+    `;
+
+    const result = await client.query(query, [JSON.stringify(permissions), userId]);
+
+    // Log the permission change
+    await this.logUserActivity(
+      userId,
+      'PERMISSIONS_UPDATED',
+      `User permissions were updated by administrator`
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      success: true,
+      user: result.rows[0]
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error saving user permissions:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
+// Get user permissions
+async getUserPermissions(userId) {
+  try {
+    const query = `
+      SELECT u_permissions
+      FROM users
+      WHERE u_id = $1
+    `;
+
+    const result = await pool.query(query, [userId]);
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    return result.rows[0].u_permissions || null;
+  } catch (error) {
+    console.error("Error getting user permissions:", error);
+    throw error;
+  }
+},
+
+// Get all verified users with permissions
+async getVerifiedUsersWithPermissions() {
+  try {
+    const query = `
+      SELECT 
+        u_id as id,
+        u_doh_id as "dohId",
+        u_full_name as "fullName",
+        u_role as role,
+        u_email as email,
+        u_status as status,
+        u_permissions as permissions,
+        TO_CHAR(u_verified_at, 'MM/DD/YYYY HH24:MI') as "verifiedAt"
+      FROM users
+      WHERE u_status = 'verified'
+      ORDER BY u_verified_at DESC
+    `;
+
+    const result = await pool.query(query);
+    return result.rows;
+  } catch (error) {
+    console.error("Error fetching verified users with permissions:", error);
+    throw error;
+  }
+},
+
+async getUserById(userId) {
+  try {
+    const query = `
+      SELECT 
+        u_id as id,
+        u_doh_id as "dohId",
+        u_full_name as "fullName",
+        u_role as role,
+        u_email as email,
+        u_gender as gender,
+        TO_CHAR(u_date_of_birth, 'YYYY-MM-DD') as "dateOfBirth",
+        u_nationality as nationality,
+        u_civil_status as "civilStatus",
+        u_barangay as barangay,
+        u_phone_number as "phoneNumber",
+        u_blood_type as "bloodType",
+        u_rh_factor as "rhFactor",
+        u_permissions as permissions,
+        u_profile_image as "profileImage",
+        u_status as status,
+        TO_CHAR(u_last_login, 'MM/DD/YYYY HH24:MI:SS') as "lastLogin",
+        TO_CHAR(u_created_at, 'MM/DD/YYYY HH24:MI:SS') as "createdAt"
+      FROM users
+      WHERE u_id = $1
+    `;
+
+    const result = await pool.query(query, [userId]);
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    return result.rows[0];
+  } catch (error) {
+    console.error("Error fetching user by ID:", error);
+    throw error;
+  }
+},
+
+
   
 };
 

@@ -79,7 +79,6 @@ const DashboardContent = () => {
       if (window.dbService) {
         dbService = window.dbService;
       } else if (window.electronAPI) {
-        console.log("✅ Using window.electronAPI");
 
         // Get stored blood data
         const [storedData, plasmaData, plateletData] = await Promise.all([
@@ -95,11 +94,7 @@ const DashboardContent = () => {
         const releasedPlatelet =
           await window.electronAPI.getReleasedPlateletStock();
 
-        console.log("✅ Raw Released Data:", {
-          rbc: releasedRBC,
-          plasma: releasedPlasma,
-          platelet: releasedPlatelet,
-        });
+    
 
         // Pass the data directly - no need to process
         processAndSetDashboardData(
@@ -120,7 +115,6 @@ const DashboardContent = () => {
       }
 
       if (dbService) {
-        console.log("✅ Using dbService directly");
         const [
           storedData,
           plasmaData,
@@ -357,7 +351,6 @@ const DashboardContent = () => {
       try {
         if (window.electronAPI) {
           const yearNumber = parseInt(currentYear, 10);
-          console.log('Fetching history for year:', yearNumber);
           
           const historyData = await window.electronAPI.getBloodStockHistory(yearNumber);
           
@@ -382,9 +375,7 @@ const DashboardContent = () => {
               }
             }
           });
-          
-          console.log('Walk-In Quarterly Data:', walkInQuarterlyData);
-          console.log('Mobile Quarterly Data:', mobileQuarterlyData);
+        
           
           setDashboardData({
             totalStored,
@@ -466,9 +457,6 @@ const DashboardContent = () => {
           }
         }
       });
-
-      console.log('Walk-In Quarterly Data (Fallback):', walkInQuarterlyData);
-      console.log('Mobile Quarterly Data (Fallback):', mobileQuarterlyData);
 
       setDashboardData({
         totalStored,
@@ -1507,11 +1495,11 @@ const Dashboard = () => {
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [isCalendarDropdownOpen, setIsCalendarDropdownOpen] = useState(false);
   const [isMailDropdownOpen, setIsMailDropdownOpen] = useState(false);
-  const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] =
-    useState(false);
+  const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false);
   const [isLoggedOut, setIsLoggedOut] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
-
+  const [currentUser, setCurrentUser] = useState(null);
+  const [userPermissions, setUserPermissions] = useState(null);
   const styles = {
     dashboardContainer: {
       minHeight: "100vh",
@@ -1755,6 +1743,13 @@ const Dashboard = () => {
       justifyContent: "center",
       transition: "background-color 0.2s",
       cursor: "pointer",
+      overflow: "hidden",
+      border: "1px solid #059669",
+    },
+    userAvatarImage: {
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
     },
     userAvatarActive: {
       backgroundColor: "#059669",
@@ -1765,16 +1760,161 @@ const Dashboard = () => {
     },
   };
 
-  const toggleSidePanel = () => {
-    setIsSidePanelOpen(!isSidePanelOpen);
+  // Load current user and permissions
+  useEffect(() => {
+    const loadCurrentUser = async () => {
+      try {
+        const userStr = localStorage.getItem("user");
+        
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          
+          // Check if electronAPI exists and has the getUserById method
+          if (user.id && window.electronAPI && typeof window.electronAPI.getUserById === 'function') {
+            try {
+              const freshUserData = await window.electronAPI.getUserById(user.id);
+              
+              if (freshUserData) {
+                setCurrentUser(freshUserData);
+                setUserPermissions(freshUserData.permissions);
+                localStorage.setItem("user", JSON.stringify(freshUserData));
+              } else {
+                // If no fresh data, use cached data
+                setCurrentUser(user);
+                setUserPermissions(user.permissions);
+              }
+            } catch (error) {
+              console.warn("❌ Could not fetch fresh user data:", error);
+              // Fallback to cached data
+              setCurrentUser(user);
+              setUserPermissions(user.permissions);
+            }
+          } else {
+            setCurrentUser(user);
+            setUserPermissions(user.permissions);
+          }
+        }
+      } catch (error) {
+        console.error("💥 Error loading current user:", error);
+      }
+    };
+
+    loadCurrentUser();
+
+    // Listen for permission updates
+    const handlePermissionUpdate = async (event) => {
+      const userStr = localStorage.getItem("user");
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        if (user.id && window.electronAPI) {
+          try {
+            const freshUserData = await window.electronAPI.getUserById(user.id);
+            if (freshUserData) {
+              setCurrentUser(freshUserData);
+              setUserPermissions(freshUserData.permissions);
+              localStorage.setItem("user", JSON.stringify(freshUserData));
+            }
+          } catch (error) {
+            console.warn("Could not fetch fresh user data on permission update:", error);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('userPermissionsUpdated', handlePermissionUpdate);
+    
+    return () => {
+      window.removeEventListener('userPermissionsUpdated', handlePermissionUpdate);
+    };
+  }, []);
+
+
+  // Screen permission mapping
+  const screenPermissionMap = {
+    "dashboard": null,
+    "red-blood-cell": "Blood Stock",
+    "plasma": "Blood Stock",
+    "platelet": "Blood Stock",
+    "released-blood": "Released Blood",
+    "red-blood-cell-nc": "Non-Conforming",
+    "plasma-nc": "Non-Conforming",
+    "platelet-nc": "Non-Conforming",
+    "donor-record": "Donor Record",
+    "released-invoice": "Invoice",
+    "discard-invoice-nc": "Invoice",
+    "reports": "Reports",
+    "recent-activity": "Recent Activity",
   };
 
-  const handleNavigate = (screen) => {
+  // Updated handleNavigate function for Dashboard.jsx
+
+const handleNavigate = (screen) => {
+  // Check if navigating away from profile - refresh user data
+  if (activeScreen === "profile" && screen !== "profile") {
+    const refreshUserData = async () => {
+      const userStr = localStorage.getItem("user");
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        if (user.id) {
+          try {
+            let freshUserData = null;
+            
+            if (window.electronAPI) {
+              freshUserData = await window.electronAPI.getUserById(user.id);
+            } else if (window.dbService) {
+              freshUserData = await window.dbService.getUserById(user.id);
+            }
+
+            if (freshUserData) {
+              setCurrentUser(freshUserData);
+              setUserPermissions(freshUserData.permissions);
+              localStorage.setItem("user", JSON.stringify(freshUserData));
+            }
+          } catch (error) {
+            console.warn("Could not refresh user data:", error);
+          }
+        }
+      }
+    };
+    
+    refreshUserData();
+  }
+
+  // SIMPLIFIED permission check - only check visibility
+  const permissionKey = screenPermissionMap[screen];
+  
+  if (permissionKey && userPermissions) {
+    const permission = userPermissions[permissionKey];
+    // Only check visibility now
+    if (!permission || !permission.visibility) {
+      console.warn(`🚫 Access denied: Screen not visible - ${screen}`);
+      alert(`You don't have permission to access the ${screen.replace('-', ' ')} screen.`);
+      return;
+    }
+  } else if (permissionKey && !userPermissions) {
+    console.warn("⚠️ No user permissions found, checking localStorage...");
+    // Fallback to localStorage permissions
+    const userStr = localStorage.getItem("user");
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      const permission = user.permissions?.[permissionKey];
+      // Only check visibility
+      if (!permission || !permission.visibility) {
+        alert(`You don't have permission to access the ${screen.replace('-', ' ')} screen.`);
+        return;
+        }
+      }
+    }
+    
     setActiveScreen(screen);
     setIsCalendarDropdownOpen(false);
     setIsMailDropdownOpen(false);
     setIsNotificationDropdownOpen(false);
     setIsProfileDropdownOpen(false);
+  };
+
+  const toggleSidePanel = () => {
+    setIsSidePanelOpen(!isSidePanelOpen);
   };
 
   const toggleCalendarDropdown = () => {
@@ -1816,8 +1956,8 @@ const Dashboard = () => {
 
   const handleLogoutConfirm = () => {
     setShowLogoutDialog(false);
+    localStorage.removeItem("user");
     setIsLoggedOut(true);
-    console.log("Logging out...");
   };
 
   const handleLogoutCancel = () => {
@@ -1874,6 +2014,7 @@ const Dashboard = () => {
         onToggle={toggleSidePanel}
         activeScreen={activeScreen}
         onNavigate={handleNavigate}
+        userPermissions={userPermissions}  
       />
 
       <div
@@ -2164,27 +2305,37 @@ const Dashboard = () => {
                 )}
               </div>
 
-              {/* User Profile Section with Dropdown */}
+              {/* User Profile Section - FIXED */}
               <div style={styles.userSection}>
-                <span style={styles.userName}>Alaiza Rose Olores</span>
-                <div
-                  style={{
-                    ...styles.userAvatar,
-                    ...(activeScreen === "profile"
-                      ? styles.userAvatarActive
-                      : {}),
-                  }}
-                  onClick={toggleProfileDropdown}
-                >
-                  <User className="w-4 h-4 text-gray-600" />
+                <span style={styles.userName}>
+                  {currentUser?.fullName || "Loading..."}
+                </span>
+                <div style={styles.dropdownContainer}>
+                  <div
+                    style={{
+                      ...styles.userAvatar,
+                      ...(activeScreen === "profile" ? styles.userAvatarActive : {}),
+                    }}
+                    onClick={toggleProfileDropdown}
+                  >
+                    {currentUser?.profileImage ? (
+                      <img
+                        src={currentUser.profileImage}
+                        alt={currentUser.fullName || "User"}
+                        style={styles.userAvatarImage}
+                        onError={(e) => {
+                          console.error("Failed to load profile image");
+                          // Hide broken image and show default icon
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <User className="w-4 h-4 text-gray-600" />
+                    )}
+                  </div>
 
                   {isProfileDropdownOpen && (
-                    <div
-                      style={{
-                        ...styles.dropdownMenu,
-                        ...styles.profileDropdown,
-                      }}
-                    >
+                    <div style={{ ...styles.dropdownMenu, ...styles.profileDropdown }}>
                       <button
                         style={styles.profileMenuItem}
                         onClick={() => handleProfileAction("edit-profile")}
@@ -2261,6 +2412,26 @@ const Dashboard = () => {
 
         .user-avatar-active .lucide {
           color: white !important;
+        }
+
+        .user-avatar {
+          position: relative;
+        }
+        
+        .user-avatar img {
+          transition: opacity 0.3s ease;
+        }
+        
+        .user-avatar .default-icon {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          display: none;
+        }
+        
+        .user-avatar img:error + .default-icon {
+          display: block;
         }
 
         @media (max-width: 768px) {
