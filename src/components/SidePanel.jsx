@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Home,
   Droplets,
@@ -14,9 +14,27 @@ import {
 
 import { BeakerIcon } from "@primer/octicons-react";
 
-const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
+const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate, userPermissions }) => {
   const [expandedMenus, setExpandedMenus] = useState({});
   const [hoveredItem, setHoveredItem] = useState(null);
+  const [effectivePermissions, setEffectivePermissions] = useState(userPermissions);
+
+  // Map screens to permission keys
+  const screenPermissionMap = {
+    "dashboard": null, // Dashboard is always visible
+    "red-blood-cell": "Blood Stock",
+    "plasma": "Blood Stock",
+    "platelet": "Blood Stock",
+    "released-blood": "Released Blood",
+    "red-blood-cell-nc": "Non-Conforming",
+    "plasma-nc": "Non-Conforming",
+    "platelet-nc": "Non-Conforming",
+    "donor-record": "Donor Record",
+    "released-invoice": "Invoice",
+    "discard-invoice-nc": "Invoice",
+    "reports": "Reports",
+    "recent-activity": "Recent Activity",
+  };
 
   const menuItems = [
     {
@@ -30,6 +48,7 @@ const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
       label: "Blood Stock",
       icon: Droplets,
       hasSubmenu: true,
+      permissionKey: "Blood Stock",
       submenu: [
         {
           id: "red-blood-cell",
@@ -45,12 +64,14 @@ const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
       label: "Released Blood",
       icon: Package2,
       screen: "released-blood",
+      permissionKey: "Released Blood",
     },
     {
       id: "non-conforming",
       label: "Non-Conforming",
       icon: BeakerIcon,
       hasSubmenu: true,
+      permissionKey: "Non-Conforming",
       submenu: [
         {
           id: "red-blood-cell-nc",
@@ -66,12 +87,14 @@ const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
       label: "Donor Record",
       icon: Users,
       screen: "donor-record",
+      permissionKey: "Donor Record",
     },
     {
       id: "invoice",
       label: "Invoice",
       icon: FileText,
       hasSubmenu: true,
+      permissionKey: "Invoice",
       submenu: [
         {
           id: "released-invoice",
@@ -86,24 +109,87 @@ const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
       label: "Reports",
       icon: TrendingUp,
       screen: "reports",
+      permissionKey: "Reports",
     },
     {
       id: "recent-activity",
       label: "Recent Activity",
       icon: Clock,
       screen: "recent-activity",
+      permissionKey: "Recent Activity",
     },
   ];
 
+  useEffect(() => {
+    setEffectivePermissions(userPermissions);
+  }, [userPermissions]);
+
+  useEffect(() => {
+    const handlePermissionUpdate = (event) => {
+      const userStr = localStorage.getItem("user");
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        setEffectivePermissions(user.permissions);
+      }
+    };
+
+    // Listen for multiple event types
+    window.addEventListener('userPermissionsUpdated', handlePermissionUpdate);
+    window.addEventListener('permissionsChanged', handlePermissionUpdate);
+    
+    return () => {
+      window.removeEventListener('userPermissionsUpdated', handlePermissionUpdate);
+      window.removeEventListener('permissionsChanged', handlePermissionUpdate);
+    };
+  }, []);
+
+  const isItemVisible = (item) => {
+    // Dashboard is always visible
+    if (!item.permissionKey) return true;
+    
+    // If no permissions set, show all (for backward compatibility)
+    if (!effectivePermissions) {
+      return true;
+    }
+    
+    // Check if the permission exists and visibility is enabled
+    const permission = effectivePermissions[item.permissionKey];
+    const isVisible = permission && permission.visibility === true;
+    
+    return isVisible;
+  };
+
+  const isSubmenuItemVisible = (subItem) => {
+    const permissionKey = screenPermissionMap[subItem.screen];
+    
+    if (!permissionKey) return true;
+    
+    if (!effectivePermissions) return true;
+    
+    const permission = effectivePermissions[permissionKey];
+    const isVisible = permission && permission.visibility === true;
+    
+    return isVisible;
+  };
+
+  const getVisibleSubmenuItems = (submenu) => {
+    return submenu.filter(isSubmenuItemVisible);
+  };
+
   const handleMenuClick = (item) => {
     if (item.hasSubmenu) {
+      // Check if any submenu items are visible before expanding
+      const visibleSubItems = getVisibleSubmenuItems(item.submenu || []);
+      if (visibleSubItems.length === 0) {
+        return;
+      }
+      
       if (isOpen) {
         setExpandedMenus(prev => ({
           ...prev,
           [item.id]: !prev[item.id]
         }));
-      }
-      else {
+      } else {
         onToggle();
         setExpandedMenus(prev => ({
           ...prev,
@@ -111,11 +197,30 @@ const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
         }));
       }
     } else {
-      onNavigate(item.screen);
-      if (window.innerWidth < 768) {
-        onToggle();
+      // For regular menu items, check permission before navigation
+      if (!item.permissionKey || canViewScreen(item.screen)) {
+        onNavigate(item.screen);
+        if (window.innerWidth < 768) {
+          onToggle();
+        }
+      } else {
+        console.warn(`🚫 No permission to access ${item.label}`);
       }
     }
+  };
+
+  const canViewScreen = (screen) => {
+    const permissionKey = screenPermissionMap[screen];
+    
+    // Dashboard is always viewable
+    if (!permissionKey) return true;
+    
+    // If no permissions set, allow all (for backward compatibility)
+    if (!effectivePermissions) return true;
+    
+    // Check if user has visibility permission
+    const permission = effectivePermissions[permissionKey];
+    return permission && permission.visibility === true;
   };
 
   const handleSubmenuClick = (screen) => {
@@ -125,6 +230,29 @@ const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
     }
   };
 
+  const renderSubmenu = (item) => {
+    const visibleSubItems = getVisibleSubmenuItems(item.submenu || []);
+    
+    if (visibleSubItems.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className={`side-panel-submenu ${expandedMenus[item.id] ? "expanded" : ""}`}>
+        {visibleSubItems.map((subItem) => (
+          <button
+            key={subItem.id}
+            onClick={() => handleSubmenuClick(subItem.screen)}
+            className={`side-panel-submenu-btn ${activeScreen === subItem.screen ? "active" : ""}`}
+            title={subItem.label}
+          >
+            {subItem.label}
+          </button>
+        ))}
+      </div>
+    );
+  };
+
   const isActive = (item) => {
     return (
       activeScreen === item.screen ||
@@ -132,6 +260,8 @@ const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
         item.submenu?.some((sub) => sub.screen === activeScreen))
     );
   };
+
+  const visibleMenuItems = menuItems.filter(isItemVisible);
 
   return (
     <>
@@ -168,9 +298,8 @@ const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
           </div>
         </div>
 
-        {/* Menu Items */}
         <nav className="side-panel-nav">
-          {menuItems.map((item) => {
+          {visibleMenuItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item);
             const isExpanded = expandedMenus[item.id] || false;
@@ -207,7 +336,7 @@ const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
                     {item.label}
                     {item.hasSubmenu && isExpanded && (
                       <div className="side-panel-submenu-tooltip">
-                        {item.submenu.map((subItem) => (
+                        {getVisibleSubmenuItems(item.submenu).map((subItem) => (
                           <div
                             key={subItem.id}
                             className="side-panel-submenu-tooltip-item"
@@ -220,29 +349,13 @@ const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
                   </div>
                 )}
 
-                {/* Submenu */}
-                {item.hasSubmenu && isOpen && (
-                  <div
-                    className={`side-panel-submenu ${isExpanded ? "expanded" : ""}`}
-                  >
-                    {item.submenu.map((subItem) => (
-                      <button
-                        key={subItem.id}
-                        onClick={() => handleSubmenuClick(subItem.screen)}
-                        className={`side-panel-submenu-btn ${activeScreen === subItem.screen ? "active" : ""}`}
-                        title={subItem.label}
-                      >
-                        {subItem.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                {/* Submenu - Only render if there are visible items */}
+                {item.hasSubmenu && isOpen && renderSubmenu(item)}
               </div>
             );
           })}
         </nav>
 
-       
         {isOpen && (
           <div className="side-panel-footer">
             <p className="side-panel-copyright">
@@ -251,7 +364,6 @@ const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
           </div>
         )}
       </div>
-
       <style>{`
         .side-panel-overlay {
           position: fixed;

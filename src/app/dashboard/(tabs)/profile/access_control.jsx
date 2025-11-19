@@ -1,57 +1,169 @@
 import React, { useState, useEffect } from "react";
 
+const SuccessModal = ({ isOpen, onClose, message }) => {
+  if (!isOpen) return null;
+
+  const styles = {
+    overlay: {
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 1000,
+      fontFamily: "Barlow",
+    },
+    modal: {
+      backgroundColor: "white",
+      borderRadius: "12px",
+      padding: "32px",
+      maxWidth: "400px",
+      width: "90%",
+      boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+    },
+    iconContainer: {
+      display: "flex",
+      justifyContent: "center",
+      marginBottom: "20px",
+    },
+    title: {
+      fontSize: "20px",
+      fontWeight: "600",
+      color: "#111827",
+      textAlign: "center",
+      marginBottom: "12px",
+    },
+    message: {
+      fontSize: "14px",
+      color: "#6b7280",
+      textAlign: "center",
+      lineHeight: "1.5",
+      marginBottom: "24px",
+    },
+    buttonContainer: {
+      display: "flex",
+      gap: "12px",
+      justifyContent: "center",
+    },
+    button: {
+      padding: "10px 24px",
+      borderRadius: "6px",
+      border: "none",
+      fontSize: "14px",
+      fontWeight: "500",
+      cursor: "pointer",
+      transition: "all 0.2s",
+      fontFamily: "Barlow",
+    },
+  };
+
+  return (
+    <>
+      <div 
+        style={styles.overlay} 
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
+      >
+        <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+          <div style={styles.iconContainer}>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+          </div>
+          <h3 style={styles.title}>Success!</h3>
+          <p style={styles.message}>{message}</p>
+          <div style={styles.buttonContainer}>
+            <button
+              style={{ ...styles.button, backgroundColor: "#22c55e", color: "white" }}
+              onClick={onClose}
+              onMouseEnter={(e) => e.target.style.opacity = "0.9"}
+              onMouseLeave={(e) => e.target.style.opacity = "1"}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
+
+const LoaderModal = ({ isOpen }) => {
+  if (!isOpen) return null;
+
+  const styles = {
+    overlay: {
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 1000,
+    },
+    spinner: {
+      width: "48px",
+      height: "48px",
+      border: "4px solid rgba(255, 255, 255, 0.3)",
+      borderTop: "4px solid #22c55e",
+      borderRadius: "50%",
+      animation: "spin 0.8s linear infinite",
+    },
+  };
+
+  return (
+    <>
+      <style>
+        {`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}
+      </style>
+      <div style={styles.overlay}>
+        <div style={styles.spinner}></div>
+      </div>
+    </>
+  );
+};
+
 const PermissionsModal = ({ isOpen, onClose, user, onSave, isAdmin }) => {
   const [permissions, setPermissions] = useState({
     "Blood Stock": {
-      view: true,
-      create: true,
-      edit: true,
-      delete: true,
       visibility: true,
     },
     "Released Blood": {
-      view: true,
-      create: false,
-      edit: true,
-      delete: true,
       visibility: true,
     },
     "Non-Conforming": {
-      view: false,
-      create: false,
-      edit: false,
-      delete: false,
       visibility: false,
     },
     "Donor Record": {
-      view: false,
-      create: false,
-      edit: false,
-      delete: false,
       visibility: false,
     },
     Invoice: {
-      view: true,
-      create: false,
-      edit: false,
-      delete: false,
       visibility: true,
     },
     Reports: {
-      view: true,
-      create: false,
-      edit: false,
-      delete: false,
       visibility: true,
     },
     "Recent Activity": {
-      view: true,
-      create: false,
-      edit: false,
-      delete: false,
       visibility: true,
     },
   });
+
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (user?.permissions) {
@@ -73,10 +185,15 @@ const PermissionsModal = ({ isOpen, onClose, user, onSave, isAdmin }) => {
     }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!isAdmin) return;
-    onSave(user.id, permissions);
-    onClose();
+    setIsSaving(true);
+    try {
+      await onSave(user.id, permissions);
+      onClose();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const styles = {
@@ -96,7 +213,7 @@ const PermissionsModal = ({ isOpen, onClose, user, onSave, isAdmin }) => {
       backgroundColor: "white",
       borderRadius: "12px",
       width: "90%",
-      maxWidth: "900px",
+      maxWidth: "600px",
       maxHeight: "80vh",
       overflow: "auto",
       boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
@@ -155,24 +272,7 @@ const PermissionsModal = ({ isOpen, onClose, user, onSave, isAdmin }) => {
       padding: "12px",
       borderBottom: "1px solid #e5e7eb",
       fontSize: "14px",
-    },
-    checkbox: {
-      width: "20px",
-      height: "20px",
-      cursor: "pointer",
-      appearance: "none",
-      border: "2px solid #d1d5db",
-      borderRadius: "4px",
-      backgroundColor: "white",
-      transition: "all 0.2s",
-    },
-    checkboxChecked: {
-      backgroundColor: "#22c55e",
-      borderColor: "#22c55e",
-    },
-    checkboxDisabled: {
-      opacity: 0.5,
-      cursor: "not-allowed",
+      verticalAlign: "middle", 
     },
     toggle: {
       position: "relative",
@@ -183,6 +283,11 @@ const PermissionsModal = ({ isOpen, onClose, user, onSave, isAdmin }) => {
       cursor: isAdmin ? "pointer" : "not-allowed",
       transition: "background-color 0.2s",
       opacity: isAdmin ? 1 : 0.5,
+    },
+    toggleContainer: { 
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
     },
     toggleActive: {
       backgroundColor: "#22c55e",
@@ -218,9 +323,13 @@ const PermissionsModal = ({ isOpen, onClose, user, onSave, isAdmin }) => {
       padding: "10px 24px",
       fontSize: "14px",
       fontWeight: "500",
-      cursor: isAdmin ? "pointer" : "not-allowed",
+      cursor: isAdmin && !isSaving ? "pointer" : "not-allowed",
       fontFamily: "Barlow",
-      opacity: isAdmin ? 1 : 0.6,
+      opacity: isAdmin && !isSaving ? 1 : 0.6,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      minWidth: "140px",
     },
     restrictedBanner: {
       backgroundColor: "#fee2e2",
@@ -240,7 +349,7 @@ const PermissionsModal = ({ isOpen, onClose, user, onSave, isAdmin }) => {
           <div>
             <div style={styles.title}>Access Control</div>
             <div style={styles.subtitle}>
-              Roles and Permissions
+              Screen Visibility for {user?.fullName}
             </div>
           </div>
           <button style={styles.closeButton} onClick={onClose}>
@@ -258,11 +367,7 @@ const PermissionsModal = ({ isOpen, onClose, user, onSave, isAdmin }) => {
           <table style={styles.table}>
             <thead style={styles.thead}>
               <tr>
-                <th style={styles.th}>SCREEN</th>
-                <th style={{ ...styles.th, textAlign: "center" }}>VIEW</th>
-                <th style={{ ...styles.th, textAlign: "center" }}>CREATE</th>
-                <th style={{ ...styles.th, textAlign: "center" }}>EDIT</th>
-                <th style={{ ...styles.th, textAlign: "center" }}>DELETE</th>
+                <th style={styles.th}>SCREEN NAME</th>
                 <th style={{ ...styles.th, textAlign: "center" }}>
                   VISIBILITY
                 </th>
@@ -273,73 +378,23 @@ const PermissionsModal = ({ isOpen, onClose, user, onSave, isAdmin }) => {
                 <tr key={screen}>
                   <td style={styles.td}>{screen}</td>
                   <td style={{ ...styles.td, textAlign: "center" }}>
-                    <input
-                      type="checkbox"
-                      style={{
-                        ...styles.checkbox,
-                        ...(perms.view ? styles.checkboxChecked : {}),
-                        ...(!isAdmin || !perms.visibility ? styles.checkboxDisabled : {}),
-                      }}
-                      checked={perms.view}
-                      onChange={() => handlePermissionChange(screen, "view")}
-                      disabled={!isAdmin || !perms.visibility}
-                    />
-                  </td>
-                  <td style={{ ...styles.td, textAlign: "center" }}>
-                    <input
-                      type="checkbox"
-                      style={{
-                        ...styles.checkbox,
-                        ...(perms.create ? styles.checkboxChecked : {}),
-                        ...(!isAdmin || !perms.visibility ? styles.checkboxDisabled : {}),
-                      }}
-                      checked={perms.create}
-                      onChange={() => handlePermissionChange(screen, "create")}
-                      disabled={!isAdmin || !perms.visibility}
-                    />
-                  </td>
-                  <td style={{ ...styles.td, textAlign: "center" }}>
-                    <input
-                      type="checkbox"
-                      style={{
-                        ...styles.checkbox,
-                        ...(perms.edit ? styles.checkboxChecked : {}),
-                        ...(!isAdmin || !perms.visibility ? styles.checkboxDisabled : {}),
-                      }}
-                      checked={perms.edit}
-                      onChange={() => handlePermissionChange(screen, "edit")}
-                      disabled={!isAdmin || !perms.visibility}
-                    />
-                  </td>
-                  <td style={{ ...styles.td, textAlign: "center" }}>
-                    <input
-                      type="checkbox"
-                      style={{
-                        ...styles.checkbox,
-                        ...(perms.delete ? styles.checkboxChecked : {}),
-                        ...(!isAdmin || !perms.visibility ? styles.checkboxDisabled : {}),
-                      }}
-                      checked={perms.delete}
-                      onChange={() => handlePermissionChange(screen, "delete")}
-                      disabled={!isAdmin || !perms.visibility}
-                    />
-                  </td>
-                  <td style={{ ...styles.td, textAlign: "center" }}>
-                    <div
-                      style={{
-                        ...styles.toggle,
-                        ...(perms.visibility ? styles.toggleActive : {}),
-                      }}
-                      onClick={() =>
-                        isAdmin && handlePermissionChange(screen, "visibility")
-                      }
-                    >
+                    <div style={styles.toggleContainer}>
                       <div
                         style={{
-                          ...styles.toggleThumb,
-                          ...(perms.visibility ? styles.toggleThumbActive : {}),
+                          ...styles.toggle,
+                          ...(perms.visibility ? styles.toggleActive : {}),
                         }}
-                      />
+                        onClick={() =>
+                          isAdmin && handlePermissionChange(screen, "visibility")
+                        }
+                      >
+                        <div
+                          style={{
+                            ...styles.toggleThumb,
+                            ...(perms.visibility ? styles.toggleThumbActive : {}),
+                          }}
+                        />
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -352,15 +407,21 @@ const PermissionsModal = ({ isOpen, onClose, user, onSave, isAdmin }) => {
           <button
             style={styles.saveButton}
             onClick={handleSave}
-            disabled={!isAdmin}
+            disabled={!isAdmin || isSaving}
             onMouseEnter={(e) => {
-              if (isAdmin) e.target.style.opacity = "0.9";
+              if (isAdmin && !isSaving) e.target.style.opacity = "0.9";
             }}
             onMouseLeave={(e) => {
-              if (isAdmin) e.target.style.opacity = "1";
+              if (isAdmin && !isSaving) e.target.style.opacity = "1";
             }}
           >
-            Save Changes
+            {isSaving ? (
+              <>
+                Saving...
+              </>
+            ) : (
+              "Save Changes"
+            )}
           </button>
         </div>
       </div>
@@ -374,6 +435,11 @@ const AccessControl = ({ currentUser }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+  const [showLoader, setShowLoader] = useState(false);
+  const [successModal, setSuccessModal] = useState({
+    isOpen: false,
+    message: ""
+  });
 
   const isAdmin = currentUser?.role === "Admin";
 
@@ -384,7 +450,7 @@ const AccessControl = ({ currentUser }) => {
   const loadUsers = async () => {
     try {
       setLoading(true);
-      const verified = await window.electronAPI.getVerifiedUsers();
+      const verified = await window.electronAPI.getVerifiedUsersWithPermissions();
       setUsers(verified || []);
     } catch (error) {
       console.error("Error loading users:", error);
@@ -408,7 +474,10 @@ const AccessControl = ({ currentUser }) => {
         setUsers((prev) =>
           prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
         );
-        alert(`Successfully updated ${user.fullName}'s role to ${newRole}`);
+        setSuccessModal({ 
+          isOpen: true, 
+          message: `Successfully updated ${user.fullName}'s role to ${newRole}` 
+        });
       }
     } catch (error) {
       console.error("Error updating user role:", error);
@@ -426,8 +495,52 @@ const AccessControl = ({ currentUser }) => {
   };
 
   const handleSavePermissions = async (userId, permissions) => {
-    console.log("Saving permissions for user:", userId, permissions);
-    alert("Permissions updated successfully!");
+    try {
+      const result = await window.electronAPI.saveUserPermissions(userId, permissions);
+      
+      if (result.success) {
+        setUsers((prev) =>
+          prev.map((u) => (u.id === userId ? { ...u, permissions } : u))
+        );
+        
+        if (currentUser && currentUser.id === userId) {
+          const updatedUser = { ...currentUser, permissions };
+          localStorage.setItem("user", JSON.stringify(updatedUser));
+          
+          window.dispatchEvent(new CustomEvent('userPermissionsUpdated', { 
+            detail: { userId, permissions } 
+          }));
+          
+          window.dispatchEvent(new CustomEvent('permissionsChanged', { 
+            detail: { userId, permissions } 
+          }));
+          
+        } else {
+          window.dispatchEvent(new CustomEvent('userPermissionsUpdated', { 
+            detail: { userId, permissions } 
+          }));
+        }
+        
+        // Show loader
+        setShowLoader(true);
+        
+        // Wait 300ms then show success modal
+        setTimeout(() => {
+          setShowLoader(false);
+          setSuccessModal({ 
+            isOpen: true, 
+            message: "Permissions updated successfully!" 
+          });
+        }, 300);
+        
+        setTimeout(() => {
+          loadUsers();
+        }, 300);
+      }
+    } catch (error) {
+      console.error("Error saving permissions:", error);
+      alert("Failed to save permissions");
+    }
   };
 
   const filterUsers = () => {
@@ -587,6 +700,14 @@ const AccessControl = ({ currentUser }) => {
 
   return (
     <div style={styles.container}>
+      <LoaderModal isOpen={showLoader} />
+
+      <SuccessModal
+        isOpen={successModal.isOpen}
+        onClose={() => setSuccessModal({ isOpen: false, message: "" })}
+        message={successModal.message}
+      />
+
       <PermissionsModal
         isOpen={showPermissionsModal}
         onClose={() => setShowPermissionsModal(false)}

@@ -605,7 +605,14 @@ transferPlateletToNonConforming: async (serialIds) => {
 
   updateUserPassword: (userId, currentPassword, newPassword) => 
     ipcRenderer.invoke('update-user-password', userId, currentPassword, newPassword),
-  
+  //=============================USER PERMISSIONS=============================
+  saveUserPermissions: (userId, permissions) =>
+    ipcRenderer.invoke("save-user-permissions", userId, permissions),
+  getUserPermissions: (userId) =>
+    ipcRenderer.invoke("get-user-permissions", userId),
+  getVerifiedUsersWithPermissions: () =>
+    ipcRenderer.invoke("get-verified-users-with-permissions"),
+  getUserById: (userId) => ipcRenderer.invoke('get-user-by-id', userId),
     
 });
 
