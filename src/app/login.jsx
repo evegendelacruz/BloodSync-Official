@@ -13,7 +13,7 @@ const Login = () => {
     const timer = setTimeout(() => {
       setIsPageLoading(false);
     }, 1500);
-
+  
     return () => clearTimeout(timer);
   }, []);
 
@@ -41,7 +41,7 @@ const Login = () => {
         console.log("Login - Success! Navigating to dashboard...");
         
         // Navigate to dashboard
-        navigate("/dashboard");
+        navigate("/dashboard", { replace: true });
       } else {
         const errorMessage = result?.message || "Login failed. Please try again.";
         console.error("Login - Failed:", errorMessage);
