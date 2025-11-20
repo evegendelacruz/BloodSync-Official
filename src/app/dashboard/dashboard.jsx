@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react"; // FIXED: Added useEffect import
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Calendar, Mail, Bell, User, Droplet } from "lucide-react";
 import SidePanel from "../../components/SidePanel";
 
@@ -1496,10 +1497,10 @@ const Dashboard = () => {
   const [isCalendarDropdownOpen, setIsCalendarDropdownOpen] = useState(false);
   const [isMailDropdownOpen, setIsMailDropdownOpen] = useState(false);
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false);
-  const [isLoggedOut, setIsLoggedOut] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [userPermissions, setUserPermissions] = useState(null);
+  const navigate = useNavigate();
   const styles = {
     dashboardContainer: {
       minHeight: "100vh",
@@ -1957,16 +1958,12 @@ const handleNavigate = (screen) => {
   const handleLogoutConfirm = () => {
     setShowLogoutDialog(false);
     localStorage.removeItem("user");
-    setIsLoggedOut(true);
+    navigate("/login", { replace: true });
   };
 
   const handleLogoutCancel = () => {
     setShowLogoutDialog(false);
   };
-
-  if (isLoggedOut) {
-    return <Login />;
-  }
 
   const renderActiveScreen = () => {
     switch (activeScreen) {
