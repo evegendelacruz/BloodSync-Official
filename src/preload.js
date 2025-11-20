@@ -605,6 +605,7 @@ transferPlateletToNonConforming: async (serialIds) => {
 
   updateUserPassword: (userId, currentPassword, newPassword) => 
     ipcRenderer.invoke('update-user-password', userId, currentPassword, newPassword),
+
   //=============================USER PERMISSIONS=============================
   saveUserPermissions: (userId, permissions) =>
     ipcRenderer.invoke("save-user-permissions", userId, permissions),
@@ -613,6 +614,12 @@ transferPlateletToNonConforming: async (serialIds) => {
   getVerifiedUsersWithPermissions: () =>
     ipcRenderer.invoke("get-verified-users-with-permissions"),
   getUserById: (userId) => ipcRenderer.invoke('get-user-by-id', userId),
+
+  //============================FORGOT PASSWORD============================
+  // Password Reset Methods
+  sendRecoveryCode: (email) => ipcRenderer.invoke('send-recovery-code', email),
+  resetPassword: (data) => ipcRenderer.invoke('reset-password', data),
+  
     
 });
 

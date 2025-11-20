@@ -6180,6 +6180,236 @@ async getUserById(userId) {
   }
 },
 
+//====================== RESET PASSWORD METHODS ======================
+// Send recovery code via email
+async sendRecoveryCode(email) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Check if email exists
+    const checkEmailQuery = `
+      SELECT u_id, u_full_name, u_email 
+      FROM users 
+      WHERE LOWER(TRIM(u_email)) = $1 AND u_status = 'verified'
+    `;
+    const emailCheck = await client.query(checkEmailQuery, [email.trim().toLowerCase()]);
+
+    if (emailCheck.rows.length === 0) {
+      throw new Error("Email not found or account not verified");
+    }
+
+    const user = emailCheck.rows[0];
+
+    // Generate 6-digit recovery code
+    const recoveryCode = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Set expiration time (15 minutes from now)
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    // Store recovery code in database
+    const updateQuery = `
+      UPDATE users 
+      SET u_recovery_code = $1,
+          u_recovery_code_expires = $2,
+          u_modified_at = NOW()
+      WHERE u_id = $3
+    `;
+    await client.query(updateQuery, [recoveryCode, expiresAt, user.u_id]);
+
+    // Send email with recovery code
+    const mailOptions = {
+      from: 'bloodsync.doh@gmail.com',
+      to: user.u_email,
+      subject: 'Password Reset Code - BloodSync',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: #165c3c; color: white; padding: 20px; text-align: center; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 5px; margin-top: 20px; }
+            .code-box { background: #fff3cd; border: 2px solid #ffc107; padding: 20px; margin: 20px 0; border-radius: 5px; text-align: center; }
+            .code { font-family: monospace; font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #856404; }
+            .warning { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 15px; border-radius: 5px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Password Reset Request</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${user.u_full_name},</p>
+              <p>We received a request to reset your BloodSync account password. Use the code below to proceed:</p>
+              
+              <div class="code-box">
+                <p style="margin: 0; font-size: 14px; color: #666;">Your Recovery Code:</p>
+                <p class="code">${recoveryCode}</p>
+              </div>
+
+              <div class="warning">
+                <strong>⚠️ Important:</strong>
+                <ul style="margin: 10px 0 0 0; padding-left: 20px;">
+                  <li>This code will expire in 15 minutes</li>
+                  <li>Do not share this code with anyone</li>
+                  <li>If you didn't request this, please ignore this email</li>
+                </ul>
+              </div>
+
+              <p><strong>Password Requirements:</strong></p>
+              <ul>
+                <li>At least 8 characters long</li>
+                <li>At least one uppercase letter (A-Z)</li>
+                <li>At least one lowercase letter (a-z)</li>
+                <li>At least one number (0-9)</li>
+                <li>At least one special character (@$!%*?&)</li>
+              </ul>
+            </div>
+            <div class="footer">
+              <p>&copy; 2025 Code Red Corporation - BloodSync ver. 1.0</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    };
+
+    await emailTransporter.sendMail(mailOptions);
+
+    await client.query("COMMIT");
+
+    return {
+      success: true,
+      message: 'Recovery code sent to your email'
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error sending recovery code:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
+// Reset password with recovery code
+async resetPassword(email, recoveryCode, newPassword) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Verify recovery code
+    const verifyQuery = `
+      SELECT u_id, u_full_name, u_recovery_code, u_recovery_code_expires
+      FROM users
+      WHERE LOWER(TRIM(u_email)) = $1 AND u_status = 'verified'
+    `;
+    const result = await client.query(verifyQuery, [email.trim().toLowerCase()]);
+
+    if (result.rows.length === 0) {
+      throw new Error("Invalid email or account not verified");
+    }
+
+    const user = result.rows[0];
+
+    // Check if recovery code matches
+    if (user.u_recovery_code !== recoveryCode) {
+      throw new Error("Invalid recovery code");
+    }
+
+    // Check if recovery code has expired
+    if (new Date() > new Date(user.u_recovery_code_expires)) {
+      throw new Error("Recovery code has expired. Please request a new one.");
+    }
+
+    // Validate password strength
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    if (!passwordRegex.test(newPassword)) {
+      throw new Error("Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character");
+    }
+
+    // Hash new password
+    const hashedPassword = crypto.createHash('sha256').update(newPassword).digest('hex');
+
+    // Update password and clear recovery code
+    const updateQuery = `
+      UPDATE users
+      SET u_password = $1,
+          u_recovery_code = NULL,
+          u_recovery_code_expires = NULL,
+          u_modified_at = NOW()
+      WHERE u_id = $2
+    `;
+    await client.query(updateQuery, [hashedPassword, user.u_id]);
+
+    // Log the password reset activity
+    await this.logUserActivity(
+      user.u_id,
+      'PASSWORD_RESET',
+      `User ${user.u_full_name} reset their password via recovery code`
+    );
+
+    // Send confirmation email
+    const mailOptions = {
+      from: 'bloodsync.doh@gmail.com',
+      to: email,
+      subject: 'Password Successfully Reset - BloodSync',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: #165c3c; color: white; padding: 20px; text-align: center; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 5px; margin-top: 20px; }
+            .success-box { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; border-radius: 5px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Password Reset Successful</h1>
+            </div>
+            <div class="content">
+              <div class="success-box">
+                <h2>✓ Your password has been reset</h2>
+              </div>
+              <p>Hello ${user.u_full_name},</p>
+              <p>Your BloodSync account password has been successfully reset.</p>
+              <p>You can now log in with your new password.</p>
+              <p>If you did not make this change, please contact your administrator immediately.</p>
+            </div>
+            <div class="footer">
+              <p>&copy; 2025 Code Red Corporation - BloodSync ver. 1.0</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    };
+
+    await emailTransporter.sendMail(mailOptions);
+
+    await client.query("COMMIT");
+
+    return {
+      success: true,
+      message: 'Password reset successfully'
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error resetting password:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
 
   
 };
