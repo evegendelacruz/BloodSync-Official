@@ -29,28 +29,39 @@ const ForgotPassword = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSendCode = (e) => {
+  const handleSendCode = async (e) => {
     e.preventDefault();
     setError("");
     setSuccess("");
-
+  
     if (!formData.email) {
       setError("Please enter your email address");
       return;
     }
-
+  
     setLoading(true);
-    setTimeout(() => {
+    
+    try {
+      const result = await window.electronAPI.sendRecoveryCode(formData.email);
+      
+      if (result.success) {
+        setSuccess("Recovery code sent to your email!");
+        setTimeout(() => {
+          setStep(2);
+          setSuccess("");
+        }, 1500);
+      } else {
+        setError(result.message || "Failed to send recovery code");
+      }
+    } catch (err) {
+      console.error("Send code error:", err);
+      setError(err.message || "Failed to send recovery code. Please try again.");
+    } finally {
       setLoading(false);
-      setSuccess("Recovery code sent to your email!");
-      setTimeout(() => {
-        setStep(2);
-        setSuccess("");
-      }, 1500);
-    }, 1500);
+    }
   };
 
-  const handleResetPassword = (e) => {
+  const handleResetPassword = async (e) => {
     e.preventDefault();
     setError("");
     setSuccess("");
@@ -65,8 +76,11 @@ const ForgotPassword = () => {
       return;
     }
   
-    if (formData.newPassword.length < 6) {
-      setError("Password must be at least 6 characters long");
+    // Password validation regex
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    
+    if (!passwordRegex.test(formData.newPassword)) {
+      setError("Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character");
       return;
     }
   
@@ -76,14 +90,29 @@ const ForgotPassword = () => {
     }
   
     setLoading(true);
-    setTimeout(() => {
+    
+    try {
+      // Call the backend to reset password
+      const result = await window.electronAPI.resetPassword({
+        email: formData.email,
+        recoveryCode: formData.recoveryCode,
+        newPassword: formData.newPassword
+      });
+      
+      if (result.success) {
+        setSuccess("Password reset successfully! Redirecting to login...");
+        setTimeout(() => {
+          navigate("/login");
+        }, 1500);
+      } else {
+        setError(result.message || "Failed to reset password");
+      }
+    } catch (err) {
+      console.error("Reset password error:", err);
+      setError(err.message || "Failed to reset password. Please try again.");
+    } finally {
       setLoading(false);
-      setSuccess("Password reset successfully! Redirecting to login...");
-      // Redirect after short delay so user sees the message
-      setTimeout(() => {
-        navigate("/login");
-      }, 1500);
-    }, 1500);
+    }
   };
   
   const handleBack = () => {

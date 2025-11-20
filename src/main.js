@@ -1050,6 +1050,23 @@ ipcMain.handle('get-user-by-id', async (event, userId) => {
   }
 });
 
+//===================FORGOT PASSWORD HANDLERS======================
+ipcMain.handle('send-recovery-code', async (event, email) => {
+  try {
+    return await dbService.sendRecoveryCode(email);
+  } catch (error) {
+    return { success: false, message: error.message };
+  }
+});
+
+ipcMain.handle('reset-password', async (event, data) => {
+  try {
+    return await dbService.resetPassword(data.email, data.recoveryCode, data.newPassword);
+  } catch (error) {
+    return { success: false, message: error.message };
+  }
+});
+
 
 };
 
