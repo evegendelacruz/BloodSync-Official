@@ -15,13 +15,15 @@ const ForgotPassword = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
     // Simulate initial loading
     const timer = setTimeout(() => {
       setIsPageLoading(false);
     }, 1500);
-  
+
     return () => clearTimeout(timer);
   }, []);
 
@@ -33,17 +35,17 @@ const ForgotPassword = () => {
     e.preventDefault();
     setError("");
     setSuccess("");
-  
+
     if (!formData.email) {
       setError("Please enter your email address");
       return;
     }
-  
+
     setLoading(true);
-    
+
     try {
       const result = await window.electronAPI.sendRecoveryCode(formData.email);
-      
+
       if (result.success) {
         setSuccess("Recovery code sent to your email!");
         setTimeout(() => {
@@ -55,7 +57,9 @@ const ForgotPassword = () => {
       }
     } catch (err) {
       console.error("Send code error:", err);
-      setError(err.message || "Failed to send recovery code. Please try again.");
+      setError(
+        err.message || "Failed to send recovery code. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -65,40 +69,43 @@ const ForgotPassword = () => {
     e.preventDefault();
     setError("");
     setSuccess("");
-  
+
     if (!formData.recoveryCode) {
       setError("Please enter the recovery code");
       return;
     }
-  
+
     if (!formData.newPassword) {
       setError("Please enter a new password");
       return;
     }
-  
+
     // Password validation regex
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-    
+    const passwordRegex =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+
     if (!passwordRegex.test(formData.newPassword)) {
-      setError("Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character");
+      setError(
+        "Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character"
+      );
       return;
     }
-  
+
     if (formData.newPassword !== formData.confirmPassword) {
       setError("Passwords do not match");
       return;
     }
-  
+
     setLoading(true);
-    
+
     try {
       // Call the backend to reset password
       const result = await window.electronAPI.resetPassword({
         email: formData.email,
         recoveryCode: formData.recoveryCode,
-        newPassword: formData.newPassword
+        newPassword: formData.newPassword,
       });
-      
+
       if (result.success) {
         setSuccess("Password reset successfully! Redirecting to login...");
         setTimeout(() => {
@@ -114,7 +121,7 @@ const ForgotPassword = () => {
       setLoading(false);
     }
   };
-  
+
   const handleBack = () => {
     if (step === 2) {
       setStep(1);
@@ -350,6 +357,39 @@ const ForgotPassword = () => {
           pointer-events: none;
         }
 
+        .password-input-wrapper {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+        
+        .password-input-wrapper input {
+          padding-right: 45px;
+        }
+        
+        .password-toggle-btn {
+          position: absolute;
+          right: 12px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #6b7280;
+          transition: color 0.2s;
+        }
+        
+        .password-toggle-btn:hover {
+          color: #374151;
+        }
+        
+        .password-toggle-btn svg {
+          width: 20px;
+          height: 20px;
+        }
+
         /* Footer styling */
         .footer {
           background: #ffcf35;
@@ -415,137 +455,200 @@ const ForgotPassword = () => {
             opacity: 1;
           }
       `}</style>
-    <div className="page-container">
-      <header className="bloodsync-header">
-        <div className="header-container">
-          <div className="left-section">
-            <img
-              src="/assets/Logo1.png"
-              alt="BloodSync Logo"
-              className="bloodsync-logo"
-            />
-          </div>
-          <div className="right-section">
-            <div className="doh-section">
+      <div className="page-container">
+        <header className="bloodsync-header">
+          <div className="header-container">
+            <div className="left-section">
               <img
-                src="/assets/DOH Logo.png"
-                alt="Department of Health"
-                className="doh-logo"
+                src="/assets/Logo1.png"
+                alt="BloodSync Logo"
+                className="bloodsync-logo"
               />
-              <div className="doh-text">
+            </div>
+            <div className="right-section">
+              <div className="doh-section">
                 <img
-                  src="/assets/Text Logo.png"
+                  src="/assets/DOH Logo.png"
                   alt="Department of Health"
-                  className="doh-text"
+                  className="doh-logo"
                 />
+                <div className="doh-text">
+                  <img
+                    src="/assets/Text Logo.png"
+                    alt="Department of Health"
+                    className="doh-text"
+                  />
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <div className="main-content">
-        <div className="reset-container">
-          <div className="login-header">
-            <h1>Reset Password</h1>
-            <p>
-              {step === 1
-                ? "Enter email to send your recovery code."
-                : "Enter the code and your new password."}
-            </p>
-          </div>
+        <div className="main-content">
+          <div className="reset-container">
+            <div className="login-header">
+              <h1>Reset Password</h1>
+              <p>
+                {step === 1
+                  ? "Enter email to send your recovery code."
+                  : "Enter the code and your new password."}
+              </p>
+            </div>
 
-          <form
-            onSubmit={step === 1 ? handleSendCode : handleResetPassword}
-            className={`content ${loading ? "loading" : ""}`}
+            <form
+              onSubmit={step === 1 ? handleSendCode : handleResetPassword}
+              className={`content ${loading ? "loading" : ""}`}
             >
-          
-            {step === 1 && (
-              <div className="form-group">
-                <label htmlFor="email">Email</label>
-                <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  required
-                />
-              </div>
-            )}
-
-            {step === 2 && (
-              <>
+              {step === 1 && (
                 <div className="form-group">
-                  <label htmlFor="recoveryCode">Recovery Code</label>
+                  <label htmlFor="email">Email</label>
                   <input
-                    type="text"
-                    id="recoveryCode"
-                    name="recoveryCode"
-                    value={formData.recoveryCode}
+                    type="email"
+                    id="email"
+                    name="email"
+                    value={formData.email}
                     onChange={handleInputChange}
                     required
                   />
                 </div>
-
-                <div className="form-group">
-                  <label htmlFor="newPassword">New Password</label>
-                  <input
-                    type="password"
-                    id="newPassword"
-                    name="newPassword"
-                    value={formData.newPassword}
-                    onChange={handleInputChange}
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="confirmPassword">Confirm Password</label>
-                  <input
-                    type="password"
-                    id="confirmPassword"
-                    name="confirmPassword"
-                    value={formData.confirmPassword}
-                    onChange={handleInputChange}
-                    required
-                  />
-                </div>
-              </>
-            )}
-
-            {error && <p style={{ margin: "20px 0", color: "yellow" }}>{error}</p>}
-
-            <button type="submit" className="btn" disabled={loading}>
-              {loading ? (
-                <div className="loading-dots">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-              ) : (
-                step === 1 ? "SEND CODE" : "RESET PASSWORD"
               )}
-            </button>
 
-            <button
-              type="button"
-              onClick={handleBack}
-              className="link"
-              style={{
-                display: "block",
-                margin: "10px auto", // centers it horizontally with some spacing
-              }}
-            >
-              Back
-            </button>
-          </form>
+              {step === 2 && (
+                <>
+                  <div className="form-group">
+                    <label htmlFor="recoveryCode">Recovery Code</label>
+                    <input
+                      type="text"
+                      id="recoveryCode"
+                      name="recoveryCode"
+                      value={formData.recoveryCode}
+                      onChange={handleInputChange}
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="newPassword">New Password</label>
+                    <div className="password-input-wrapper">
+                      <input
+                        type={showNewPassword ? "text" : "password"}
+                        id="newPassword"
+                        name="newPassword"
+                        value={formData.newPassword}
+                        onChange={handleInputChange}
+                        required
+                      />
+                      <button
+                        type="button"
+                        className="password-toggle-btn"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        aria-label="Toggle new password visibility"
+                      >
+                        {showNewPassword ? (
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          >
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                            <line x1="1" y1="1" x2="23" y2="23" />
+                          </svg>
+                        ) : (
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          >
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                            <circle cx="12" cy="12" r="3" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                  <label htmlFor="confirmPassword">Confirm Password</label>
+                  <div className="password-input-wrapper">
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      id="confirmPassword"
+                      name="confirmPassword"
+                      value={formData.confirmPassword}
+                      onChange={handleInputChange}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      aria-label="Toggle confirm password visibility"
+                    >
+                      {showConfirmPassword ? (
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                          <line x1="1" y1="1" x2="23" y2="23" />
+                        </svg>
+                      ) : (
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
+                </>
+              )}
+
+              {error && (
+                <p style={{ margin: "20px 0", color: "yellow" }}>{error}</p>
+              )}
+
+              <button type="submit" className="btn" disabled={loading}>
+                {loading ? (
+                  <div className="loading-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                ) : step === 1 ? (
+                  "SEND CODE"
+                ) : (
+                  "RESET PASSWORD"
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBack}
+                className="link"
+                style={{
+                  display: "block",
+                  margin: "10px auto", // centers it horizontally with some spacing
+                }}
+              >
+                Back
+              </button>
+            </form>
+          </div>
         </div>
+        <footer className="footer">
+          <p>2025 © Copyright Code Red Corporation ver. 1.0</p>
+        </footer>
       </div>
-      <footer className="footer">
-        <p>2025 © Copyright Code Red Corporation ver. 1.0</p>
-      </footer>
-    </div>
     </>
   );
 };
