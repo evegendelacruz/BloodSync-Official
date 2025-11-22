@@ -1,0 +1,3778 @@
+import React, { useState, useEffect, useRef } from "react";
+import { Plus, Filter, Search, Calendar, Mail, Bell, User, CheckCircle, X, Clock, RefreshCw, MoreVertical } from "lucide-react";
+import SidePanelOrg from "../../../components/SidePanelOrg";
+
+// Import components for navigation
+import MailOrg from "./(tabs)/mail_org";
+import CalendarOrg from "./(tabs)/calendar_org";
+import NotificationOrg from "./(tabs)/notification_org";
+import AppointmentOrg from "./appointment_org";
+import RecentActivityOrg from "./recent_activity_org";
+import ProfileOrg from "./(tabs)/profile/profile";
+import LoginOrg from "../login_org";
+
+// Add Donor Modal Component
+const AddDonorModal = ({ isOpen, onClose, onSave, donorData, onInputChange, isLoading, isEditMode }) => {
+  if (!isOpen) return null;
+
+  const handleSave = () => {
+    if (!donorData.firstName || !donorData.lastName || !donorData.gender || 
+        !donorData.birthdate || !donorData.bloodType || !donorData.rhFactor || 
+        !donorData.contactNumber || !donorData.address) {
+      alert('Please fill in all required fields.');
+      return;
+    }
+    onSave();
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content">
+        <div className="modal-header">
+          <div>
+            <h2 className="modal-title">Donor Record</h2>
+            <p className="modal-subtitle">{isEditMode ? 'Edit Donor' : 'Add Donor'}</p>
+          </div>
+          <button className="modal-close-button" onClick={onClose} disabled={isLoading}>
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <div className="form-grid">
+            <div className="form-group">
+              <label className="form-label">First Name *</label>
+              <input
+                type="text"
+                className="form-input"
+                value={donorData.firstName}
+                onChange={(e) => onInputChange('firstName', e.target.value)}
+                placeholder=""
+                disabled={isLoading}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Middle Name (Optional)</label>
+              <input
+                type="text"
+                className="form-input"
+                value={donorData.middleName}
+                onChange={(e) => onInputChange('middleName', e.target.value)}
+                placeholder=""
+                disabled={isLoading}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Last Name *</label>
+              <input
+                type="text"
+                className="form-input"
+                value={donorData.lastName}
+                onChange={(e) => onInputChange('lastName', e.target.value)}
+                placeholder=""
+                disabled={isLoading}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Gender *</label>
+              <select
+                className="form-select"
+                value={donorData.gender}
+                onChange={(e) => onInputChange('gender', e.target.value)}
+                disabled={isLoading}
+              >
+                <option value="">Select</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Birthdate *</label>
+              <input
+                type="date"
+                className="form-input"
+                value={donorData.birthdate}
+                onChange={(e) => onInputChange('birthdate', e.target.value)}
+                disabled={isLoading}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Age (Auto-calculated)</label>
+              <input
+                type="number"
+                className="form-input"
+                value={donorData.age}
+                onChange={(e) => onInputChange('age', e.target.value)}
+                placeholder=""
+                readOnly
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Blood Type *</label>
+              <select
+                className="form-select"
+                value={donorData.bloodType}
+                onChange={(e) => onInputChange('bloodType', e.target.value)}
+                disabled={isLoading}
+              >
+                <option value="">Select</option>
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="AB">AB</option>
+                <option value="O">O</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">RH Factor *</label>
+              <select
+                className="form-select"
+                value={donorData.rhFactor}
+                onChange={(e) => onInputChange('rhFactor', e.target.value)}
+                disabled={isLoading}
+              >
+                <option value="">Select</option>
+                <option value="+">+</option>
+                <option value="-">-</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Contact Number *</label>
+              <input
+                type="tel"
+                className="form-input"
+                value={donorData.contactNumber}
+                onChange={(e) => onInputChange('contactNumber', e.target.value)}
+                placeholder="09XXXXXXXXX"
+                disabled={isLoading}
+              />
+            </div>
+
+            <div className="form-group form-group-full">
+              <label className="form-label">Address *</label>
+              <input
+                type="text"
+                className="form-input"
+                value={donorData.address}
+                onChange={(e) => onInputChange('address', e.target.value)}
+                disabled={isLoading}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-footer-center">
+          <button 
+            className="modal-button modal-save-button-center" 
+            onClick={handleSave}
+            disabled={isLoading}
+          >
+            {isLoading ? (isEditMode ? 'Updating...' : 'Saving...') : 'Save'}
+          </button>
+        </div>
+
+        {isLoading && (
+          <div className="saving-overlay">
+            <div className="saving-spinner"></div>
+            <div className="saving-text">{isEditMode ? 'Updating donor...' : 'Saving donor...'}</div>
+          </div>
+        )}
+      </div>
+
+      <style jsx>{`
+       /* Modal Overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Modal Content */
+.modal-content {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  max-width: 1000px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideIn 0.3s ease-out;
+  position: relative;
+}
+
+/* Modal Header */
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 24px 32px 20px 32px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #165C3C;
+  margin: 0;
+  font-family: 'Barlow', sans-serif;
+}
+
+.modal-subtitle {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 2px 0 0 0;
+  font-family: 'Barlow', sans-serif;
+}
+
+.modal-close-button {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.modal-close-button:hover {
+  background-color: #f3f4f6;
+  color: #6b7280;
+}
+
+.modal-close-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Modal Body */
+.modal-body {
+  padding: 32px;
+}
+
+/* Form Grid */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group-full {
+  grid-column: 1 / -1;
+}
+
+/* Form Labels */
+.form-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 8px;
+  font-family: 'Barlow', sans-serif;
+}
+
+/* Form Inputs */
+.form-input, .form-select {
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: 'Barlow', sans-serif;
+  color: #111827;
+  background-color: white;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-input::placeholder {
+  color: #9ca3af;
+}
+
+.form-input:focus, .form-select:focus {
+  outline: none;
+  border-color: #165C3C;
+  box-shadow: 0 0 0 3px rgba(22, 92, 60, 0.1);
+}
+
+.form-input[readonly], 
+.form-input:disabled, 
+.form-select:disabled {
+  background-color: #f3f4f6;
+  color: #6b7280;
+  cursor: not-allowed;
+}
+
+/* Form Select Custom Styling */
+.form-select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
+}
+
+/* Modal Footer */
+.modal-footer-center {
+  display: flex;
+  justify-content: center;
+  padding: 24px 32px 32px 32px;
+}
+
+.modal-save-button-center {
+  padding: 12px 80px;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  font-family: 'Barlow', sans-serif;
+  background-color: #FFC200;
+  color: #000000;
+}
+
+.modal-save-button-center:hover:not(:disabled) {
+  background-color: #e6ae00;
+}
+
+.modal-save-button-center:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Saving Overlay */
+.saving-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  border-radius: 8px;
+}
+
+.saving-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #165C3C;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.saving-text {
+  color: #374151;
+  font-family: 'Barlow', sans-serif;
+  font-size: 14px;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .modal-content {
+    width: 95%;
+    margin: 20px;
+  }
+  
+  .modal-header, .modal-body {
+    padding: 16px;
+  }
+  
+  .modal-footer-center {
+    padding: 12px 16px 16px 16px;
+  }
+
+  .modal-save-button-center {
+    width: 100%;
+    padding: 12px 24px;
+  }
+}
+
+/* Scrollbar Styling (Optional) */
+.modal-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.modal-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.modal-content::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+.modal-content::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+      `}</style>
+    </div>
+  );
+};
+
+
+const DonorRecordContent = () => {
+  const [isAddDonorModalOpen, setIsAddDonorModalOpen] = useState(false);
+  const [newDonorData, setNewDonorData] = useState({
+    firstName: '',
+    middleName: '',
+    lastName: '',
+    gender: '',
+    birthdate: '',
+    age: '',
+    bloodType: '',
+    rhFactor: '',
+    contactNumber: '',
+    address: ''
+  });
+
+  const [donorData, setDonorData] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [sortConfig, setSortConfig] = useState({ key: 'donor_id', direction: 'asc' });
+  const [filterConfig, setFilterConfig] = useState({ field: '', value: '' });
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const sortDropdownRef = useRef(null);
+  const filterDropdownRef = useRef(null);
+  const searchTimeoutRef = useRef(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingDonorId, setEditingDonorId] = useState(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [successMessage, setSuccessMessage] = useState({ title: '', description: '' });
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
+  const [pendingDeleteType, setPendingDeleteType] = useState(null);
+  const [showConfirmSyncModal, setShowConfirmSyncModal] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  useEffect(() => {
+    loadDonors();
+  }, []);
+
+  // --- ADD THIS ENTIRE useEffect BLOCK ---
+  useEffect(() => {
+    // Debounce search
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      handleSearch(searchTerm);
+    }, 300); // 300ms delay
+
+    // Click outside handler for dropdowns
+    const handleClickOutside = (e) => {
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(e.target)) {
+        setShowSortDropdown(false);
+      }
+      if (filterDropdownRef.current && !filterDropdownRef.current.contains(e.target)) {
+        setShowFilterDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchTerm]); // Only re-run when searchTerm changes
+  // --- END OF NEW BLOCK ---
+
+  const loadDonors = async () => {
+    try {
+      setIsLoadingData(true);
+      setError(null);
+      
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const donors = await window.electronAPI.getAllDonors();
+        setDonorData(donors);
+      } else {
+        console.warn('ElectronAPI not available - running in browser mode');
+        setDonorData([]);
+      }
+    } catch (error) {
+      console.error('Error loading donors:', error);
+      setError('Failed to load donors. Please try again.');
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
+
+  const handleSearch = async (term) => {
+    // Only set searching if the term is not empty
+    setIsSearching(term.trim() !== '');
+    setError(null);
+    
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        if (term.trim() === '') {
+          await loadDonors(); // Load all if search is cleared
+        } else {
+          const results = await window.electronAPI.searchDonors(term);
+          setDonorData(results);
+        }
+      }
+    } catch (error) {
+      console.error('Error searching donors:', error);
+      setError('Failed to search donors. Please try again.');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const toggleRowSelection = (donorId) => {
+    setDonorData((prevData) =>
+      prevData.map((item) =>
+        item.donor_id === donorId ? { ...item, selected: !item.selected } : item
+      )
+    );
+  };
+
+  const toggleAllSelection = () => {
+    const allSelected = donorData.every((item) => item.selected);
+    setDonorData((prevData) =>
+      prevData.map((item) => ({ ...item, selected: !allSelected }))
+    );
+  };
+
+  const clearAllSelection = () => {
+    setDonorData((prevData) =>
+      prevData.map((item) => ({ ...item, selected: false }))
+    );
+  };
+
+  const selectedCount = donorData.filter((item) => item.selected).length;
+
+  const allSelected =
+    donorData.length > 0 && donorData.every((item) => item.selected);
+  const someSelected = donorData.some((item) => item.selected) && !allSelected;
+
+  const handleAddDonorClick = () => {
+    setIsEditMode(false);
+    setEditingDonorId(null);
+    setIsAddDonorModalOpen(true);
+  };
+
+  const handleCloseAddDonorModal = () => {
+    setIsAddDonorModalOpen(false);
+    setIsEditMode(false);
+    setEditingDonorId(null);
+    setNewDonorData({
+      firstName: '',
+      middleName: '',
+      lastName: '',
+      gender: '',
+      birthdate: '',
+      age: '',
+      bloodType: '',
+      rhFactor: '',
+      contactNumber: '',
+      address: ''
+    });
+  };
+
+  const handleNewDonorInputChange = (field, value) => {
+    setNewDonorData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    
+    if (field === 'birthdate' && value) {
+      const today = new Date();
+      const birthDate = new Date(value);
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      
+      setNewDonorData(prev => ({
+        ...prev,
+        age: age.toString()
+      }));
+    }
+  };
+
+  const handleSaveNewDonor = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const donorPayload = {
+          ...newDonorData,
+          age: parseInt(newDonorData.age)
+        };
+        
+        // --- FIX: Get current user from localStorage ---
+        const user = JSON.parse(localStorage.getItem('currentOrgUser'));
+        const currentUser = user?.fullName || 'Unknown User';
+        // --- END FIX ---
+        
+        if (isEditMode && editingDonorId) {
+          const updatedDonor = await window.electronAPI.updateDonor(editingDonorId, donorPayload, currentUser);
+          setDonorData(prev => prev.map(donor => 
+            donor.id === editingDonorId ? updatedDonor : donor
+          ));
+        } else {
+          const newDonor = await window.electronAPI.addDonor(donorPayload, currentUser);
+          setDonorData(prev => [newDonor, ...prev]);
+        }
+
+        setSuccessMessage({
+          title: isEditMode ? 'Donor Updated Successfully!' : 'Donor Added Successfully!',
+          description: `New donor record has been ${isEditMode ? 'updated in' : 'added to'} the system.`
+        });
+
+        // show success modal and then close form
+        setShowSuccessModal(true);
+        setTimeout(() => {
+          setShowSuccessModal(false);
+          handleCloseAddDonorModal();
+        }, 1200);
+      } else {
+        throw new Error('Database not available');
+      }
+    } catch (error) {
+      console.error('Error saving donor:', error);
+      setError(`Failed to ${isEditMode ? 'update' : 'save'} donor. Please try again.`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEditDonor = (donor) => {
+    setIsEditMode(true);
+    setEditingDonorId(donor.id);
+    
+    let birthdateForInput = '';
+    if (donor.birthdate) {
+      const dateStr = donor.birthdate;
+      if (dateStr.includes('/')) {
+        const [month, day, year] = dateStr.split('/');
+        birthdateForInput = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      } else {
+        birthdateForInput = new Date(dateStr).toISOString().split('T')[0];
+      }
+    }
+    
+    setNewDonorData({
+      firstName: donor.first_name || '',
+      middleName: donor.middle_name || '',
+      lastName: donor.last_name || '',
+      gender: donor.gender || '',
+      birthdate: birthdateForInput,
+      age: donor.age?.toString() || '',
+      bloodType: donor.blood_type || '',
+      rhFactor: donor.rh_factor || '',
+      contactNumber: donor.contact_number || '',
+      address: donor.address || ''
+    });
+    
+    setIsAddDonorModalOpen(true);
+  };
+
+  const handleDeleteSingleDonor = (donorId) => {
+    setPendingDeleteId(donorId);
+    setPendingDeleteType('single');
+    setShowDeleteDialog(true);
+  };
+
+  const handleDeleteSelectedDonors = () => {
+    const selectedDonors = donorData.filter(donor => donor.selected);
+    
+    if (selectedDonors.length === 0) return;
+    
+    setPendingDeleteId(selectedDonors.map(d => d.donor_id));
+    setPendingDeleteType('multiple');
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDelete = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        
+        if (typeof window !== 'undefined' && window.electronAPI) {
+          // --- FIX: Get current user from localStorage ---
+        const user = JSON.parse(localStorage.getItem('currentOrgUser'));
+        const currentUser = user?.fullName || 'Unknown User';
+        // --- END FIX ---
+          const idsToDelete = Array.isArray(pendingDeleteId) ? pendingDeleteId : [pendingDeleteId];
+          
+          await window.electronAPI.deleteDonors(idsToDelete, currentUser);
+          setDonorData(prev => prev.filter(donor => !idsToDelete.includes(donor.donor_id)));
+          
+          // --- START: ADD THIS CODE ---
+          const count = idsToDelete.length;
+          setSuccessMessage({
+            title: 'Deleted Successfully!',
+            description: `${count} donor record(s) have been deleted.`
+          });
+          setShowSuccessModal(true);
+          clearAllSelection(); // Good practice to clear selection
+          // --- END: ADD THIS CODE ---
+        }
+        
+        setShowDeleteDialog(false);
+        setPendingDeleteId(null);
+        setPendingDeleteType(null);
+      } catch (error) {
+        console.error('Error deleting donor:', error);
+        setError('Failed to delete donor. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+  const cancelDelete = () => {
+    setShowDeleteDialog(false);
+    setPendingDeleteId(null);
+    setPendingDeleteType(null);
+  };
+
+  // --- ADD THIS FUNCTION TO OPEN THE CONFIRM MODAL ---
+  const handleRequestSyncClick = () => {
+    const selectedDonors = donorData.filter((donor) => donor.selected);
+    if (selectedDonors.length === 0) {
+      setError("Please select at least one donor record to sync.");
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+    setShowConfirmSyncModal(true);
+  };
+
+const confirmRequestSync = async () => {
+    setShowConfirmSyncModal(false);
+    setIsSyncing(true);
+    setError(null);
+
+    const selectedDonors = donorData.filter((donor) => donor.selected);
+    const user = JSON.parse(localStorage.getItem('currentOrgUser'));
+    const currentUser = user?.fullName || 'Unknown User';
+    const currentUserId = user?.userId || 0;
+    // Determine organization name from role/barangay
+    const organizationName = (user?.role === 'Barangay' && user.barangay) ? user.barangay : (user?.role || 'Organization');
+
+
+    try {
+      if (!window.electronAPI || !window.electronAPI.requestDonorSync) {
+        throw new Error("Electron API for sync is not available.");
+      }
+
+      // Re-map fields to match the main db 'temp_donor_records'
+      const recordsToSync = selectedDonors.map(d => {
+        // --- THIS IS THE FIX ---
+        // 'formattedBirthdate' is defined *inside* the map function
+        const dateParts = d.birthdate.split('/'); // This will be [MM, DD, YYYY]
+        const formattedBirthdate = `${dateParts[2]}-${dateParts[0]}-${dateParts[1]}`; // YYYY-MM-DD
+
+        return {
+          donor_id: d.donor_id,
+          first_name: d.first_name,
+          middle_name: d.middle_name,
+          last_name: d.last_name,
+          gender: d.gender,
+          birthdate: formattedBirthdate, // Use the new formatted date
+          age: d.age,
+          blood_type: d.blood_type,
+          rh_factor: d.rh_factor,
+          contact_number: d.contact_number,
+          address: d.address,
+        };
+      });
+
+      const result = await window.electronAPI.requestDonorSync(
+        recordsToSync,
+        organizationName,
+        currentUserId,
+        currentUser
+      );
+
+      setSuccessMessage({
+        title: "Sync Requested!",
+        description: `${result.length} donor record(s) have been sent to the Regional Blood Center for approval.`,
+      });
+      setShowSuccessModal(true);
+      clearAllSelection();
+
+    } catch (err) {
+      console.error("Error requesting sync:", err);
+      setError(`Failed to request sync: ${err.message}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+// --- ADD THESE NEW FUNCTIONS ---
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+    setShowSortDropdown(false); // Close dropdown on selection
+  };
+
+  const getSortedAndFilteredData = () => {
+    let filtered = [...donorData];
+
+    // Apply filtering
+    if (filterConfig.field && filterConfig.value) {
+      filtered = filtered.filter((item) => {
+        const value = item[filterConfig.field];
+        if (value === null || value === undefined) return false;
+        return value.toString().toLowerCase().includes(filterConfig.value.toLowerCase());
+      });
+    }
+
+    // Apply sorting
+    const sorted = filtered.sort((a, b) => {
+      const aVal = a[sortConfig.key];
+      const bVal = b[sortConfig.key];
+
+      if (aVal === null || aVal === undefined) return 1;
+      if (bVal === null || bVal === undefined) return -1;
+
+      let comparison = 0;
+      if (typeof aVal === 'string') {
+        comparison = aVal.localeCompare(bVal);
+      } else if (typeof aVal === 'number') {
+        comparison = aVal - bVal;
+      } else if (typeof aVal === 'boolean') {
+        comparison = aVal === bVal ? 0 : aVal ? -1 : 1;
+      }
+
+      return sortConfig.direction === 'asc' ? comparison : -comparison;
+    });
+
+    return sorted;
+  };
+
+  const getSortLabel = (key) => {
+    const labels = {
+      donor_id: "Donor ID",
+      first_name: "First Name",
+      last_name: "Last Name",
+      gender: "Gender",
+      age: "Age",
+      blood_type: "Blood Type",
+      rh_factor: "RH Factor",
+    };
+    return labels[key] || "Sort by";
+  };
+  // --- END OF NEW FUNCTIONS ---
+
+  return (
+    <div className="donor-record-content">
+      <div className="donor-header">
+        <h1 className="donor-title" style={{color: '#165C3C', fontWeight: 'bold', fontFamily: 'Barlow'}}>Regional Blood Center</h1>
+        <p className="donor-subtitle">Centralized Donor Record</p>
+      </div>
+
+      {error && (
+        <div className="error-message">
+          <span>{error}</span>
+          <button onClick={() => setError(null)}>×</button>
+        </div>
+      )}
+
+      <div className="controls-bar">
+        <div className="left-controls">
+          <div className="search-container">
+            <Search size={16} className="search-icon" />
+            <input
+              type="text"
+              placeholder="Search donors..."
+              className="search-input"
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+              }}
+              disabled={isLoadingData} // Don't disable for searching
+            />
+            {isSearching && <div className="search-loading">Searching...</div>}
+          </div>
+        </div>
+
+        <div className="right-controls">
+          {/* --- REPLACE SORT BUTTON --- */}
+          <div className="dropdown-container" ref={sortDropdownRef}>
+            <button
+              className="sort-button"
+              disabled={isLoadingData}
+              onClick={() => setShowSortDropdown(!showSortDropdown)}
+              style={{
+                backgroundColor: showSortDropdown ? "#2C58DC" : "white",
+                color: showSortDropdown ? "white" : "#374151",
+              }}
+            >
+              <span>{getSortLabel(sortConfig.key)}</span>
+              <svg
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                style={{
+                  transform: showSortDropdown ? "rotate(180deg)" : "rotate(0deg)",
+                  transition: "transform 0.2s ease",
+                }}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m19 9-7 7-7-7" />
+              </svg>
+            </button>
+            {showSortDropdown && (
+              <div className="dropdown-menu-simple">
+                {[
+                  { key: "donor_id", label: "Donor ID" },
+                  { key: "first_name", label: "First Name" },
+                  { key: "last_name", label: "Last Name" },
+                  { key: "gender", label: "Gender" },
+                  { key: "age", label: "Age" },
+                  { key: "blood_type", label: "Blood Type" },
+                  { key: "rh_factor", label: "RH Factor" },
+                ].map((item) => (
+                  <div
+                    key={item.key}
+                    className={`dropdown-item-simple ${sortConfig.key === item.key ? 'active' : ''}`}
+                    onClick={() => handleSort(item.key)}
+                  >
+                    {item.label}
+                    {sortConfig.key === item.key && (sortConfig.direction === "asc" ? " ↑" : " ↓")}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* --- REPLACE FILTER BUTTON --- */}
+          <div className="dropdown-container" ref={filterDropdownRef}>
+            <button
+              className="filter-button"
+              disabled={isLoadingData}
+              onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+              style={{
+                backgroundColor: showFilterDropdown ? "#2C58DC" : "white",
+                color: showFilterDropdown ? "white" : "#374151",
+              }}
+            >
+              <Filter size={16} />
+              <span>Filter</span>
+              <svg
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                style={{
+                  transform: showFilterDropdown ? "rotate(180deg)" : "rotate(0deg)",
+                  transition: "transform 0.2s ease",
+                }}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m19 9-7 7-7-7" />
+              </svg>
+            </button>
+            {showFilterDropdown && (
+              <div className="dropdown-menu-simple" style={{ minWidth: '300px', padding: '12px' }}>
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label className="form-label" style={{ fontSize: '12px' }}>Filter Field</label>
+                  <select
+                    className="form-select"
+                    style={{ fontSize: '12px', padding: '8px 12px' }}
+                    value={filterConfig.field}
+                    onChange={(e) => setFilterConfig({ ...filterConfig, field: e.target.value })}
+                  >
+                    <option value="">Select a field</option>
+                    <option value="donor_id">Donor ID</option>
+                    <option value="first_name">First Name</option>
+                    <option value="last_name">Last Name</option>
+                    <option value="gender">Gender</option>
+                    <option value="blood_type">Blood Type</option>
+                    <option value="rh_factor">RH Factor</option>
+                    <option value="contact_number">Contact</option>
+                    <option value="address">Address</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label" style={{ fontSize: '12px' }}>Filter Value</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    style={{ fontSize: '12px', padding: '8px 12px' }}
+                    value={filterConfig.value}
+                    onChange={(e) => setFilterConfig({ ...filterConfig, value: e.target.value })}
+                    placeholder="Enter value to filter"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <button 
+            className="sync-button" 
+            onClick={handleRequestSyncClick} 
+            disabled={isLoadingData || isSyncing || selectedCount === 0}
+          >
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <span>{isSyncing ? 'Syncing...' : 'Request Sync'}</span>
+          </button>
+
+          <button className="add-button" onClick={handleAddDonorClick} disabled={isLoadingData || isLoading}>
+            <Plus size={16} />
+            <span>Add Donor</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="table-container">
+        <table className="donor-table">
+          <thead className="table-head">
+            <tr>
+              <th className="table-header">
+                <input
+                  type="checkbox"
+                  className="checkbox"
+                  checked={allSelected}
+                  ref={(input) => {
+                    if (input) {
+                      input.indeterminate = someSelected;
+                    }
+                  }}
+                  onChange={toggleAllSelection}
+                  disabled={isLoadingData || donorData.length === 0}
+                />
+              </th>
+              <th className="table-header donor-id-col">DONOR ID</th>
+              <th className="table-header">FIRST NAME</th>
+              <th className="table-header">MIDDLE NAME</th>
+              <th className="table-header">LAST NAME</th>
+              <th className="table-header">GENDER</th>
+              <th className="table-header">BIRTHDATE</th>
+              <th className="table-header">AGE</th>
+              <th className="table-header">BLOOD TYPE</th>
+              <th className="table-header">RH FACTOR</th>
+              <th className="table-header">CONTACT NUMBER</th>
+              <th className="table-header">ADDRESS</th>
+              {/* --- ADD THIS LINE --- */}
+              <th className="table-header">MODIFIED AT</th>
+              {/* --- END OF ADD --- */}
+              <th className="table-header">ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody className="table-body">
+            {isLoadingData ? (
+              <tr>
+                <td colSpan="13" className="loading-state">
+                  <div className="loading-content">
+                    <RefreshCw size={24} className="loading-icon" />
+                    <p className="loading-text">Loading donors...</p>
+                  </div>
+                </td>
+              </tr>
+            ) : donorData.length === 0 ? (
+              <tr>
+                <td colSpan="13" className="empty-state">
+                  <div className="empty-content">
+                    <User size={48} className="empty-icon" />
+                    <h3 className="empty-title">No donors found</h3>
+                    <p className="empty-description">
+                      {searchTerm ? `No donors match your search for "${searchTerm}"` : 'Click "Add Donor" to add your first donor record'}
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              donorData.map((item, index) => (
+                <tr
+                  key={item.donor_id}
+                  className={`table-row ${index % 2 === 1 ? 'row-even' : ''} ${item.selected ? 'row-selected' : ''}`}
+                >
+                  <td className="table-cell">
+                    <input
+                      type="checkbox"
+                      className="checkbox"
+                      checked={item.selected || false}
+                      onChange={() => toggleRowSelection(item.donor_id)}
+                    />
+                  </td>
+                  <td className="table-cell">{item.donor_id}</td>
+                  <td className="table-cell">{item.first_name}</td>
+                  <td className="table-cell">{item.middle_name || '-'}</td>
+                  <td className="table-cell">{item.last_name}</td>
+                  <td className="table-cell">{item.gender}</td>
+                  <td className="table-cell">{item.birthdate}</td>
+                  <td className="table-cell">{item.age}</td>
+                  <td className="table-cell">{item.blood_type}</td>
+                  <td className="table-cell">{item.rh_factor}</td>
+                  <td className="table-cell">{item.contact_number}</td>
+                  <td className="table-cell">{item.address}</td>
+                  <td className="table-cell">
+                    {item.updated_at ? new Date(item.updated_at).toLocaleString() : '-'}
+                  </td>
+                  <td className="table-cell actions-cell">
+                    <div className="action-buttons">
+                      <button 
+                        className="action-btn edit-btn"
+                        onClick={() => handleEditDonor(item)}
+                        disabled={isLoading}
+                        title="Edit donor"
+                      >
+                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      <button 
+                        className="action-btn delete-btn"
+                        onClick={() => handleDeleteSingleDonor(item.donor_id)}
+                        disabled={isLoading}
+                        title="Delete donor"
+                      >
+                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+
+        <div className="pagination">
+          <button className="pagination-button" disabled={isLoadingData}>Previous</button>
+          <span className="pagination-text">Page 1 of {Math.max(1, Math.ceil(donorData.length / 20))}</span>
+          <button className="pagination-button-next" disabled={isLoadingData}>Next</button>
+        </div>
+      </div>
+
+      {selectedCount > 0 && (
+        <div className="action-bar">
+          <button className="close-button" onClick={clearAllSelection}>
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+
+          <div className="counter-section">
+            <span className="counter-text">
+              {selectedCount} {selectedCount === 1 ? "item" : "items"} selected
+            </span>
+          </div>
+
+          <button className="edit-button" disabled={selectedCount !== 1}>
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            <span>Edit</span>
+          </button>
+
+          <button 
+            className="delete-button" 
+            onClick={handleDeleteSelectedDonors}
+            disabled={isLoading}
+          >
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            <span>{isLoading ? 'Deleting...' : 'Delete'}</span>
+          </button>
+        </div>
+      )}
+
+      <AddDonorModal
+        isOpen={isAddDonorModalOpen}
+        onClose={handleCloseAddDonorModal}
+        onSave={handleSaveNewDonor}
+        donorData={newDonorData}
+        onInputChange={handleNewDonorInputChange}
+        isLoading={isLoading}
+        isEditMode={isEditMode}
+      />
+
+      {/* --- ADD THIS CONFIRMATION MODAL --- */}
+      {showConfirmSyncModal && (
+        <div className="dialog-overlay">
+          <div className="dialog-content">
+            <h3 className="dialog-title" style={{ color: '#165C3C' }}>Confirm Sync Request</h3>
+            <p className="dialog-message">
+              Are you sure you want to send {selectedCount} donor record(s) to the Regional Blood Center for approval?
+            </p>
+            <div className="dialog-actions">
+              <button className="dialog-button cancel-button" onClick={() => setShowConfirmSyncModal(false)} disabled={isSyncing}>
+                Cancel
+              </button>
+              <button className="dialog-button confirm-button" onClick={confirmRequestSync} disabled={isSyncing}>
+                {isSyncing ? 'Sending...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSuccessModal && (
+        <div className="dialog-overlay">
+          <div className="dialog-content">
+            <div className="dialog-icon-container">
+              <div className="dialog-icon-success">
+                <CheckCircle size={24} />
+              </div>
+            </div>
+              <h3 className="dialog-title">{successMessage.title}</h3>
+              <p className="dialog-message">{successMessage.description}</p>
+            <div className="dialog-actions">
+              <button className="dialog-button confirm-button" onClick={() => setShowSuccessModal(false)}>OK</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {showDeleteDialog && (
+        <div className="dialog-overlay">
+          <div className="dialog-content">
+            <div className="dialog-icon-container">
+              <div className="dialog-icon-warning">
+                <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+            </div>
+            <h3 className="dialog-title">Confirm Delete{pendingDeleteType === 'multiple' ? 's' : ''}?</h3>
+            <p className="dialog-message">
+              {pendingDeleteType === 'multiple' 
+                ? `Are you sure you want to delete ${Array.isArray(pendingDeleteId) ? pendingDeleteId.length : 0} donor(s)? This action cannot be undone.`
+                : 'Are you sure you want to delete this donor? This action cannot be undone.'}
+            </p>
+            <div className="dialog-actions">
+              <button className="dialog-button cancel-button" onClick={cancelDelete} disabled={isLoading}>
+                Cancel
+              </button>
+              <button className="dialog-button delete-confirm-button" onClick={confirmDelete} disabled={isLoading}>
+                {isLoading ? 'Deleting...' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        @font-face {
+          font-family: 'Barlow';
+          src: url('./src/assets/fonts/Barlow-Regular.ttf') format('truetype');
+          font-weight: 400;
+          font-style: normal;
+          font-display: swap;
+        }
+
+        @font-face {
+          font-family: 'Barlow';
+          src: url('./src/assets/fonts/Barlow-Medium.ttf') format('truetype');
+          font-weight: 500;
+          font-style: normal;
+          font-display: swap;
+        }
+
+        @font-face {
+          font-family: 'Barlow';
+          src: url('./src/assets/fonts/Barlow-SemiBold.ttf') format('truetype');
+          font-weight: 600;
+          font-style: normal;
+          font-display: swap;
+        }
+
+        @font-face {
+          font-family: 'Barlow';
+          src: url('./src/assets/fonts/Barlow-Bold.ttf') format('truetype');
+          font-weight: 700;
+          font-style: normal;
+          font-display: swap;
+        }
+
+        .donor-record-content {
+          padding: 24px;
+          background-color: #f9fafb;
+          min-height: 100vh;
+          font-family: 'Barlow';
+          border-radius: 8px;
+          animation: fadeIn 0.5s ease-out;
+        }
+
+        .donor-header {
+          margin: 0;
+        }
+
+        .donor-title {
+          font-size: 24px;
+          font-weight: 700;
+          color: #165C3C;
+          margin-top: 1px;
+          font-family: 'Barlow';
+        }
+
+        .donor-subtitle {
+          color: #6b7280;
+          font-size: 14px;
+          margin-top: -7px;
+          font-family: 'Barlow';
+        }
+        .dropdown-container {
+          position: relative;
+        }
+
+        .dropdown-menu-simple {
+          position: absolute;
+          right: 0;
+          top: 100%;
+          margin-top: 0.5rem;
+          background: white;
+          border-radius: 0.5rem;
+          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+          border: 1px solid #e5e7eb;
+          z-index: 50;
+          min-width: 160px;
+          overflow: hidden;
+          animation: dropdownSlide 0.15s ease-out;
+        }
+
+        .dropdown-item-simple {
+          padding: 0.75rem 1rem;
+          font-size: 0.875rem;
+          color: #374151;
+          cursor: pointer;
+          transition: background-color 0.2s ease;
+          font-family: 'Barlow';
+          border-bottom: 1px solid #e5e7eb;
+        }
+
+        .dropdown-item-simple:hover {
+          background-color: #f3f4f6;
+        }
+
+        .dropdown-item-simple.active {
+          background-color: #dbeafe;
+          font-weight: 600;
+        }
+        .error-message {
+          background-color: #fee2e2;
+          border: 1px solid #fecaca;
+          color: #dc2626;
+          padding: 12px 16px;
+          border-radius: 6px;
+          margin-bottom: 16px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-family: 'Barlow';
+        }
+
+        .error-message button {
+          background: none;
+          border: none;
+          color: #dc2626;
+          font-size: 18px;
+          cursor: pointer;
+          padding: 0;
+          margin-left: 8px;
+        }
+
+        .controls-bar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 20px;
+          background-color: white;
+          padding: 16px;
+          border-radius: 8px;
+          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+        }
+
+        .left-controls {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+
+        .search-container {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+
+        .search-input {
+          padding-left: 40px;
+          padding-right: 16px;
+          padding-top: 8px;
+          padding-bottom: 8px;
+          border: 1px solid #d1d5db;
+          border-radius: 6px;
+          width: 300px;
+          font-size: 14px;
+          font-family: 'Barlow';
+          outline: none;
+        }
+
+        .search-input:disabled {
+          background-color: #f9fafb;
+          color: #6b7280;
+          cursor: not-allowed;
+        }
+
+        .search-icon {
+          position: absolute;
+          left: 12px;
+          z-index: 1;
+          color: #9ca3af;
+        }
+
+        .search-loading {
+          position: absolute;
+          right: 12px;
+          font-size: 12px;
+          color: #6b7280;
+          font-family: 'Barlow';
+        }
+
+        .right-controls {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .sort-button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          border: 1px solid #d1d5db;
+          border-radius: 6px;
+          background-color: white;
+          cursor: pointer;
+          font-size: 14px;
+          font-family: 'Barlow';
+          color: #374151;
+          transition: all 0.2s ease;
+        }
+
+        .sort-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .filter-button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          background-color: white;
+          color: #374151;
+          border: 1px solid #d1d5db;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 14px;
+          font-family: 'Barlow';
+          transition: all 0.2s ease;
+        }
+
+        .filter-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .sync-button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          background-color: #2C58DC;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 14px;
+          font-family: 'Barlow';
+        }
+
+        .sync-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .add-button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          background-color: #FFC200;
+          color: black;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 14px;
+          font-family: 'Barlow';
+        }
+
+        .add-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .table-container {
+          background-color: white;
+          border-radius: 8px;
+          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+          overflow: hidden;
+        }
+
+        .donor-table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+
+        .table-head {
+          background-color: #f9fafb;
+          border-bottom: 1px solid #e5e7eb;
+        }
+
+        .table-header {
+          padding: 12px 16px;
+          text-align: left;
+          font-size: 11px;
+          font-weight: 500;
+          color: #6b7280;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          border-bottom: 1px solid #e5e7eb;
+          font-family: 'Barlow';
+        }
+
+        .donor-id-col {
+          width: 12%;
+        }
+
+        .table-body {
+          background-color: white;
+        }
+
+        .table-row {
+          border-bottom: 1px solid #A3A3A3;
+        }
+
+        .row-even {
+          background-color: #f9fafb;
+        }
+
+        .row-selected {
+          background-color: #e6f7ff;
+        }
+
+        .table-cell {
+          padding: 12px 16px;
+          font-size: 11px;
+          font-family: 'Barlow';
+          color: #111827;
+          border-bottom: 1px solid rgba(163, 163, 163, 0.2);
+        }
+
+        .actions-cell {
+          width: 100px;
+          text-align: center;
+        }
+
+        .action-buttons {
+          display: flex;
+          gap: 6px;
+          justify-content: center;
+          align-items: center;
+        }
+
+        .action-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          transition: all 0.2s;
+          padding: 0;
+        }
+
+        .action-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .edit-btn {
+          background-color: #f3f4f6;
+          color: #6b7280;
+        }
+
+        .edit-btn:hover:not(:disabled) {
+          background-color: #2563eb;
+          color: white;
+        }
+
+        .delete-btn {
+          background-color: #f3f4f6;
+          color: #6b7280;
+        }
+
+        .delete-btn:hover:not(:disabled) {
+          background-color: #dc2626;
+          color: white;
+        }
+
+        .loading-state, .empty-state {
+          padding: 60px 24px;
+          text-align: center;
+          background-color: white;
+        }
+
+        .loading-content, .empty-content {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 16px;
+        }
+
+        .loading-icon {
+          color: #165C3C;
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
+          }
+        }
+
+        .loading-text {
+          font-size: 16px;
+          color: #6b7280;
+          margin: 0;
+          font-family: 'Barlow';
+        }
+
+        .empty-icon {
+          color: #d1d5db;
+        }
+
+        .empty-title {
+          font-size: 18px;
+          font-weight: 600;
+          color: #374151;
+          margin: 0;
+          font-family: 'Barlow';
+        }
+
+        .empty-description {
+          font-size: 14px;
+          color: #6b7280;
+          margin: 0;
+          font-family: 'Barlow';
+        }
+
+        .checkbox {
+          width: 16px;
+          height: 16px;
+          cursor: pointer;
+        }
+
+        .checkbox:disabled {
+          cursor: not-allowed;
+        }
+
+        .pagination {
+          background-color: white;
+          padding: 16px 24px;
+          border-top: 1px solid #e5e7eb;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .pagination-button {
+          font-size: 14px;
+          color: #6b7280;
+          background-color: transparent;
+          border: none;
+          cursor: pointer;
+          padding: 4px 8px;
+          font-family: 'Barlow';
+        }
+
+        .pagination-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .pagination-button-next {
+          font-size: 14px;
+          color: #3b82f6;
+          background-color: transparent;
+          border: none;
+          cursor: pointer;
+          padding: 4px 8px;
+          font-family: 'Barlow';
+        }
+
+        .pagination-button-next:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .pagination-text {
+          font-size: 14px;
+          color: #374151;
+          font-weight: 500;
+          font-family: 'Barlow';
+        }
+
+        .action-bar {
+          position: fixed;
+          bottom: 20px;
+          left: 50%;
+          transform: translateX(-50%);
+          display: flex;
+          align-items: center;
+          gap: 0;
+          background: #4a5568;
+          box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+          border-radius: 8px;
+          z-index: 1000;
+          color: white;
+          overflow: hidden;
+        }
+
+        .close-button {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 12px 16px;
+          background-color: #4a5568;
+          color: white;
+          border: none;
+          cursor: pointer;
+          font-size: 16px;
+          border-right: 1px solid #2d3748;
+        }
+
+        .counter-section {
+          padding: 12px 24px;
+          background-color: #4a5568;
+          border-right: 1px solid #2d3748;
+        }
+
+        .counter-text {
+          font-size: 14px;
+          font-weight: 500;
+          color: white;
+          margin: 0;
+          font-family: 'Barlow';
+        }
+
+        .edit-button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 16px;
+          background-color: #4a5568;
+          color: white;
+          border: none;
+          cursor: pointer;
+          font-size: 14px;
+          font-family: 'Barlow';
+          border-right: 1px solid #2d3748;
+        }
+
+        .edit-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .delete-button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 16px;
+          background-color: #4a5568;
+          color: white;
+          border: none;
+          cursor: pointer;
+          font-size: 14px;
+          font-family: 'Barlow';
+        }
+
+        .delete-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .dialog-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background-color: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          animation: fadeIn 0.2s ease-out;
+        }
+
+        .dialog-content {
+          background: white;
+          padding: 2rem;
+          border-radius: 0.5rem;
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+          max-width: 400px;
+          width: 90%;
+          text-align: center;
+          animation: slideIn 0.3s ease-out;
+        }
+
+        .dialog-icon-container {
+          display: flex;
+          justify-content: center;
+          margin-bottom: 1rem;
+        }
+
+        .dialog-icon-success {
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          background-color: #d1fae5;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #10b981;
+        }
+
+        .dialog-icon-warning {
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          background-color: #fef2f2;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #ef4444;
+        }
+
+        .dialog-title {
+          font-size: 1.125rem;
+          font-weight: 600;
+          color: #111827;
+          margin: 0 0 0.75rem 0;
+          font-family: 'Barlow';
+        }
+
+        .dialog-message {
+          color: #6b7280;
+          margin: 0 0 1.5rem 0;
+          font-size: 0.875rem;
+          font-family: 'Barlow';
+        }
+
+        .dialog-actions {
+          display: flex;
+          gap: 0.75rem;
+          justify-content: center;
+        }
+
+        .dialog-button {
+          padding: 0.5rem 1.5rem;
+          border-radius: 0.375rem;
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+          border: 1px solid;
+          font-family: 'Barlow';
+        }
+
+        .cancel-button {
+          background-color: white;
+          color: #6b7280;
+          border-color: #d1d5db;
+        }
+
+        .cancel-button:hover:not(:disabled) {
+          background-color: #f9fafb;
+          border-color: #9ca3af;
+        }
+
+        .cancel-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .confirm-button {
+          background-color: #FFC200;
+          color: #000000;
+          border-color: #FFC200;
+        }
+
+        .confirm-button:hover:not(:disabled) {
+          background-color: #e6ae00;
+          border-color: #e6ae00;
+        }
+
+        .delete-confirm-button {
+          background-color: #ef4444;
+          color: white;
+          border-color: #ef4444;
+        }
+
+        .delete-confirm-button:hover:not(:disabled) {
+          background-color: #dc2626;
+          border-color: #dc2626;
+        }
+
+        .delete-confirm-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
+    </div>
+  );
+};
+
+// Logout Confirmation Dialog Component
+const LogoutDialog = ({ isOpen, onConfirm, onCancel }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="dialog-overlay">
+      <div className="dialog-content">
+        <h3 className="dialog-title">Confirm Logout</h3>
+        <p className="dialog-message">Are you sure you want to logout?</p>
+        <div className="dialog-actions">
+          <button className="dialog-button cancel-button" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="dialog-button confirm-button" onClick={onConfirm}>
+            Yes, Logout
+          </button>
+        </div>
+      </div>
+      
+      <style jsx>{`
+        .dialog-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background-color: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          animation: fadeIn 0.2s ease-out;
+        }
+
+        .dialog-content {
+          background: white;
+          padding: 2rem;
+          border-radius: 0.5rem;
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+          max-width: 400px;
+          width: 90%;
+          text-align: center;
+          animation: slideIn 0.3s ease-out;
+        }
+
+        .dialog-title {
+          font-size: 1.125rem;
+          font-weight: 600;
+          color: #111827;
+          margin: 0 0 0.75rem 0;
+          font-family: 'Barlow';
+        }
+
+        .dialog-message {
+          color: #6b7280;
+          margin: 0 0 1.5rem 0;
+          font-size: 0.875rem;
+          font-family: 'Barlow';
+        }
+
+        .dialog-actions {
+          display: flex;
+          gap: 0.75rem;
+          justify-content: center;
+        }
+
+        .dialog-button {
+          padding: 0.5rem 1.5rem;
+          border-radius: 0.375rem;
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+          border: 1px solid;
+          font-family: 'Barlow';
+        }
+
+        .cancel-button {
+          background-color: white;
+          color: #6b7280;
+          border-color: #d1d5db;
+        }
+
+        .cancel-button:hover {
+          background-color: #f9fafb;
+          border-color: #9ca3af;
+        }
+
+        .confirm-button {
+          background-color: #ef4444;
+          color: white;
+          border-color: #ef4444;
+        }
+
+        .confirm-button:hover {
+          background-color: #dc2626;
+          border-color: #dc2626;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: translateY(-20px) scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+      `}</style>
+    </div>
+  );
+};
+
+// Main DonorRecordOrg Component
+const DonorRecordOrg = () => {
+  const [isSidePanelOpen, setIsSidePanelOpen] = useState(true);
+  const [activeScreen, setActiveScreen] = useState("donor-record-org");
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const [isCalendarDropdownOpen, setIsCalendarDropdownOpen] = useState(false);
+  const [isMailDropdownOpen, setIsMailDropdownOpen] = useState(false);
+  const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false);
+  const [isLoggedOut, setIsLoggedOut] = useState(false);
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [activeNotificationMenu, setActiveNotificationMenu] = useState(null);
+  const [mailMessages, setMailMessages] = useState([]);
+  // --- ADD THESE TWO LINES ---
+  const [userName, setUserName] = useState('Loading...');
+  const [userPhoto, setUserPhoto] = useState(null);
+  const [isLoadingMail, setIsLoadingMail] = useState(false);
+  const [calendarAppointments, setCalendarAppointments] = useState([]);
+  const [isLoadingCalendar, setIsLoadingCalendar] = useState(false);
+
+  // Load notifications from database
+  useEffect(() => {
+    loadNotifications();
+    
+    const notificationInterval = setInterval(loadNotifications, 30000);
+    
+    return () => clearInterval(notificationInterval);
+  }, []);
+
+  const loadNotifications = async () => {
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const [notificationsData, appointmentsData] = await Promise.all([
+          window.electronAPI.getAllOrgNotifications(), // <-- CORRECTED
+          window.electronAPI.getAllAppointments()
+        ]);
+        //UPCOMING APPOINTMENTS
+
+        
+        //END: UPCOMING APPOINTMENTS
+        const readLocalIds = JSON.parse(localStorage.getItem('orgReadNotificationIds') || '[]');
+        const transformedNotifications = notificationsData.map(n => {
+          const notifType = n.notification_type || n.type;
+          const derivedStatus = notifType === 'stock_expired'
+            ? 'expired'
+            : notifType === 'stock_expiring_urgent'
+            ? 'urgent'
+            : notifType === 'stock_expiring_soon'
+            ? 'alert'
+            : (n.status || 'info');
+
+          return {
+            id: n.id,
+            notificationId: n.notification_id,
+            type: notifType || 'partnership_response',
+            status: derivedStatus,
+            title: n.title,
+            message: n.message,
+            requestor: n.requestor || 'Regional Blood Center',
+            timestamp: new Date(n.updated_at || n.created_at),
+            read: (n.read || false) || readLocalIds.includes(n.notification_id) || readLocalIds.includes(n.id),
+            appointmentId: n.appointment_id,
+            declineReason: n.decline_reason,
+            contactInfo: {
+              email: n.contact_email,
+              phone: n.contact_phone,
+              address: n.contact_address,
+              type: n.contact_type
+            }
+          };
+        });
+
+        const now = new Date();
+        const upcomingAppointments = appointmentsData
+          .filter(apt => {
+            const aptDate = new Date(apt.date + 'T' + apt.time);
+            const hoursDiff = (aptDate - now) / (1000 * 60 * 60);
+            return hoursDiff > 0 && hoursDiff <= 72 && (apt.status === 'approved' || apt.status === 'scheduled');
+          })
+          .map(apt => {
+            // --- THIS ENTIRE OBJECT IS NEW ---
+            const aptDate = new Date(apt.date + 'T00:00:00'); // Use T00:00:00 for correct date parsing
+            const formattedDate = aptDate.toLocaleDateString('en-US', {
+              weekday: 'short',
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric'
+            });
+            const formattedTime = new Date(`1970-01-01T${apt.time}`).toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true
+            });
+            const eventLocation = apt.contactInfo?.address || 'TBD';
+            
+            return {
+              id: `event-${apt.id || apt.appointment_id}`,
+              notificationId: `EVENT-${apt.id || apt.appointment_id}`,
+              type: 'partnership_response', // Match styling of other notifications
+              status: 'approved', // Use 'approved' for the green check icon
+              title: 'Partner, your Blood Drive is Scheduled!', // User's requested title
+              message: `Your blood drive event "${apt.title || 'Blood Drive'}" is confirmed for ${formattedDate} at ${formattedTime}. Location: ${eventLocation}.`,
+              requestor: 'Regional Blood Center', // This will show "From: Regional Blood Center"
+              timestamp: new Date(apt.created_at || apt.date),
+              read: false,
+              appointmentId: apt.id || apt.appointment_id,
+              
+              // These fields are for the notification detail page (like image_c4c7a0.png)
+              eventDate: apt.date,
+              eventTime: apt.time,
+              
+              // This is the contact info for the *event* (your org's info)
+              contactInfo: apt.contactInfo, 
+              
+              // This is the RBC contact info you requested, based on your image.
+              // The main notification page will use this to build the contact box.
+              rbcContactInfo: {
+                email: 'admin@regionalbloodcenter.org',
+                phone: '+63 (85) 225-1234',
+                address: 'J.V Serina St., Carmen, Cagayan de Oro City, Misamis Oriental.'
+              }
+            };
+          });
+
+        const finishedEventNotifications = appointmentsData
+          .filter(apt => {
+            const endOfDay = new Date(apt.date + 'T23:59:59');
+            const diffMs = now - endOfDay;
+            return diffMs >= 0 && diffMs <= 10 * 60 * 1000 && (apt.status === 'approved' || apt.status === 'confirmed');
+          })
+          .map(apt => ({
+            id: `event-finished-${apt.id || apt.appointment_id}`,
+            notificationId: `EVENT-FINISHED-${apt.id || apt.appointment_id}`,
+            type: 'upcoming_event',
+            status: 'info',
+            title: 'Blood Drive Partnership event now Finished',
+            message: `The event "${apt.title || 'Blood Drive Partnership'}" has ended at 12:00 midnight.`,
+            requestor: 'Event Reminder',
+            timestamp: new Date(),
+            read: readLocalIds.includes(`EVENT-FINISHED-${apt.id || apt.appointment_id}`) || readLocalIds.includes(`event-finished-${apt.id || apt.appointment_id}`),
+            appointmentId: apt.id || apt.appointment_id,
+            eventDate: apt.date,
+            eventTime: apt.time,
+            contactInfo: apt.contactInfo
+          }));
+
+        const testFinished = {
+          id: 'event-finished-test',
+          notificationId: 'EVENT-FINISHED-TEST',
+          type: 'upcoming_event',
+          status: 'info',
+          title: 'Blood Drive Partnership event now Finished',
+          message: 'The event "Blood Drive Partnership" has ended at 12:00 midnight.',
+          requestor: 'Event Reminder',
+          timestamp: new Date(),
+          read: readLocalIds.includes('EVENT-FINISHED-TEST')
+        };
+
+        const merged = [...transformedNotifications, ...upcomingAppointments, ...finishedEventNotifications, testFinished];
+        const deduped = Array.from(new Map(merged.map(n => [(n.notificationId || n.id), n])).values());
+        const allNotifications = deduped
+          .sort((a, b) => {
+            if (a.read !== b.read) {
+              return a.read ? 1 : -1;
+            }
+            return new Date(b.timestamp) - new Date(a.timestamp);
+          });
+
+        setNotifications(allNotifications);
+      } else {
+        setNotifications([
+          {
+            id: 1,
+            status: 'approved',
+            title: 'Blood Drive Partnership Request Approved',
+            message: 'Your blood drive partnership request with Metro Hospital has been approved.',
+            requestor: 'Metro Hospital',
+            timestamp: new Date(Date.now() - 30 * 60000),
+            read: false
+          },
+          {
+            id: 2,
+            status: 'declined',
+            title: 'Sync Request Declined',
+            message: 'Your sync request with Butuan Blood Center has been declined.',
+            requestor: 'Butuan Blood Center',
+            timestamp: new Date(Date.now() - 2 * 60 * 60000),
+            read: false
+          },
+          {
+            id: 3,
+            status: 'info',
+            title: 'Profile Updated Successfully',
+            message: 'Your profile information has been updated successfully.',
+            requestor: 'System',
+            timestamp: new Date(Date.now() - 3 * 60 * 60000),
+            read: false
+          },
+          {
+            id: 4,
+            status: 'warning',
+            title: 'Failed Login Attempts',
+            message: 'Multiple failed login attempts detected on your account.',
+            requestor: 'Security System',
+            timestamp: new Date(Date.now() - 12 * 60 * 60000),
+            read: false
+          }
+        ]);
+      }
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    }
+  };
+
+  
+  const toggleSidePanel = () => {
+    setIsSidePanelOpen(!isSidePanelOpen);
+  };
+
+  const handleNavigate = (screen) => {
+    setActiveScreen(screen);
+    setIsCalendarDropdownOpen(false);
+    setIsMailDropdownOpen(false);
+    setIsNotificationDropdownOpen(false);
+    setIsProfileDropdownOpen(false);
+  };
+
+  const toggleCalendarDropdown = () => {
+    setIsCalendarDropdownOpen(!isCalendarDropdownOpen);
+    setIsProfileDropdownOpen(false);
+    setIsMailDropdownOpen(false);
+    setIsNotificationDropdownOpen(false);
+  };
+
+  const toggleMailDropdown = () => {
+    setIsMailDropdownOpen(!isMailDropdownOpen);
+    setIsProfileDropdownOpen(false);
+    setIsCalendarDropdownOpen(false);
+    setIsNotificationDropdownOpen(false);
+  };
+
+  const toggleNotificationDropdown = () => {
+    setIsNotificationDropdownOpen(!isNotificationDropdownOpen);
+    setIsProfileDropdownOpen(false);
+    setIsCalendarDropdownOpen(false);
+    setIsMailDropdownOpen(false);
+  };
+
+  const toggleProfileDropdown = () => {
+    setIsProfileDropdownOpen(!isProfileDropdownOpen);
+    setIsCalendarDropdownOpen(false);
+    setIsMailDropdownOpen(false);
+    setIsNotificationDropdownOpen(false);
+  };
+
+  const handleProfileAction = (action) => {
+    if (action === "edit-profile") {
+      setActiveScreen("profile");
+    } else if (action === "logout") {
+      setShowLogoutDialog(true);
+    }
+    setIsProfileDropdownOpen(false);
+  };
+
+  const handleLogoutConfirm = () => {
+    setShowLogoutDialog(false);
+    setIsLoggedOut(true);
+    console.log("Logging out...");
+  };
+
+  const handleLogoutCancel = () => {
+    setShowLogoutDialog(false);
+  };
+
+  const handleRefreshNotifications = async () => {
+    setIsRefreshing(true);
+    await loadNotifications();
+    setIsRefreshing(false);
+  };
+
+  const toggleNotificationReadStatus = (notificationId) => {
+    setNotifications(prevNotifications =>
+      prevNotifications.map(notification =>
+        notification.id === notificationId
+          ? { ...notification, read: !notification.read }
+          : notification
+      )
+    );
+    setActiveNotificationMenu(null);
+  };
+
+  const markAllAsRead = async () => {
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const unreadDbIds = notifications
+          .filter(n => !n.read && typeof n.id === 'number')
+          .map(n => n.id);
+        await Promise.all(unreadDbIds.map(id => window.electronAPI.markOrgNotificationAsRead(id)));
+
+        const existing = JSON.parse(localStorage.getItem('orgReadNotificationIds') || '[]');
+        const allIds = notifications.map(n => n.notificationId || n.id);
+        const mergedIds = Array.from(new Set([...existing, ...allIds]));
+        localStorage.setItem('orgReadNotificationIds', JSON.stringify(mergedIds));
+
+        await loadNotifications();
+      } else {
+        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      }
+    } catch (error) {
+      console.error('Error marking all notifications as read (Org):', error);
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'approved': return '#10b981';
+      case 'declined': return '#ef4444';
+      case 'cancelled': return '#ef4444';
+      case 'pending': return '#f59e0b';
+      case 'info': return '#3b82f6';
+      case 'warning': return '#f97316';
+      case 'alert': return '#f97316';
+      case 'urgent': return '#ef4444';
+      case 'expired': return '#6b7280';
+      default: return '#6b7280';
+    }
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'approved': return <CheckCircle size={14} />;
+      case 'declined': return <X size={14} />;
+      case 'cancelled': return <X size={14} />;
+      case 'pending': return <Clock size={14} />;
+      case 'info': return <Bell size={14} />;
+      case 'warning': return <Bell size={14} />;
+      case 'alert':
+      case 'urgent':
+        return <img src="/assets/urgent-blood.png" alt="Blood Alert" style={{ width: '16px', height: '16px' }} />;
+      case 'expired':
+        return <img src="/assets/expired-blood.png" alt="Expired Blood" style={{ width: '16px', height: '16px' }} />;
+      default: return <Bell size={14} />;
+    }
+  };
+
+  const getTimeAgo = (timestamp) => {
+    const now = new Date();
+    const diff = now - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    return timestamp.toLocaleDateString();
+  };
+
+  const getLatestNotifications = () => {
+    return notifications
+      .sort((a, b) => {
+        if (a.read !== b.read) {
+          return a.read ? 1 : -1;
+        }
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      })
+      .slice(0, 4);
+  };
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  useEffect(() => {
+    loadMailMessages();
+    const mailInterval = setInterval(loadMailMessages, 30000);
+    return () => clearInterval(mailInterval);
+  }, []);
+
+  const loadMailMessages = async () => {
+      try {
+        setIsLoadingMail(true);
+        
+        if (typeof window !== 'undefined' && window.electronAPI) {
+          // CORRECTED: Call getAllMails from db_org.js
+          const mailData = await window.electronAPI.getAllMails();
+          
+          // CORRECTED: Map fields from mail_org table
+          const mailsFromNotifications = mailData
+            .map(n => {
+              const avatar = 'RBC';
+              
+              return {
+                id: n.id,
+                notificationId: n.mail_id, // Use mail_id
+                from: 'Regional Blood Center',
+                fromEmail: 'admin@regionalbloodcenter.org',
+                avatar: avatar,
+                avatarColor: '#165C3C',
+                subject: n.subject,
+                preview: n.preview,
+                timestamp: new Date(n.created_at),
+                read: n.read || false,
+                status: n.status,
+                declineReason: n.decline_reason || null
+              };
+            })
+            .sort((a, b) => b.timestamp - a.timestamp)
+            .slice(0, 3);
+          
+          setMailMessages(mailsFromNotifications);
+        }
+      } catch (error) {
+        console.error('Error loading mail messages:', error);
+      } finally {
+        setIsLoadingMail(false);
+      }
+    };
+
+  useEffect(() => {
+    loadCalendarAppointments();
+    
+    const handleAppointmentsUpdate = (event) => {
+      if (event.detail) {
+        const upcomingAppts = event.detail
+          .filter(apt => apt.status === 'approved' || apt.status === 'confirmed')
+          .slice(0, 4)
+          .map(apt => ({
+            id: apt.id || apt.appointment_id,
+            title: apt.title || `Blood Drive Partnership - ${apt.contactInfo?.lastName || 'Unknown'}`,
+            subtitle: apt.notes || `${apt.contactInfo?.address || 'Location TBD'}`,
+            date: apt.date,
+            time: apt.time,
+            type: apt.contactInfo?.type || 'organization'
+          }));
+        
+        setCalendarAppointments(upcomingAppts);
+      }
+    };
+    
+    window.addEventListener('appointmentsUpdated', handleAppointmentsUpdate);
+    const calendarInterval = setInterval(loadCalendarAppointments, 30000);
+    
+    return () => {
+      window.removeEventListener('appointmentsUpdated', handleAppointmentsUpdate);
+      clearInterval(calendarInterval);
+    };
+  }, []);
+
+  const loadCalendarAppointments = async () => {
+    try {
+      setIsLoadingCalendar(true);
+
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        // 1. Fetch partnership requests from RBC DB
+        const partnershipRequests = await window.electronAPI.getAllPartnershipRequests(null);
+        
+        // 2. Fetch local appointments from Org DB
+        const localAppointments = await window.electronAPI.getAllAppointments();
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // 3. Map and filter partnership requests
+        const upcomingPartnerships = partnershipRequests
+          .filter(req => {
+            const eventDate = new Date(req.event_date + 'T00:00:00');
+            return (req.status === 'approved' || req.status === 'confirmed' || req.status === 'pending') && eventDate >= today;
+          })
+          .map(req => ({
+            id: `partnership-${req.id}`,
+            title: req.organization_name || 'Blood Drive Partnership',
+            subtitle: `${req.event_address || req.organization_barangay} - ${req.event_time}`,
+            date: req.event_date,
+            time: req.event_time,
+            type: 'partnership'
+          }));
+
+        // 4. Map and filter local appointments
+        const upcomingLocal = localAppointments
+          .filter(apt => {
+            const eventDate = new Date(apt.date + 'T00:00:00');
+            return (apt.status === 'approved' || apt.status === 'confirmed' || apt.status === 'pending' || apt.status === 'scheduled') && eventDate >= today;
+          })
+          .map(apt => ({
+            id: apt.id || apt.appointment_id,
+            title: apt.title || `Blood Drive - ${apt.contactInfo?.lastName || 'Event'}`,
+            subtitle: `${apt.contactInfo?.address || 'Location TBD'} - ${apt.time}`,
+            date: apt.date,
+            time: apt.time,
+            type: apt.contactInfo?.type || 'organization'
+          }));
+
+        // 5. Combine, sort, and set state
+        const allUpcoming = [...upcomingPartnerships, ...upcomingLocal]
+          .sort((a, b) => new Date(a.date) - new Date(b.date))
+          .slice(0, 5); // Show top 5 upcoming events
+
+        setCalendarAppointments(allUpcoming);
+      } else {
+        setCalendarAppointments([]);
+      }
+    } catch (error) {
+      console.error('Error loading calendar appointments:', error);
+    } finally {
+      setIsLoadingCalendar(false);
+    }
+  };
+
+  // --- ADD THESE NEW FUNCTIONS ---
+
+  const getEventStatus = (dateStr, status) => {
+    if (status === 'cancelled' || status === 'declined') return status;
+    if (status === 'pending') return 'pending';
+
+    const eventDate = new Date(dateStr + 'T23:59:59');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Use 'scheduled' for the "upcoming" status to match calendar_org.jsx
+    return eventDate < today ? 'finished' : 'scheduled';
+  };
+
+  const getEventStatusColor = (status, dateString) => {
+    const dynamicStatus = getEventStatus(dateString, status);
+    
+    switch (dynamicStatus) {
+      case 'scheduled': return '#3b82f6'; // Blue (Upcoming/Scheduled)
+      case 'finished': return '#10b981';  // Green (Finished)
+      case 'pending': return '#f59e0b';   // Orange (Pending)
+      case 'cancelled': return '#ef4444'; // Red (Cancelled)
+      case 'declined': return '#ef4444';  // Red (Declined)
+      default: return '#6b7280';       // Gray (default)
+    }
+  };
+  // --- END OF NEW FUNCTIONS ---
+
+  // --- ADD THIS ENTIRE BLOCK ---
+  useEffect(() => {
+    // Load user info from localStorage
+    const userStr = localStorage.getItem('currentOrgUser');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      setUserName(user.fullName || 'Organization User');
+      setUserPhoto(user.profilePhoto || null);
+    } else {
+      // Fallback if no user is found
+      setUserName('Organization User');
+    }
+
+    // Listen for profile updates from other tabs
+    const handleProfileUpdate = () => {
+      const updatedUserStr = localStorage.getItem('currentOrgUser');
+      if (updatedUserStr) {
+        const updatedUser = JSON.parse(updatedUserStr);
+        setUserName(updatedUser.fullName || 'Organization User');
+        setUserPhoto(updatedUser.profilePhoto || null);
+      }
+    };
+
+    window.addEventListener('profileUpdated', handleProfileUpdate);
+
+    // Clean up the event listener
+    return () => {
+      window.removeEventListener('profileUpdated', handleProfileUpdate);
+    };
+  }, []);
+  // --- END OF NEW BLOCK ---
+
+  const getAppointmentIcon = (type) => {
+    return '🩸';
+  };
+
+  const getAppointmentIconColor = (index) => {
+    const colors = ['red-bg', 'blue-bg', 'green-bg', 'yellow-bg'];
+    return colors[index % colors.length];
+  };
+
+  const getMailSubject = (status, title) => {
+    switch (status) {
+      case 'approved':
+        return `Partnership Request Approved - ${title}`;
+      case 'declined':
+        return `Partnership Request Declined - ${title}`;
+      case 'pending':
+        return `Partnership Request Under Review - ${title}`;
+      default:
+        return `Partnership Request Update - ${title}`;
+    }
+  };
+
+  const getMailPreview = (status, message) => {
+    const preview = message.substring(0, 60);
+    switch (status) {
+      case 'approved':
+        return `Your partnership request has been approved. ${preview}...`;
+      case 'declined':
+        return `Your partnership request has been declined. ${preview}...`;
+      case 'pending':
+        return `Your partnership request is under review. ${preview}...`;
+      default:
+        return `${preview}...`;
+    }
+  };
+
+  const getMailStatusColor = (status) => {
+    switch (status) {
+      case 'approved': return '#10b981';
+      case 'declined': return '#ef4444';
+      case 'pending': return '#f59e0b';
+      default: return '#6b7280';
+    }
+  };
+
+  if (isLoggedOut) {
+    return <LoginOrg />;
+  }
+
+  const renderActiveScreen = () => {
+    switch (activeScreen) {
+      case "mail-org":
+        return <MailOrg />;
+      case "calendar-org":
+        return <CalendarOrg />;
+      case "notification-org":
+        return <NotificationOrg />;
+      case "profile-org":
+        return <ProfileOrg />;
+      case "appointment-org":
+        return <AppointmentOrg />;
+      case "recent-activity-org":
+        return <RecentActivityOrg />;
+      default:
+        return <DonorRecordContent />;
+    }
+  };
+
+  return (
+    <div className="dashboard-container">
+      <SidePanelOrg
+        isOpen={isSidePanelOpen}
+        onToggle={toggleSidePanel}
+        activeScreen={activeScreen}
+        onNavigate={handleNavigate}
+      />
+
+      <div
+        className="main-content-wrapper"
+        style={{
+          marginLeft: isSidePanelOpen ? "15rem" : "4rem",
+        }}
+      >
+        <nav className="nav-bar">
+          <div className="nav-content">
+            <div className="nav-left"></div>
+
+            <div className="nav-right">
+              <div className="dropdown-container">
+                <button
+                  className={`nav-button ${activeScreen === "calendar" ? "nav-button-active" : ""}`}
+                  onClick={toggleCalendarDropdown}
+                >
+                  <Calendar className="w-5 h-5 text-gray-600" />
+                </button>
+                {isCalendarDropdownOpen && (
+                  <div className="dropdown-menu requests-dropdown">
+                    <div className="dropdown-header">
+                      <div className="notification-header-content">
+                        <h3 className="dropdown-title">UPCOMING EVENTS</h3>
+                        <button 
+                          className={`refresh-button ${isLoadingCalendar ? 'refreshing' : ''}`}
+                          onClick={loadCalendarAppointments}
+                          disabled={isLoadingCalendar}
+                          title="Refresh appointments"
+                        >
+                          <RefreshCw size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="dropdown-content">
+                      {isLoadingCalendar ? (
+                        <div className="dropdown-item">
+                          <div className="loading-mail-content">
+                            <RefreshCw size={16} className="loading-icon" />
+                            <span className="loading-text">Loading appointments...</span>
+                          </div>
+                        </div>
+                      ) : calendarAppointments.length === 0 ? (
+                        <div className="dropdown-item">
+                          <div className="empty-mail-content">
+                            <Calendar size={20} color="#d1d5db" />
+                            <span className="empty-text">No upcoming events</span>
+                          </div>
+                        </div>
+                      ) : (
+                        calendarAppointments.map((appointment, index) => {
+                          const eventDate = new Date(appointment.date + 'T00:00:00');
+                          const formattedDate = eventDate.toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                          });
+                          // --- THIS IS THE FIX ---
+                          // Use the status and date to get the correct color
+                          const iconColor = getEventStatusColor(appointment.status, appointment.date);
+                          // --- END FIX ---
+                          return (
+                            <div
+                              key={appointment.id}
+                              className="dropdown-item"
+                              onClick={() => handleNavigate("calendar-org")}
+                              style={{ cursor: 'pointer' }}
+                            >
+                              <div className="request-icon">
+                                <div className={`icon-circle ${getAppointmentIconColor(index)}`}>
+                                  <span className="icon-text">{getAppointmentIcon(appointment.type)}</span>
+                                </div>
+                              </div>
+                              <div className="request-details">
+                                <p className="request-title" style={{ marginBottom: '4px' }}>
+                                  Blood Drive Partnership - {appointment.title}
+                                </p>
+                                <p className="request-subtitle" style={{ fontSize: '0.75rem', color: '#059669', fontWeight: '600' }}>
+                                  Date: {formattedDate}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                    <div className="dropdown-footer">
+                      <button className="footer-button" onClick={() => handleNavigate("calendar-org")}>
+                        See All Events
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="dropdown-container">
+                <button
+                  className={`nav-button ${activeScreen === "mail" ? "nav-button-active" : ""}`}
+                  onClick={toggleMailDropdown}
+                >
+                  <Mail className="w-5 h-5 text-gray-600" />
+                  {mailMessages.filter(m => !m.read).length > 0 && (
+                    <span className="notification-badge">{mailMessages.filter(m => !m.read).length}</span>
+                  )}
+                </button>
+                {isMailDropdownOpen && (
+                  <div className="dropdown-menu messages-dropdown">
+                <div className="dropdown-header">
+                  <div className="notification-header-content">
+                    <h3 className="dropdown-title">MESSAGES</h3>
+                    <div className="notification-header-actions">
+                      <button 
+                        className={`refresh-button ${isLoadingMail ? 'refreshing' : ''}`}
+                        onClick={loadMailMessages}
+                        disabled={isLoadingMail}
+                        title="Refresh messages"
+                      >
+                        <RefreshCw size={14} />
+                      </button>
+                      <button 
+                        className="mark-all-read-button"
+                        onClick={async () => {
+                          try {
+                            const unreadIds = mailMessages.filter(m => !m.read).map(m => m.id);
+                            if (unreadIds.length > 0) {
+                              await Promise.all(unreadIds.map(id => window.electronAPI.markMailAsRead(id)));
+                            }
+                            await loadMailMessages();
+                          } catch (e) {
+                            console.error('Error marking all mails as read (Org):', e);
+                          }
+                        }}
+                        disabled={mailMessages.filter(m => !m.read).length === 0}
+                        title="Mark all as read"
+                      >
+                        <CheckCircle size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                    <div className="dropdown-content">
+                      {isLoadingMail ? (
+                        <div className="dropdown-item">
+                          <div className="loading-mail-content">
+                            <RefreshCw size={16} className="loading-icon" />
+                            <span className="loading-text">Loading messages...</span>
+                          </div>
+                        </div>
+                      ) : mailMessages.length === 0 ? (
+                        <div className="dropdown-item">
+                          <div className="empty-mail-content">
+                            <Mail size={20} color="#d1d5db" />
+                            <span className="empty-text">No messages</span>
+                          </div>
+                        </div>
+                      ) : (
+                        mailMessages.map((mail) => (
+                          <div 
+                            key={mail.id} 
+                            className={`dropdown-item ${!mail.read ? 'unread-mail' : ''}`}
+                            onClick={() => handleNavigate("mail-org")}
+                          >
+                            <div 
+                              className="message-avatar"
+                              style={{ backgroundColor: mail.avatarColor }}
+                            >
+                              {mail.avatar}
+                            </div>
+                            <div className="message-details">
+                              <div className="message-header-row">
+                                <p className="message-sender">{mail.from}</p>
+                                <div 
+                                  className="mail-status-dot"
+                                  style={{ backgroundColor: getMailStatusColor(mail.status) }}
+                                  title={mail.status.toUpperCase()}
+                                ></div>
+                              </div>
+                              <p className="message-subject">{mail.subject}</p>
+                              <p className="message-preview">{mail.preview}</p>
+                            </div>
+                            {!mail.read && <div className="unread-dot-dropdown"></div>}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div className="dropdown-footer">
+                      <button className="footer-button" onClick={() => handleNavigate("mail-org")}>
+                        View All Messages
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="dropdown-container">
+                <button
+                  className={`nav-button ${activeScreen === "notification-org" ? "nav-button-active" : ""}`}
+                  onClick={toggleNotificationDropdown}
+                > 
+                  <Bell className="w-5 h-5 text-gray-600" />
+                  {unreadCount > 0 && <span className="notification-badge">{unreadCount}</span>}
+                </button>
+                {isNotificationDropdownOpen && (
+                  <div className="dropdown-menu notifications-dropdown">
+                    <div className="dropdown-header">
+                      <div className="notification-header-content">
+                        <h3 className="dropdown-title">NOTIFICATIONS</h3>
+                        <div className="notification-header-actions">
+                      <button 
+                        className={`refresh-button ${isRefreshing ? 'refreshing' : ''}`}
+                        onClick={handleRefreshNotifications}
+                        disabled={isRefreshing}
+                        title="Refresh notifications"
+                      >
+                        <RefreshCw size={14} />
+                      </button>
+                      <button 
+                        className={`refresh-button ${isRefreshing ? 'refreshing' : ''}`}
+                        onClick={async () => {
+                          try {
+                            if (typeof window !== 'undefined' && window.electronAPI) {
+                              await window.electronAPI.checkAndCreateExpirationNotifications();
+                              await handleRefreshNotifications();
+                            }
+                          } catch (e) {
+                            console.error('Error running expiration check (Org):', e);
+                          }
+                        }}
+                        title="Run expiration check"
+                      >
+                        <Bell size={14} />
+                      </button>
+                          <button 
+                            className="mark-all-read-button"
+                            onClick={markAllAsRead}
+                            disabled={unreadCount === 0}
+                            title="Mark all as read"
+                          >
+                            Mark all read
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="dropdown-content">
+                      {getLatestNotifications().map((notification) => (
+                        <div key={notification.id} className={`dropdown-item notification-item ${!notification.read ? 'unread-notification' : ''}`}>
+                          <div 
+                            className="notification-icon"
+                            style={{ color: getStatusColor(notification.status) }}
+                          >
+                            <div className="icon-circle" style={{ backgroundColor: `${getStatusColor(notification.status)}15`, border: `1px solid ${getStatusColor(notification.status)}30` }}>
+                              {getStatusIcon(notification.status)}
+                            </div>
+                          </div>
+                          <div className="notification-details">
+                            <div className="notification-header-row">
+                              <p className="notification-title">{notification.title}</p>
+                              <div className="notification-actions">
+                                <span className="notification-time">{getTimeAgo(notification.timestamp)}</span>
+                                <div className="notification-menu-container">
+                                  <button 
+                                    className="notification-menu-button"
+                                    onClick={() => setActiveNotificationMenu(activeNotificationMenu === notification.id ? null : notification.id)}
+                                  >
+                                    <MoreVertical size={12} />
+                                  </button>
+                                  {activeNotificationMenu === notification.id && (
+                                    <div className="notification-menu">
+                                      <button 
+                                        className="notification-menu-item"
+                                        onClick={() => toggleNotificationReadStatus(notification.id)}
+                                      >
+                                        Mark as {notification.read ? 'Unread' : 'Read'}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <p className="notification-subtitle">{notification.message.length > 60 ? `${notification.message.substring(0, 60)}...` : notification.message}</p>
+                            <span className="notification-requestor">From: {notification.requestor}</span>
+                          </div>
+                          {!notification.read && <div className="unread-dot-dropdown"></div>}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="dropdown-footer">
+                      <button className="footer-button" onClick={() => handleNavigate("notification-org")}>
+                        See All Notifications
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="user-section relative">
+                {/* USE THE 'userName' STATE VARIABLE */}
+                <span className="user-name">{userName}</span>
+                <div
+                  className={`user-avatar cursor-pointer ${activeScreen === "profile" ? "user-avatar-active" : ""}`}
+                  onClick={toggleProfileDropdown}
+                >
+                  {/* CHECK FOR A userPhoto, OTHERWISE SHOW DEFAULT ICON */}
+                  {userPhoto ? (
+                    <img 
+                      src={userPhoto} 
+                      alt="Profile" 
+                      style={{
+                        width: '100%', 
+                        height: '100%', 
+                        objectFit: 'cover', 
+                        borderRadius: '50%'
+                      }} 
+                    />
+                  ) : (
+                    <User className="w-4 h-4 text-gray-600" />
+                  )}
+                </div>
+                
+                {isProfileDropdownOpen && (
+                  <div className="dropdown-menu profile-dropdown">
+                    <button
+                      className="profile-menu-item"
+                      onClick={() => handleNavigate("profile-org")}
+                    >
+                      My Profile
+                    </button>
+                    <button
+                      className="profile-menu-item"
+                      onClick={() => handleProfileAction("logout")}
+                    >
+                      Log Out
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </nav>
+
+        <main className="main-content">{renderActiveScreen()}</main>
+      </div>
+
+      <LogoutDialog 
+        isOpen={showLogoutDialog}
+        onConfirm={handleLogoutConfirm}
+        onCancel={handleLogoutCancel}
+      />
+
+      <style jsx>{`
+        body {
+          margin: 0;
+        }
+        .dashboard-container {
+          min-height: 100vh;
+          background-color: #edf4e6;
+          position: relative;
+          overflow-x: hidden;
+        }
+
+        .main-content-wrapper {
+          position: relative;
+          min-height: 100vh;
+          transition: margin-left 0.3s ease-in-out;
+        }
+
+        .nav-bar {
+          background-color: white;
+          border-bottom: 1px solid #e5e7eb;
+          padding: 0.75rem 1rem;
+          position: sticky;
+          top: 0;
+          z-index: 30;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav-content {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .nav-left {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+        }
+
+        .nav-right {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+        }
+
+        .dropdown-container {
+          position: relative;
+        }
+
+        .nav-button {
+          padding: 0.5rem;
+          border-radius: 0.5rem;
+          transition: background-color 0.2s;
+          border: none;
+          background: none;
+          cursor: pointer;
+          position: relative;
+        }
+
+        .nav-button:hover {
+          background-color: #f3f4f6;
+        }
+
+        .nav-button-active {
+          background-color: #059669 !important;
+        }
+
+        .nav-button-active:hover {
+          background-color: #047857 !important;
+        }
+
+        .nav-button-active .lucide {
+          color: white !important;
+        }
+
+        .notification-badge {
+          position: absolute;
+          top: 2px;
+          right: 2px;
+          background-color: #ef4444;
+          color: white;
+          font-size: 0.625rem;
+          font-weight: bold;
+          border-radius: 50%;
+          width: 16px;
+          height: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          line-height: 1;
+          font-family: 'Barlow';
+        }
+
+        .dropdown-menu {
+          position: absolute;
+          right: 0;
+          top: 100%;
+          margin-top: 0.5rem;
+          background: white;
+          border-radius: 0.5rem;
+          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+          border: 1px solid #e5e7eb;
+          z-index: 50;
+          overflow: hidden;
+          animation: dropdownSlide 0.15s ease-out;
+        }
+
+        @keyframes dropdownSlide {
+          from {
+            opacity: 0;
+            transform: translateY(-8px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .requests-dropdown {
+          width: 320px;
+        }
+
+        .messages-dropdown {
+          width: 320px;
+        }
+
+        .notifications-dropdown {
+          width: 350px;
+        }
+
+        .profile-dropdown {
+          width: 160px;
+        }
+
+        .dropdown-header {
+          background-color: #059669;
+          padding: 0.75rem 1rem;
+          color: white;
+        }
+
+        .notification-header-content {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .notification-header-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .refresh-button {
+          background: rgba(255, 255, 255, 0.2);
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          color: white;
+          padding: 4px;
+          border-radius: 4px;
+          cursor: pointer;
+          transition: all 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .refresh-button:hover {
+          background: rgba(255, 255, 255, 0.3);
+        }
+
+        .refresh-button.refreshing {
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
+          }
+        }
+
+        .mark-all-read-button {
+          background: rgba(255, 255, 255, 0.2);
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          color: white;
+          padding: 4px 8px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 0.7rem;
+          font-family: 'Barlow';
+          font-weight: 500;
+          transition: all 0.2s;
+        }
+
+        .mark-all-read-button:hover {
+          background: rgba(255, 255, 255, 0.3);
+        }
+
+        .dropdown-title {
+          font-size: 0.75rem;
+          font-weight: 600;
+          letter-spacing: 0.05em;
+          color: white;
+          margin: 0;
+          font-family: 'Barlow';
+        }
+
+        .dropdown-content {
+          max-height: 320px;
+          overflow-y: auto;
+        }
+
+        .dropdown-item {
+          padding: 0.875rem 1rem;
+          border-bottom: 1px solid #f3f4f6;
+          display: flex;
+          align-items: flex-start;
+          gap: 0.75rem;
+          cursor: pointer;
+          transition: background-color 0.2s;
+          position: relative;
+        }
+
+        .dropdown-item:hover {
+          background-color: #f9fafb;
+        }
+
+        .dropdown-item:last-child {
+          border-bottom: none;
+        }
+
+        .notification-item.unread-notification {
+          background-color: #fefffe;
+          border-left: 3px solid #10b981;
+        }
+
+        .notification-icon {
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+
+        .icon-circle {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: bold;
+        }
+
+        .red-bg {
+          background-color: #ef4444;
+          color: white;
+        }
+
+        .yellow-bg {
+          background-color: #eab308;
+          color: white;
+        }
+
+        .blue-bg {
+          background-color: #3b82f6;
+          color: white;
+        }
+
+        .green-bg {
+          background-color: #10b981;
+          color: white;
+        }
+
+        .orange-bg {
+          background-color: #f97316;
+          color: white;
+        }
+
+        .icon-text {
+          font-size: 0.875rem;
+        }
+
+        .request-details, .notification-details {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .notification-header-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 8px;
+          margin-bottom: 4px;
+        }
+
+        .notification-actions {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-shrink: 0;
+        }
+
+        .notification-menu-container {
+          position: relative;
+        }
+
+        .notification-menu-button {
+          background: none;
+          border: none;
+          color: #9ca3af;
+          cursor: pointer;
+          padding: 2px;
+          border-radius: 2px;
+          transition: all 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .notification-menu-button:hover {
+          color: #6b7280;
+          background-color: #f3f4f6;
+        }
+
+        .notification-menu {
+          position: absolute;
+          right: 0;
+          top: 100%;
+          margin-top: 4px;
+          background: white;
+          border-radius: 6px;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+          border: 1px solid #e5e7eb;
+          z-index: 100;
+          min-width: 120px;
+          overflow: hidden;
+          animation: menuSlide 0.1s ease-out;
+        }
+
+        @keyframes menuSlide {
+          from {
+            opacity: 0;
+            transform: translateY(-4px) scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        .notification-menu-item {
+          display: block;
+          width: 100%;
+          text-align: left;
+          padding: 8px 12px;
+          font-size: 0.75rem;
+          color: #374151;
+          background: none;
+          border: none;
+          cursor: pointer;
+          transition: background-color 0.2s;
+          font-family: 'Barlow';
+          font-weight: 500;
+        }
+
+        .notification-menu-item:hover {
+          background-color: #f3f4f6;
+        }
+
+        .request-title, .notification-title {
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #111827;
+          margin: 0;
+          line-height: 1.25;
+          font-family: 'Barlow';
+          flex: 1;
+        }
+
+        .notification-time {
+          font-size: 0.65rem;
+          color: #6b7280;
+          white-space: nowrap;
+          font-family: 'Barlow';
+          font-weight: 400;
+        }
+
+        .request-subtitle, .notification-subtitle {
+          font-size: 0.75rem;
+          color: #4b5563;
+          margin: 0 0 4px 0;
+          line-height: 1.33;
+          font-family: 'Barlow';
+        }
+
+        .notification-requestor {
+          font-size: 0.7rem;
+          color: #6b7280;
+          font-weight: 500;
+          font-family: 'Barlow';
+        }
+
+        .unread-dot-dropdown {
+          position: absolute;
+          top: 12px;
+          right: 8px;
+          width: 6px;
+          height: 6px;
+          background-color: #10b981;
+          border-radius: 50%;
+          z-index: 1;
+        }
+
+        .message-avatar {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: bold;
+          font-size: 0.75rem;
+          color: white;
+          flex-shrink: 0;
+        }
+
+        .blue-avatar {
+          background-color: #3b82f6;
+        }
+
+        .green-avatar {
+          background-color: #10b981;
+        }
+
+        .purple-avatar {
+          background-color: #8b5cf6;
+        }
+
+        .message-details {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .message-sender {
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: #111827;
+          margin: 0 0 0.25rem 0;
+          line-height: 1.25;
+          font-family: 'Barlow';
+        }
+
+        .message-preview {
+          font-size: 0.75rem;
+          color: #6b7280;
+          margin: 0;
+          line-height: 1.33;
+          font-family: 'Barlow';
+        }
+
+        .dropdown-footer {
+          padding: 0.75rem 1rem;
+          border-top: 1px solid #f3f4f6;
+          background-color: #f9fafb;
+          text-align: center;
+        }
+
+        .footer-button {
+          background: none;
+          border: none;
+          color: #059669;
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          padding: 0.5rem;
+          border-radius: 0.25rem;
+          transition: background-color 0.2s;
+          width: 100%;
+          font-family: 'Barlow';
+        }
+
+        .footer-button:hover {
+          background-color: #e5e7eb;
+        }
+
+        .profile-menu-item {
+          display: block;
+          width: 100%;
+          text-align: left;
+          padding: 0.75rem 1rem;
+          font-size: 0.875rem;
+          color: #374151;
+          background: none;
+          border: none;
+          cursor: pointer;
+          transition: background-color 0.2s;
+          border-bottom: 1px solid #f3f4f6;
+          font-family: 'Barlow';
+        }
+
+        .profile-menu-item:last-child {
+          border-bottom: none;
+        }
+
+        .profile-menu-item:hover {
+          background-color: #f3f4f6;
+        }
+
+        .user-section {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          padding-left: 0.75rem;
+          border-left: 1.4px solid #e5e7eb;
+          position: relative;
+        }
+
+        .user-name {
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: #374151;
+          font-family: 'Barlow';
+        }
+
+        .user-avatar {
+          width: 2rem;
+          height: 2rem;
+          background-color: #d1d5db;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: background-color 0.2s;
+        }
+
+        .user-avatar:hover {
+          background-color: #9ca3af;
+        }
+
+        .user-avatar-active {
+          background-color: #059669 !important;
+        }
+
+        .user-avatar-active:hover {
+          background-color: #047857 !important;
+        }
+
+        .user-avatar-active .lucide {
+          color: white !important;
+        }
+
+        .main-content {
+          padding: 1.5rem;
+        }
+
+        .unread-mail {
+          background-color: #fefffe;
+          border-left: 3px solid #10b981;
+        }
+
+        .message-header-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 4px;
+        }
+
+        .mail-status-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+
+        .message-subject {
+          font-size: 0.8rem;
+          font-weight: 600;
+          color: #111827;
+          margin: 0 0 4px 0;
+          line-height: 1.2;
+          font-family: 'Barlow';
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .loading-mail-content,
+        .empty-mail-content {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 12px;
+          width: 100%;
+        }
+
+        .loading-text,
+        .empty-text {
+          font-size: 0.75rem;
+          color: #6b7280;
+          font-family: 'Barlow';
+        }
+
+        .loading-icon {
+          animation: spin 1s linear infinite;
+        }
+
+        @media (max-width: 768px) {
+          .main-content-wrapper {
+            margin-left: 0 !important;
+          }
+
+          .nav-content {
+            flex-direction: column;
+            gap: 1rem;
+          }
+
+          .nav-right {
+            margin-left: 0;
+            border-left: none;
+            padding-left: 0;
+          }
+
+          .user-section {
+            border-left: none;
+            padding-left: 0;
+          }
+
+          .dropdown-menu {
+            right: auto;
+            left: 0;
+          }
+
+          .requests-dropdown, .notifications-dropdown, .messages-dropdown {
+            width: 280px;
+          }
+        }
+      `}</style>
+    </div>
+  );
+};
+
+export default DonorRecordOrg;
