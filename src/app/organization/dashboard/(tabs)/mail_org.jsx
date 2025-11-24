@@ -23,23 +23,49 @@ const MailOrg = () => {
 
   // Load mails on component mount
   useEffect(() => {
-    loadMails();
-    
-    // Refresh every 30 seconds
-    const interval = setInterval(loadMails, 30000);
-    
+    loadMails(); // Initial load uses cache first
+
+    // Refresh from cloud every 30 seconds
+    const interval = setInterval(() => loadMails(true), 30000);
+
     return () => clearInterval(interval);
   }, []);
 
-  const loadMails = async () => {
+  const loadMails = async (forceRefresh = false) => {
     try {
       setIsLoading(true);
 
       if (typeof window !== 'undefined' && window.electronAPI) {
-        // Load mails from mail table
-        console.log('[MAIL_ORG] Loading mails...');
-        const mailData = await window.electronAPI.getAllMails();
-        console.log('[MAIL_ORG] Loaded mails:', mailData);
+        // Try to load from localStorage cache first
+        const cachedMails = localStorage.getItem('mail_org_cache');
+        let mailData = [];
+
+        if (cachedMails && !forceRefresh) {
+          console.log('[MAIL_ORG] Loading from cache...');
+          mailData = JSON.parse(cachedMails);
+          console.log('[MAIL_ORG] Loaded from cache:', mailData.length, 'mails');
+        }
+
+        // Try to fetch from cloud
+        try {
+          console.log('[MAIL_ORG] Fetching from cloud...');
+          const cloudData = await window.electronAPI.getAllMails();
+          console.log('[MAIL_ORG] Cloud data:', cloudData);
+
+          if (cloudData && cloudData.length > 0) {
+            mailData = cloudData;
+            // Cache the data
+            localStorage.setItem('mail_org_cache', JSON.stringify(mailData));
+            console.log('[MAIL_ORG] Updated cache with', mailData.length, 'mails');
+          } else if (mailData.length === 0) {
+            console.log('[MAIL_ORG] No data from cloud, using empty array');
+          }
+        } catch (cloudError) {
+          console.error('[MAIL_ORG] Cloud fetch failed, using cache:', cloudError);
+          // Keep using cached data
+        }
+
+        console.log('[MAIL_ORG] Final mail count:', mailData.length);
 
         // Transform mail data into display format
         const transformedMails = mailData.map(mail => {
@@ -618,10 +644,10 @@ const MailOrg = () => {
           </div>
 
           {/* Refresh Button */}
-          <button 
+          <button
             className="refresh-button"
-            onClick={loadMails}
-            title="Refresh messages"
+            onClick={() => loadMails(true)}
+            title="Refresh messages from server"
           >
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />

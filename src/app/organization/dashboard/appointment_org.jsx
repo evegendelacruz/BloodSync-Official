@@ -1184,6 +1184,10 @@ const AppointmentOrg = () => {
   const [successMessage, setSuccessMessage] = useState({ title: '', description: '' });
   const [deleting, setDeleting] = useState(false);
   const [hoverStates, setHoverStates] = useState({});
+  // --- ADDED FOR CANCELLATION FLOW ---
+  const [isCancelReasonModalOpen, setCancelReasonModalOpen] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState('');
+  const [appointmentToCancel, setAppointmentToCancel] = useState(null);
 
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -1230,9 +1234,8 @@ const AppointmentOrg = () => {
 
   const loadAppointments = async () => {
     try {
-      setIsLoading(true);
       setError(null);
-      
+
       const startTime = Date.now(); // <-- ADD THIS
 
       if (typeof window !== 'undefined' && window.electronAPI) {
@@ -1297,7 +1300,7 @@ const AppointmentOrg = () => {
     } catch (error) {
       console.error('Error loading appointments:', error);
       setError('Failed to load appointments. Please try again.');
-    } 
+    }
   };
 
   const getDaysInMonth = (date) => {
@@ -1433,49 +1436,55 @@ const AppointmentOrg = () => {
     }
   };
 
-  const handleDeleteAppointment = (appointment) => {
-    // Open delete confirmation modal
+  // --- MODIFIED: This now starts the cancellation flow ---
+  const handleCancelAppointment = (appointment) => {
+    setAppointmentToCancel(appointment);
+    setCancelReasonModalOpen(true);
+  };
+
+  // --- ADDED: Opens the final confirmation modal after reason is entered ---
+  const handleProceedToConfirmCancel = () => {
+    if (!cancellationReason.trim()) {
+      alert('Please provide a reason for cancellation.');
+      return;
+    }
+    setCancelReasonModalOpen(false);
     setDeleteModalOpen(true);
   };
 
-  const handleConfirmDelete = async () => {
+  const handleConfirmCancel = async () => {
     setDeleteModalOpen(false);
     setDeleting(true);
 
     try {
-      const appointmentId = currentAppointment.appointment_id || currentAppointment.id;
-      console.log('Cancelling appointment with ID:', appointmentId);
+      const appointmentId = appointmentToCancel.appointment_id || appointmentToCancel.id;
 
       if (typeof window !== 'undefined' && window.electronAPI) {
         const user = JSON.parse(localStorage.getItem('currentOrgUser'));
         const currentUser = user?.fullName || 'Unknown User';
-
-        // Delete the appointment - this will automatically update the partnership request
-        await window.electronAPI.deleteAppointment(appointmentId, currentUser);
-        console.log('Appointment deleted from database');
+        
+        // This single function now handles setting the status, adding the reason,
+        // and creating the notification for the RBC admin.
+        await window.electronAPI.cancelAppointmentWithReason(appointmentId, cancellationReason, currentUser);
+        console.log('Appointment cancellation processed.');
       }
 
       // Ensure minimum 1 second loading time
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Remove from local state
-      setAppointments(prev => prev.filter(apt =>
-        (apt.appointment_id || apt.id) !== appointmentId
-      ));
+      // --- FIX: Reload appointments from the database to get the latest state ---
+      await loadAppointments();
 
       // Close the details modal
       setShowDetailsModal(false);
 
       // Show success message
-      const isDeclined = currentAppointment.status === 'declined';
       setSuccessMessage({
-        title: isDeclined ? 'Appointment Deleted!' : 'Appointment Cancelled!',
-        description: isDeclined
-          ? 'The declined appointment has been deleted successfully.'
-          : 'The appointment has been cancelled successfully.'
+        title: 'Appointment Cancelled!',
+        description: 'The appointment has been cancelled successfully. The Regional Blood Center has been notified.'
       });
       setShowSuccessModal(true);
-
+      setAppointmentToCancel(null);
       setCurrentAppointment(null);
 
     } catch (error) {
@@ -1484,6 +1493,7 @@ const AppointmentOrg = () => {
       alert('Failed to cancel appointment. Please try again.');
     } finally {
       setDeleting(false);
+      setCancellationReason('');
     }
   };
 
@@ -2318,7 +2328,7 @@ const AppointmentOrg = () => {
                       // For declined status, only show centered delete button
                       if (currentAppointment.status === 'declined' || currentAppointment.status === 'cancelled') {
                         return (
-                          <div style={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
+                          <div style={{ display: 'none', justifyContent: 'center', width: '100%' }}>
                             <button
                               onClick={() => handleDeleteAppointment(currentAppointment)}
                               style={{
@@ -2348,7 +2358,7 @@ const AppointmentOrg = () => {
                       return (
                         <>
                           <button
-                            onClick={() => handleDeleteAppointment(currentAppointment)}
+                            onClick={() => handleCancelAppointment(currentAppointment)}
                             style={{
                               background: '#dc2626',
                               color: 'white',
@@ -2449,21 +2459,90 @@ const AppointmentOrg = () => {
         {/* Delete Confirmation Modal */}
         <DeleteConfirmationModal
           isOpen={isDeleteModalOpen}
-          onClose={() => setDeleteModalOpen(false)}
-          onConfirm={handleConfirmDelete}
+          onClose={() => {
+            setDeleteModalOpen(false);
+            setAppointmentToCancel(null);
+          }}
+          onConfirm={handleConfirmCancel}
           itemCount={1}
           itemName="appointment"
-          customTitle={
-            currentAppointment?.status === 'declined'
-              ? 'Confirm Delete'
-              : 'Confirm Cancellation'
-          }
-          customDescription={
-            currentAppointment?.status === 'declined'
-              ? 'Are you sure you want to delete this appointment? This action cannot be undone.'
-              : 'Are you sure you want to cancel this appointment? This action cannot be undone.'
-          }
+          customTitle="Confirm Cancellation"
+          customDescription="Are you sure you want to cancel this appointment? This action cannot be undone and the Regional Blood Center will be notified."
         />
+
+        {/* --- ADDED: Cancellation Reason Modal --- */}
+        {isCancelReasonModalOpen && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', zIndex: 2000
+          }}>
+            <div style={{
+              backgroundColor: 'white', borderRadius: '12px', padding: '30px',
+              maxWidth: '500px', width: '90%', fontFamily: 'Barlow'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3 style={{ color: '#dc2626', fontSize: '20px', fontWeight: '700', margin: 0 }}>
+                  Cancel Appointment
+                </h3>
+                <button
+                  onClick={() => {
+                    setCancelReasonModalOpen(false);
+                    setAppointmentToCancel(null);
+                    setCancellationReason('');
+                  }}
+                  style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#666' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <p style={{ color: '#374151', marginBottom: '16px', fontSize: '14px' }}>
+                Please provide a reason for cancelling the appointment: <br />
+                <strong>{appointmentToCancel?.title}</strong>
+              </p>
+              <textarea
+                value={cancellationReason}
+                onChange={(e) => setCancellationReason(e.target.value)}
+                placeholder="e.g., Conflicting schedule, lack of participants, etc."
+                style={{
+                  width: '100%',
+                  minHeight: '100px',
+                  padding: '12px',
+                  border: '1px solid #ddd',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  fontFamily: 'Barlow',
+                  resize: 'vertical',
+                  marginBottom: '20px'
+                }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  onClick={() => {
+                    setCancelReasonModalOpen(false);
+                    setAppointmentToCancel(null);
+                    setCancellationReason('');
+                  }}
+                  style={{
+                    background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db',
+                    padding: '10px 20px', borderRadius: '6px', fontSize: '14px', fontWeight: '700', cursor: 'pointer'
+                  }}
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleProceedToConfirmCancel}
+                  style={{
+                    background: '#dc2626', color: 'white', border: 'none',
+                    padding: '10px 20px', borderRadius: '6px', fontSize: '14px', fontWeight: '700', cursor: 'pointer'
+                  }}
+                >
+                  Proceed to Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Deleting Loader */}
         {deleting && <Loader />}

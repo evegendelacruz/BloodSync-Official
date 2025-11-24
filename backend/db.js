@@ -1,22 +1,21 @@
 const { Pool } = require("pg");
 const nodemailer = require('nodemailer');
+const dbOrgService = require('./db_org.js'); // <-- ADD THIS LINE
 const crypto = require('crypto');
 
 // Database connection configuration
 const pool = new Pool({
-  user: process.env.DB_USER || "postgres",
+  user: process.env.DB_USER || "bloodsyncadmin",
   host: process.env.DB_HOST || "localhost",
-  database: process.env.DB_NAME || "postgres", // or "postgres_org"
+  database: process.env.DB_NAME || "bloodsync_main",
   password: process.env.DB_PASSWORD || "bloodsync",
   port: parseInt(process.env.DB_PORT) || 5432,
-  ssl: process.env.NODE_ENV === 'production' ? {
-    rejectUnauthorized: false
-  } : false,
+  // FIX: Disable SSL for localhost connection to avoid errors
+  ssl: false, 
   connectionTimeoutMillis: 5000,
   idleTimeoutMillis: 30000,
   max: 20,
 });
-
 // Test database connection
 pool.on("connect", () => {
   console.log("Connected to PostgreSQL database");
@@ -72,6 +71,121 @@ const initializeDatabase = async () => {
     `);
     console.log("✓ 'user_activity_log' table checked/created.");
 
+    // Create donor_records table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS donor_records (
+        dr_id SERIAL PRIMARY KEY,
+        dr_donor_id VARCHAR(50) UNIQUE,
+        dr_first_name VARCHAR(255),
+        dr_middle_name VARCHAR(255),
+        dr_last_name VARCHAR(255),
+        dr_gender VARCHAR(50),
+        dr_birthdate DATE,
+        dr_age INTEGER,
+        dr_blood_type VARCHAR(10),
+        dr_rh_factor VARCHAR(5),
+        dr_contact_number VARCHAR(50),
+        dr_address TEXT,
+        dr_status VARCHAR(50) DEFAULT 'Active',
+        dr_recent_donation DATE,
+        dr_donation_count INTEGER DEFAULT 0,
+        dr_source VARCHAR(255),
+        dr_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        dr_modified_at TIMESTAMP WITH TIME ZONE
+      );
+    `);
+    console.log("✓ 'donor_records' table checked/created.");
+
+    // Create blood_stock table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS blood_stock (
+        bs_id SERIAL PRIMARY KEY,
+        bs_serial_id VARCHAR(255) NOT NULL,
+        bs_blood_type VARCHAR(10),
+        bs_rh_factor VARCHAR(5),
+        bs_volume INTEGER,
+        bs_timestamp TIMESTAMP WITH TIME ZONE,
+        bs_expiration_date DATE,
+        bs_status VARCHAR(50) DEFAULT 'Stored',
+        bs_category VARCHAR(50),
+        bs_source VARCHAR(255),
+        bs_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        bs_modified_at TIMESTAMP WITH TIME ZONE,
+        UNIQUE (bs_serial_id, bs_category)
+      );
+    `);
+    console.log("✓ 'blood_stock' table checked/created.");
+
+    // Create released_blood table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS released_blood (
+        rb_id SERIAL PRIMARY KEY,
+        rb_serial_id VARCHAR(255),
+        rb_blood_type VARCHAR(10),
+        rb_rh_factor VARCHAR(5),
+        rb_volume INTEGER,
+        rb_timestamp TIMESTAMP WITH TIME ZONE,
+        rb_expiration_date DATE,
+        rb_status VARCHAR(50) DEFAULT 'Released',
+        rb_category VARCHAR(50),
+        rb_original_id INTEGER,
+        rb_receiving_facility VARCHAR(255),
+        rb_address TEXT,
+        rb_contact_number VARCHAR(50),
+        rb_classification VARCHAR(100),
+        rb_authorized_recipient VARCHAR(255),
+        rb_recipient_designation VARCHAR(255),
+        rb_date_of_release DATE,
+        rb_condition_upon_release TEXT,
+        rb_request_reference VARCHAR(255),
+        rb_released_by VARCHAR(255),
+        rb_source VARCHAR(255),
+        rb_invoice_id INTEGER,
+        rb_created_at TIMESTAMP WITH TIME ZONE,
+        rb_released_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        rb_modified_at TIMESTAMP WITH TIME ZONE
+      );
+    `);
+    console.log("✓ 'released_blood' table checked/created.");
+
+    // Create non_conforming table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS non_conforming (
+        nc_id SERIAL PRIMARY KEY,
+        nc_serial_id VARCHAR(255) NOT NULL,
+        nc_blood_type VARCHAR(10),
+        nc_rh_factor VARCHAR(5),
+        nc_volume INTEGER,
+        nc_timestamp TIMESTAMP WITH TIME ZONE,
+        nc_expiration_date DATE,
+        nc_status VARCHAR(50) DEFAULT 'Non-Conforming',
+        nc_category VARCHAR(50),
+        nc_source VARCHAR(255),
+        nc_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        nc_modified_at TIMESTAMP WITH TIME ZONE,
+        UNIQUE (nc_serial_id, nc_category)
+      );
+    `);
+    console.log("✓ 'non_conforming' table checked/created.");
+
+    // Create discarded_blood table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS discarded_blood (
+        db_id SERIAL PRIMARY KEY,
+        db_serial_id VARCHAR(255),
+        db_blood_type VARCHAR(10),
+        db_rh_factor VARCHAR(5),
+        db_volume INTEGER,
+        db_timestamp TIMESTAMP WITH TIME ZONE,
+        db_expiration_date DATE,
+        db_status VARCHAR(50) DEFAULT 'Discarded',
+        db_category VARCHAR(50),
+        db_original_id INTEGER,
+        db_invoice_id INTEGER
+      );
+    `);
+    console.log("✓ 'discarded_blood' table checked/created.");
+
     // Create partnership_requests table
     await client.query(`
       CREATE TABLE IF NOT EXISTS partnership_requests (
@@ -84,6 +198,7 @@ const initializeDatabase = async () => {
         status VARCHAR(50) DEFAULT 'pending',
         approved_by INTEGER REFERENCES users(u_id),
         approved_at TIMESTAMP WITH TIME ZONE,
+        approved_by_name VARCHAR(255),
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
@@ -99,7 +214,8 @@ const initializeDatabase = async () => {
       ADD COLUMN IF NOT EXISTS event_time VARCHAR(20),
       ADD COLUMN IF NOT EXISTS event_address TEXT,
       ADD COLUMN IF NOT EXISTS appointment_id BIGINT,
-      ADD COLUMN IF NOT EXISTS organization_barangay VARCHAR(255);
+      ADD COLUMN IF NOT EXISTS organization_barangay VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS approved_by_name VARCHAR(255);
     `);
 
     // Create indexes for partnership requests
@@ -109,6 +225,172 @@ const initializeDatabase = async () => {
       CREATE INDEX IF NOT EXISTS idx_partnership_requests_org ON partnership_requests(organization_name);
     `);
     console.log("✓ 'partnership_requests' table checked/created.");
+
+    // Create notifications table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(u_id) ON DELETE SET NULL,
+        user_name VARCHAR(255),
+        notification_type VARCHAR(100),
+        title VARCHAR(255),
+        description TEXT,
+        related_entity_type VARCHAR(100),
+        related_entity_id VARCHAR(255),
+        link_to TEXT,
+        status VARCHAR(50) DEFAULT 'unread',
+        priority VARCHAR(50) DEFAULT 'normal',
+        is_read BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        read_at TIMESTAMP WITH TIME ZONE
+      );
+    `);
+    console.log("✓ 'notifications' table checked/created.");
+
+    // Create organization_notifications table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS organization_notifications (
+        on_id SERIAL PRIMARY KEY,
+        on_type VARCHAR(100),
+        on_title VARCHAR(255),
+        on_message TEXT,
+        on_related_id INTEGER,
+        on_organization_id INTEGER,
+        on_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        on_is_read BOOLEAN DEFAULT FALSE
+      );
+    `);
+    console.log("✓ 'organization_notifications' table checked/created.");
+
+    // Create blood_invoices table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS blood_invoices (
+        bi_id SERIAL PRIMARY KEY,
+        bi_invoice_id VARCHAR(255) UNIQUE,
+        bi_receiving_facility VARCHAR(255),
+        bi_classification VARCHAR(100),
+        bi_date_of_release DATE,
+        bi_released_by VARCHAR(255),
+        bi_reference_number VARCHAR(255),
+        bi_prepared_by VARCHAR(255),
+        bi_verified_by VARCHAR(255),
+        bi_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log("✓ 'blood_invoices' table checked/created.");
+
+    // Create blood_invoice_items table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS blood_invoice_items (
+        bii_id SERIAL PRIMARY KEY,
+        bii_invoice_id INTEGER REFERENCES blood_invoices(bi_id) ON DELETE CASCADE,
+        bii_released_blood_id INTEGER,
+        bii_serial_id VARCHAR(255),
+        bii_blood_type VARCHAR(10),
+        bii_rh_factor VARCHAR(5),
+        bii_date_of_collection TIMESTAMP WITH TIME ZONE,
+        bii_date_of_expiration DATE,
+        bii_volume INTEGER,
+        bii_remarks TEXT,
+        bii_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log("✓ 'blood_invoice_items' table checked/created.");
+
+    // Create discarded_blood_invoices table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS discarded_blood_invoices (
+        dbi_id SERIAL PRIMARY KEY,
+        dbi_invoice_id VARCHAR(255) UNIQUE,
+        dbi_reference_number VARCHAR(255),
+        dbi_responsible_personnel VARCHAR(255),
+        dbi_reason_for_discarding TEXT,
+        dbi_authorized_by VARCHAR(255),
+        dbi_date_of_discard DATE,
+        dbi_time_of_discard VARCHAR(50),
+        dbi_method_of_disposal VARCHAR(255),
+        dbi_remarks TEXT,
+        dbi_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log("✓ 'discarded_blood_invoices' table checked/created.");
+
+    // Create discarded_blood_invoice_items table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS discarded_blood_invoice_items (
+        dbii_id SERIAL PRIMARY KEY,
+        dbii_invoice_id INTEGER REFERENCES discarded_blood_invoices(dbi_id) ON DELETE CASCADE,
+        dbii_discarded_blood_id INTEGER,
+        dbii_serial_id VARCHAR(255),
+        dbii_blood_type VARCHAR(10),
+        dbii_rh_factor VARCHAR(5),
+        dbii_date_of_collection TIMESTAMP WITH TIME ZONE,
+        dbii_date_of_expiration DATE,
+        dbii_volume INTEGER,
+        dbii_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log("✓ 'discarded_blood_invoice_items' table checked/created.");
+
+    // Create blood_stock_history table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS blood_stock_history (
+        bsh_id SERIAL PRIMARY KEY,
+        bsh_serial_id VARCHAR(255),
+        bsh_blood_type VARCHAR(10),
+        bsh_rh_factor VARCHAR(5),
+        bsh_volume INTEGER,
+        bsh_timestamp TIMESTAMP WITH TIME ZONE,
+        bsh_expiration_date DATE,
+        bsh_status VARCHAR(50),
+        bsh_category VARCHAR(50),
+        bsh_original_stock_id INTEGER,
+        bsh_action VARCHAR(50),
+        bsh_action_timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        bsh_source VARCHAR(255)
+      );
+    `);
+    console.log("✓ 'blood_stock_history' table checked/created.");
+
+    // Create blood_reports table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS blood_reports (
+        br_id SERIAL PRIMARY KEY,
+        br_report_id VARCHAR(255) UNIQUE,
+        br_quarter VARCHAR(50),
+        br_year INTEGER,
+        br_month_start INTEGER,
+        br_month_end INTEGER,
+        br_month_labels TEXT[],
+        br_o_positive INTEGER DEFAULT 0,
+        br_o_negative INTEGER DEFAULT 0,
+        br_a_positive INTEGER DEFAULT 0,
+        br_a_negative INTEGER DEFAULT 0,
+        br_b_positive INTEGER DEFAULT 0,
+        br_b_negative INTEGER DEFAULT 0,
+        br_ab_positive INTEGER DEFAULT 0,
+        br_ab_negative INTEGER DEFAULT 0,
+        br_others INTEGER DEFAULT 0,
+        br_o_positive_pct NUMERIC(5, 2) DEFAULT 0.00,
+        br_o_negative_pct NUMERIC(5, 2) DEFAULT 0.00,
+        br_a_positive_pct NUMERIC(5, 2) DEFAULT 0.00,
+        br_a_negative_pct NUMERIC(5, 2) DEFAULT 0.00,
+        br_b_positive_pct NUMERIC(5, 2) DEFAULT 0.00,
+        br_b_negative_pct NUMERIC(5, 2) DEFAULT 0.00,
+        br_ab_positive_pct NUMERIC(5, 2) DEFAULT 0.00,
+        br_ab_negative_pct NUMERIC(5, 2) DEFAULT 0.00,
+        br_others_pct NUMERIC(5, 2) DEFAULT 0.00,
+        br_total_count INTEGER DEFAULT 0,
+        br_month1_data JSONB,
+        br_month2_data JSONB,
+        br_month3_data JSONB,
+        br_created_by VARCHAR(255),
+        br_created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        br_modified_at TIMESTAMP WITH TIME ZONE,
+        UNIQUE (br_quarter, br_year)
+      );
+    `);
+    console.log("✓ 'blood_reports' table checked/created.");
 
     // Create temp_donor_records table for sync requests
     await client.query(`
@@ -177,6 +459,44 @@ const initializeDatabase = async () => {
       $$ LANGUAGE plpgsql;
     `);
     console.log("✓ 'generate_doh_id' function checked/created.");
+
+    // Create function to generate invoice ID
+    await client.query(`
+      CREATE OR REPLACE FUNCTION generate_invoice_id()
+      RETURNS VARCHAR AS $$
+      DECLARE
+        new_id VARCHAR;
+        current_year INTEGER;
+        next_val INTEGER;
+      BEGIN
+        current_year := EXTRACT(YEAR FROM CURRENT_DATE);
+        -- This is a simplified sequence logic. For high concurrency, a dedicated sequence is better.
+        SELECT COUNT(*) + 1 INTO next_val FROM blood_invoices WHERE EXTRACT(YEAR FROM bi_created_at) = current_year;
+        new_id := 'INV-' || current_year::TEXT || '-' || LPAD(next_val::TEXT, 5, '0');
+        RETURN new_id;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+    console.log("✓ 'generate_invoice_id' function checked/created.");
+
+    // Create function to generate discarded invoice ID
+    await client.query(`
+      CREATE OR REPLACE FUNCTION generate_discarded_invoice_id()
+      RETURNS VARCHAR AS $$
+      DECLARE
+        new_id VARCHAR;
+        current_year INTEGER;
+        next_val INTEGER;
+      BEGIN
+        current_year := EXTRACT(YEAR FROM CURRENT_DATE);
+        SELECT COUNT(*) + 1 INTO next_val FROM discarded_blood_invoices WHERE EXTRACT(YEAR FROM dbi_created_at) = current_year;
+        new_id := 'DIS-' || current_year::TEXT || '-' || LPAD(next_val::TEXT, 5, '0');
+        RETURN new_id;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+    console.log("✓ 'generate_discarded_invoice_id' function checked/created.");
+
 
     client.release();
     return true;
@@ -306,18 +626,32 @@ const dbService = {
   },
 
   // Update partnership request status
-  async updatePartnershipRequestStatus(requestId, status, approvedBy = null) {
+  async updatePartnershipRequestStatus(requestId, status, approvedById = null) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+
+      let approvedByName = 'RBC Admin';
+      if (approvedById) {
+        const userResult = await client.query('SELECT u_full_name FROM users WHERE u_id = $1', [approvedById]);
+        if (userResult.rows.length > 0) {
+          approvedByName = userResult.rows[0].u_full_name;
+        }
+      }
+
       const updateQuery = `
         UPDATE partnership_requests
-        SET status = $1, approved_by = $2, approved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $3
+        SET 
+          status = $1, 
+          approved_by = $2, 
+          approved_by_name = $3,
+          approved_at = CURRENT_TIMESTAMP, 
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = $4
         RETURNING *
       `;
 
-      const result = await client.query(updateQuery, [status, approvedBy, requestId]);
+      const result = await client.query(updateQuery, [status, approvedById, approvedByName, requestId]);
       await client.query('COMMIT');
       return result.rows[0];
     } catch (error) {
@@ -410,6 +744,41 @@ const dbService = {
           }
         }
       }
+
+      // --- ADD THIS BLOCK TO SEND MAIL BACK TO ORG ---
+      try {
+        const mailSubject = status === 'approved' 
+          ? 'Donor Records Sync Request Approved' 
+          : 'Donor Records Sync Request Declined';
+
+        const mailBody = status === 'approved'
+          ? `Dear Partner,\n\nWe are pleased to inform you that your donor records sync request has been APPROVED by the Regional Blood Center.\n\nYour ${result.rows.length} donor record(s) have been successfully synced to our system.\n\nBest regards,\nRegional Blood Center Team`
+          : `Dear Partner,\n\nWe regret to inform you that your donor records sync request has been DECLINED by the Regional Blood Center.\n\nReason for Decline:\n${declineReason}\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team`;
+
+        const mailPreview = status === 'approved'
+          ? `Your ${result.rows.length} donor record(s) have been successfully synced.`
+          : `Your sync request was declined. Reason: ${declineReason}`;
+
+        // Use the dbOrgService to create the mail in the organization's database
+        await dbOrgService.createSyncResponseMail({
+          subject: mailSubject,
+          preview: mailPreview,
+          body: mailBody,
+          status: status,
+          decline_reason: declineReason,
+          request_title: 'Donor Records Sync Request',
+          requestor: userName,
+          request_organization: organization,
+          date_submitted: result.rows[0]?.tdr_created_at || new Date()
+        });
+
+        console.log(`[DB] Mail-back for sync status '${status}' created for ${organization}.`);
+
+      } catch (mailError) {
+        console.error('[DB] CRITICAL-ERROR: Failed to create mail-back for sync request. The sync was processed, but the organization was not notified.', mailError);
+        // Do not rollback the main transaction, as the sync status update is more critical.
+      }
+      // --- END OF NEW BLOCK ---
 
       await client.query('COMMIT');
       return result.rows;
@@ -6537,6 +6906,49 @@ async createNotification(notificationData) {
     throw error;
   }
 },
+
+  // --- ADDED: Create a notification for the RBC Admin ---
+  async createRBCNotification(notificationData, existingClient = null) {
+    const client = existingClient || await pool.connect();
+    try {
+      if (!existingClient) await client.query('BEGIN');
+
+      const {
+        notificationType, title, description,
+        relatedEntityType, relatedEntityId, priority
+      } = notificationData;
+
+      const result = await pool.query(`
+        INSERT INTO notifications (
+          user_id, user_name, notification_type, title, description,
+          related_entity_type, related_entity_id, link_to, priority,
+          status, is_read, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'unread', FALSE, NOW())
+        RETURNING *
+      `, [
+        null, // System-generated, not tied to a specific RBC user
+        'System (Partner Action)',
+        notificationType,
+        title,
+        description,
+        relatedEntityType,
+        relatedEntityId,
+        'calendar', // Link to the calendar page for context
+        priority || 'normal'
+      ]);
+
+      if (!existingClient) await client.query('COMMIT');
+
+      console.log('[DB] RBC Notification created:', result.rows[0].id);
+      return result.rows[0];
+    } catch (error) {
+      if (!existingClient) await client.query('ROLLBACK');
+      console.error('[DB] Error creating RBC notification:', error);
+      throw error;
+    } finally {
+      if (!existingClient) client.release();
+    }
+  },
 
 // Create a notification for the organization
 async createOrgNotification(type, title, message, related_id, organization_id) {

@@ -3,14 +3,12 @@ const path = require('path');
 
 // Database configuration
 const pool = new Pool({
-  user: process.env.DB_USER || "postgres",
+  user: process.env.DB_USER || "bloodsyncadmin",
   host: process.env.DB_HOST || "localhost",
-  database: process.env.DB_NAME || "postgres_org",
+  database: "bloodsync_org", // Hardcoded or use specific env var if you prefer
   password: process.env.DB_PASSWORD || "bloodsync",
   port: parseInt(process.env.DB_PORT) || 5432,
-  ssl: process.env.NODE_ENV === 'production' ? {
-    rejectUnauthorized: false
-  } : false,
+  ssl: false, // FIX: Disable SSL for localhost
   connectionTimeoutMillis: 5000,
   idleTimeoutMillis: 30000,
   max: 20,
@@ -124,39 +122,8 @@ const initializeDatabase = async () => {
       )
     `);
 
-    // Create notifications_organization table for organization-specific notifications (events, reminders)
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS notifications_organization (
-        id SERIAL PRIMARY KEY,
-        notification_id VARCHAR(50) UNIQUE NOT NULL,
-        type VARCHAR(50) DEFAULT 'upcoming_event' CHECK (type IN ('upcoming_event', 'event_reminder', 'event_update', 'general')),
-        title VARCHAR(255) NOT NULL,
-        message TEXT NOT NULL,
-        description TEXT,
-        appointment_id BIGINT,
-        event_date DATE,
-        event_time TIME,
-        event_location TEXT,
-        priority VARCHAR(20) DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
-        read BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
 
-    // Migrate notification_id from BIGINT to VARCHAR if needed
-    try {
-      await pool.query(`
-        ALTER TABLE notifications_organization
-        ALTER COLUMN notification_id TYPE VARCHAR(50) USING notification_id::VARCHAR
-      `);
-      console.log('✓ [DB_ORG] notifications_organization.notification_id migrated to VARCHAR');
-    } catch (alterError) {
-      // Column might already be VARCHAR, which is fine
-      if (!alterError.message.includes('already')) {
-        console.log('[DB_ORG] notifications_organization column type check:', alterError.message);
-      }
-    }
+
 
     // Create notifications_org table for organization notifications (partnership responses, sync responses, etc.)
     await pool.query(`
@@ -230,16 +197,24 @@ const initializeDatabase = async () => {
       )
     `);
 
+    // Create org_user_logs table for tracking user activities
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS org_user_logs (
+        id SERIAL PRIMARY KEY,
+        org_id INTEGER,
+        user_id INTEGER,
+        action VARCHAR(255),
+        details TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('✓ [DB_ORG] org_user_logs table ensured');
 
     // Create indexes for better performance
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_activity_logs_user ON activity_logs(user_name);
       CREATE INDEX IF NOT EXISTS idx_activity_logs_entity ON activity_logs(entity_type, entity_id);
-      CREATE INDEX IF NOT EXISTS idx_notifications_organization_created_at ON notifications_organization(created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_notifications_organization_type ON notifications_organization(type);
-      CREATE INDEX IF NOT EXISTS idx_notifications_organization_read ON notifications_organization(read);
-      CREATE INDEX IF NOT EXISTS idx_notifications_organization_event_date ON notifications_organization(event_date);
       CREATE INDEX IF NOT EXISTS idx_notifications_org_created_at ON notifications_org(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_notifications_org_type ON notifications_org(type);
       CREATE INDEX IF NOT EXISTS idx_notifications_org_status ON notifications_org(status);
@@ -301,6 +276,9 @@ const initializeDatabase = async () => {
     throw error;
   }
 };
+
+// Call the initialization function to ensure tables are created on startup
+initializeDatabase();
 
 // ========== ACTIVITY LOGGING FUNCTIONS ==========
 
@@ -1602,26 +1580,22 @@ const getAppointmentStatistics = async () => {
   // Cancel an appointment with a reason
   const cancelAppointmentWithReason = async (appointmentId, reason, userName = 'System User') => {
     const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      
+    try { // The transaction starts here
+      await client.query('BEGIN'); 
       const result = await client.query(
         `UPDATE appointments 
         SET status = 'cancelled', cancellation_reason = $1, updated_at = CURRENT_TIMESTAMP 
-        WHERE appointment_id = $2 RETURNING *`,
+        WHERE appointment_id = $2 RETURNING *`, // Use the client for this query
         [reason, appointmentId]
       );
-
       if (result.rows.length === 0) {
         throw new Error('Appointment not found');
       }
-      
       const appointment = result.rows[0];
-
       // Log this cancellation
-      await logActivity({
+      await logActivity({ // This function does not need the client, it's self-contained
         userName: userName,
-        actionType: 'delete', // Using 'delete' as it's a cancellation
+        actionType: 'delete',
         entityType: 'appointment',
         entityId: appointment.appointment_id.toString(),
         actionDescription: `Cancelled appointment "${appointment.title}" with reason: ${reason}`,
@@ -1630,7 +1604,25 @@ const getAppointmentStatistics = async () => {
           reason: reason
         }
       });
-
+      
+      // Create notification for RBC admin in the notifications table
+      await client.query(`
+        INSERT INTO notifications (
+          user_id, user_name, notification_type, title, description,
+          related_entity_type, related_entity_id, link_to, priority,
+          status, is_read, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'unread', FALSE, NOW())
+      `, [
+        null, // System-generated, not tied to a specific RBC user
+        userName,
+        'appointment_update',
+        'Appointment Cancelled by Partner Organization',
+        `The appointment "${appointment.title}" scheduled for ${new Date(appointment.appointment_date).toLocaleDateString()} has been cancelled. Reason: ${reason}`,
+        'appointments',
+        appointment.appointment_id,
+        'calendar',
+        'high'
+      ]);
       await client.query('COMMIT');
       return result.rows[0];
     } catch (error) {
@@ -2390,10 +2382,13 @@ const deleteOrgUser = async (userId) => {
 
 // ========== NOTIFICATION FUNCTIONS ==========
 
-const createNotification = async (notificationData) => {
-  const client = await pool.connect();
+const createNotification = async (notificationData, existingClient = null) => {
+  // Use the provided client or get a new one from the pool
+  const client = existingClient || await pool.connect();
   try {
-    await client.query('BEGIN');
+    // Only start a transaction if we're not using an existing one
+    if (!existingClient) await client.query('BEGIN');
+
     const insertQuery = `
       INSERT INTO notifications_org (
         notification_id, type, status, title, message, requestor_name,
@@ -2420,15 +2415,20 @@ const createNotification = async (notificationData) => {
     ];
 
     const result = await client.query(insertQuery, values);
-    await client.query('COMMIT');
+    
+    // Only commit if we started a new transaction
+    if (!existingClient) await client.query('COMMIT');
+
     console.log('[DB_ORG] Notification created in notifications_org:', result.rows[0].id);
     return result.rows[0];
   } catch (error) {
-    await client.query('ROLLBACK');
+    // Only rollback if we started a new transaction
+    if (!existingClient) await client.query('ROLLBACK');
     console.error('[DB_ORG] Error creating notification in notifications_org:', error);
     throw error;
   } finally {
-    client.release();
+    // Only release the client if we created a new one
+    if (!existingClient) client.release();
   }
 };
 
@@ -2842,6 +2842,57 @@ const deleteMail = async (mailId) => {
   }
 };
 
+// ========== NEW MAIL FUNCTION FOR SYNC RESPONSE ==========
+const createSyncResponseMail = async (mailData) => {
+  try {
+    const mailId = `MAIL-SYNC-${Date.now()}`;
+
+    const insertQuery = `
+      INSERT INTO mail_org (
+        mail_id,
+        from_name,
+        from_email,
+        subject,
+        preview,
+        body,
+        status,
+        decline_reason,
+        request_title,
+        requestor,
+        request_organization,
+        date_submitted,
+        read,
+        starred,
+        category
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      RETURNING *
+    `;
+
+    const values = [
+      mailId,
+      'Regional Blood Center',
+      'admin@regionalbloodcenter.org',
+      mailData.subject,
+      mailData.preview,
+      mailData.body,
+      mailData.status,
+      mailData.decline_reason || null,
+      mailData.request_title,
+      mailData.requestor,
+      mailData.request_organization,
+      mailData.date_submitted,
+      false, false, 'inbox'
+    ];
+
+    const result = await pool.query(insertQuery, values);
+    console.log('[DB_ORG] Sync response mail created successfully:', result.rows[0].mail_id);
+    return result.rows[0];
+  } catch (error) {
+    console.error('[DB_ORG] Error creating sync response mail:', error);
+    throw error;
+  }
+};
+
 // ========== PASSWORD AND PHONE NUMBER MANAGEMENT ==========
 
 const verifyPassword = async (userId, password) => {
@@ -3102,6 +3153,7 @@ module.exports = {
   // Notification methods
   createNotification,
   getAllNotifications,
+  getAllNotificationsOrg,
   markNotificationAsRead,
   markAllNotificationsAsRead,
   deleteNotification,
@@ -3118,6 +3170,7 @@ module.exports = {
   deleteMail,
   // Partnership request methods
   getAllPartnershipRequests,
+  createSyncResponseMail, // <-- ADD THIS EXPORT
   // Password and Phone methods
   verifyPassword,
   updateUserPassword,

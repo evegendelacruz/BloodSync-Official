@@ -627,14 +627,15 @@ const MailComponent = ({ onNavigate }) => {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
         // Get current user
-        const user = JSON.parse(localStorage.getItem('currentUser'));
-        const approvedBy = user?.fullName || 'RBC Admin';
+        const user = JSON.parse(localStorage.getItem('currentUser')) || {};
+        const approvedById = user?.id || null; // Get user ID
+        const approvedByName = user?.fullName || 'RBC Admin';
 
         // Update partnership request status
         await window.electronAPI.updatePartnershipRequestStatus(
           mail.requestId,
           'approved',
-          approvedBy
+          approvedById
         );
 
         // ADD THIS LINE TO UPDATE THE LOCAL CALENDAR
@@ -709,8 +710,8 @@ const MailComponent = ({ onNavigate }) => {
             type: 'partnership_response',
             status: 'approved',
             title: 'Partnership Request Approved',
-            message: `Your blood drive partnership request has been approved by the Regional Blood Center. Event: ${mail.requestInfo?.eventDate || 'TBD'}`,
-            requestorName: approvedBy,
+            message: `Your blood drive partnership request has been approved by the Regional Blood Center. Event: ${mail.requestInfo?.eventDate || 'TBD'}`, // Keep name for notification
+            requestorName: approvedByName,
             requestorOrganization: 'Regional Blood Center',
             appointmentId: mail.appointmentId,
             contactEmail: 'admin@regionalbloodcenter.org',
@@ -758,14 +759,15 @@ const MailComponent = ({ onNavigate }) => {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
         // Get current user
-        const user = JSON.parse(localStorage.getItem('currentUser'));
-        const declinedBy = user?.fullName || 'RBC Admin';
+        const user = JSON.parse(localStorage.getItem('currentUser')) || {};
+        const declinedById = user?.id || null; // Get user ID
+        const declinedByName = user?.fullName || 'RBC Admin';
 
         // Update partnership request status
         await window.electronAPI.updatePartnershipRequestStatus(
           mail.requestId,
           'declined',
-          declinedBy
+          declinedById
         );
 
         // ADD THIS LINE TO UPDATE THE LOCAL CALENDAR
@@ -840,8 +842,8 @@ const MailComponent = ({ onNavigate }) => {
             status: 'declined',
             title: 'Partnership Request Declined',
             message: `Your blood drive partnership request has been declined by the Regional Blood Center.`,
-            declineReason: declineReason,
-            requestorName: declinedBy,
+            declineReason: declineReason, // Keep name for notification
+            requestorName: declinedByName,
             requestorOrganization: 'Regional Blood Center',
             appointmentId: mail.appointmentId,
             contactEmail: 'admin@regionalbloodcenter.org',

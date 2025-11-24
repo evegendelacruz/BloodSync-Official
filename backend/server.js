@@ -1,11 +1,16 @@
 const express = require('express');
 const cors = require('cors');
+const apiRoutes = require('./api.js'); // Import the new API routes
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// API Routes
+// All routes defined in api.js will be prefixed with /api
+app.use('/api', apiRoutes);
 
 // Import database services
 const dbService = require('./db');
@@ -35,6 +40,64 @@ app.get('/health', (req, res) => {
       calendar: 'active'
     }
   });
+});
+
+// ========== SYNC REQUEST API ROUTES ==========
+app.post('/api/org/sync-request', async (req, res) => {
+  try {
+    const { records, org, uid, uname } = req.body;
+    const result = await dbService.requestDonorSync(records, org, uid, uname);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/rbc/sync-request/status', async (req, res) => {
+  try {
+    const { org, user, status, approver, reason } = req.body;
+    const result = await dbService.updateSyncRequestStatus(org, user, status, approver, reason);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/sync-requests/pending', async (req, res) => {
+  try {
+    const result = await dbService.getPendingSyncRequests();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========== MAIL API ROUTES ==========
+app.get('/api/org/mail', async (req, res) => {
+  try {
+    const result = await dbOrgService.getAllMails();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/org/mail', async (req, res) => {
+  try {
+    const result = await dbOrgService.createMail(req.body);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/org/mail/:id/read', async (req, res) => {
+  try {
+    const result = await dbOrgService.markMailAsRead(req.params.id);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // ========== PARTNERSHIP REQUEST API ROUTES ==========

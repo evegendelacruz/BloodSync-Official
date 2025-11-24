@@ -127,11 +127,11 @@ const CalendarPage = () => {
       const userName = user?.fullName || 'RBC Admin';
 
       // Always use appointment_id for backend calls
-      const apptId = eventToCancel.appointmentId || eventToCancel.id;
+      const apptId = eventToCancel.id;
 
       // 1. Cancel the appointment in the org database
       await window.electronAPI.cancelAppointmentWithReason(
-        apptId,
+        parseInt(apptId, 10),
         cancelReason,
         userName
       );
@@ -162,7 +162,7 @@ const CalendarPage = () => {
           status: 'cancelled',
           title: 'Appointment Cancelled by Regional Blood Center',
           message: body,
-          declineReason: cancelReason,
+          cancellationReason: cancelReason,
           requestorName: userName,
           requestorOrganization: 'Regional Blood Center',
           appointmentId: apptId,
@@ -216,7 +216,7 @@ const CalendarPage = () => {
   const events = appointments
     .filter(apt => apt.status === 'approved' || apt.status === 'confirmed' || apt.status === 'cancelled' || apt.status === 'declined' || apt.status === 'scheduled')
     .map(apt => ({
-      id: apt.appointment_id, // ensure event id matches appointment_id used by backend
+      id: apt.id || apt.appointment_id, // ensure event id matches appointment_id used by backend
       appointmentId: apt.appointment_id,
       title: apt.title || `Blood Drive Partnership - ${apt.contactInfo?.lastName || 'Unknown'}`,
       date: apt.date,
@@ -228,8 +228,9 @@ const CalendarPage = () => {
       contactName: apt.contactInfo?.lastName || 'Unknown',
       contactType: apt.contactInfo?.type || 'unknown',
       contactInfo: apt.contactInfo || {},
-      cancelReason: apt.cancellation_reason || apt.cancelReason || null // <-- ADD THIS LINE
-    }));
+      cancelReason: apt.cancellation_reason || apt.cancelReason || null
+    })
+  );
 
   // Filter events based on search and filters
   const filteredEvents = events.filter(event => {
@@ -372,6 +373,11 @@ const CalendarPage = () => {
     if (status === 'cancelled' || status === 'declined') {
       return { bg: '#fee2e2', border: '#ef4444', text: '#991b1b' };
     }
+    // --- ADDED: Specific style for cancelled events ---
+    if (status === 'cancelled') {
+      return { bg: '#fee2e2', border: '#ef4444', text: '#991b1b' };
+    }
+    // --- END ---
 
     // Use blue for upcoming events, green for finished events
     if (status === 'upcoming') {
@@ -659,15 +665,17 @@ const CalendarPage = () => {
                           return (
                             <div
                               key={event.id}
-                              className="day-event"
-                              style={{
-                                backgroundColor: colors.border
-                              }}
+                              className="day-event"                              
                               title={`${event.title} - ${event.time}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedEvent(event);
-                              }}
+                               }}                              
+                              style={{
+                                backgroundColor: colors.border,
+                                textDecoration: event.status === 'cancelled' ? 'line-through' : 'none',
+                                opacity: event.status === 'cancelled' ? 0.6 : 1,
+                              }}                              
                             />
                           );
                         })}
@@ -775,18 +783,7 @@ const CalendarPage = () => {
                     <Users size={16} />
                     <span>{selectedEvent.participants} participants</span>
                   </div>
-                )}
-                              {/* --- CANCELL BUTTON --- */}
-              {selectedEvent.status === 'upcoming' && (
-                <button
-                  className="btn-cancel-appointment"
-                  onClick={() => handleCancelClick(selectedEvent)}
-                >
-                  <XCircle size={16} />
-                  Cancel Appointment
-                </button>
-              )}
-              {/* --- END OF CANCELLATION BUTTON --- */}
+                )}              
               </div>
 
               
@@ -801,6 +798,18 @@ const CalendarPage = () => {
                   <p className="cancel-reason-text">{selectedEvent.cancelReason}</p>
                 </div>
               )}
+
+              {/* --- MODIFIED: CANCELLATION BUTTON VISIBILITY --- */}
+              {selectedEvent.status !== 'finished' && selectedEvent.status !== 'cancelled' && selectedEvent.status !== 'declined' && (
+                <button
+                  className="btn-cancel-appointment"
+                  onClick={() => handleCancelClick(selectedEvent)}
+                >
+                  <XCircle size={16} />
+                  {selectedEvent.status === 'upcoming' ? 'Cancel Appointment' : 'Cancel Appointment'}
+                </button>
+              )}
+              {/* --- END OF CANCELLATION BUTTON --- */}
             </div>
           </div>
         </div>

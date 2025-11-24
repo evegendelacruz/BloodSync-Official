@@ -568,12 +568,11 @@ const DashboardContent = () => {
   // Fetch upcoming drives
   useEffect(() => {
     const fetchUpcomingDrives = async () => {
+       if (!window.electronAPI) {
+         setUpcomingDrives([]);
+         return;
+       }
       try {
-        if (!window.electronAPI) {
-          setUpcomingDrives([]);
-          return;
-        }
-
         const partnershipRequests = await window.electronAPI.getAllPartnershipRequests(null);
         const localAppointments = await window.electronAPI.getAllAppointments();
 
@@ -1856,12 +1855,12 @@ const Dashboard = () => {
 
   // Load notifications
   const loadNotifications = useCallback(async () => {
+    if (!window.electronAPI) return;
     try {
-      if (window.electronAPI) {
-        // Get current user ID from localStorage
-        const userStr = localStorage.getItem("user") || localStorage.getItem("currentUser");
-        let userId = null;
-        if (userStr) {
+      // Get current user ID from localStorage
+      const userStr = localStorage.getItem("user") || localStorage.getItem("currentUser");
+      let userId = null;
+      if (userStr) {
           try {
             const userData = JSON.parse(userStr);
             userId = userData?.u_id || userData?.id;
@@ -1869,8 +1868,8 @@ const Dashboard = () => {
             console.error("Error parsing user data for notifications", e);
           }
         }
-        const notificationsData = await window.electronAPI.getAllNotifications(userId);
-
+      const notificationsData = await window.electronAPI.getAllNotifications(userId);
+      
         const transformedNotifications = (notificationsData || []).map(n => ({
           id: n.id,
           type: n.notification_type || n.type || 'info',
@@ -1891,17 +1890,20 @@ const Dashboard = () => {
 
         setNotifications(allNotifications);
         setUnreadNotificationCount(allNotifications.filter(n => !n.read).length);
-      }
     } catch (error) {
       console.error('Error loading notifications:', error);
+      // Don't crash the app if offline
+      if (!error.message.includes('OFFLINE')) {
+        // Handle other errors if necessary
+      }
     }
   }, []);
 
   const getLatestNotifications = () => {
     return notifications
       .sort((a, b) => {
-        if (a.read !== b.read) return a.read ? 1 : -1;
-        return b.timestamp - a.timestamp;
+         if (a.read !== b.read) return a.read ? 1 : -1;
+         return b.timestamp - a.timestamp;
       })
       .slice(0, 5);
   };
@@ -1910,13 +1912,13 @@ const Dashboard = () => {
   const loadMailMessages = async () => {
     try {
       setIsLoadingMail(true);
-      if (window.electronAPI) {
-        // Load partnership requests
-        const requests = await window.electronAPI.getAllPartnershipRequests();
-
+      if (window.electronAPI) { // Load partnership requests
+         const requests = await window.electronAPI.getAllPartnershipRequests();
+        
         // Load pending donor record sync requests
         const syncRequests = await window.electronAPI.getPendingSyncRequests();
 
+        
         const readMailIds = JSON.parse(localStorage.getItem('rbcReadMailIds') || '[]');
 
         // Map partnership requests
@@ -1988,15 +1990,18 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Error loading mail messages:', error);
     } finally {
-      setIsLoadingMail(false);
+       setIsLoadingMail(false);
     }
   };
 
   // Load calendar appointments
   const loadCalendarAppointments = async () => {
+    if (!window.electronAPI) {
+      setIsLoadingCalendar(false);
+      return;
+    }
     try {
-      setIsLoadingCalendar(true);
-      if (window.electronAPI) {
+       setIsLoadingCalendar(true);
         const partnershipRequests = await window.electronAPI.getAllPartnershipRequests(null);
         const localAppointments = await window.electronAPI.getAllAppointments();
 
@@ -2034,7 +2039,6 @@ const Dashboard = () => {
           .slice(0, 5);
 
         setCalendarAppointments(allUpcoming);
-      }
     } catch (error) {
       console.error('Error loading calendar appointments:', error);
       setCalendarAppointments([]);

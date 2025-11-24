@@ -620,6 +620,59 @@ const DonorRecord = () => {
   };
 
   // --- ADD THESE NEW FUNCTIONS ---
+  const approveDonorSync = async (organization, userName) => {
+    try {
+      if (!window.electronAPI) {
+        throw new Error("Electron API not available");
+      }
+
+      const currentUserData = localStorage.getItem('currentUser');
+      let approvedBy = 'System Admin';
+      if (currentUserData) {
+        try {
+          const userData = JSON.parse(currentUserData);
+          approvedBy = userData.fullName || 'System Admin';
+        } catch (e) {
+          console.error('Error parsing user data:', e);
+        }
+      }
+
+      const result = await window.electronAPI.updateSyncRequestStatus(
+        organization,
+        userName,
+        'approved',
+        approvedBy,
+        null
+      );
+
+      // Log activity
+      try {
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const currentUserName = user?.fullName || 'Unknown User';
+
+        await window.electronAPI.logActivityRBC({
+          user_name: currentUserName,
+          action_type: 'approve',
+          entity_type: 'donor_sync',
+          entity_id: `sync_${organization}_${userName}`,
+          action_description: `${currentUserName} approved donor information syncing from ${organization}`,
+          details: {
+            organization: organization,
+            approvedCount: result.length,
+          }
+        });
+      } catch (logErr) {
+        console.error("Error logging sync approval activity:", logErr);
+      }
+
+      return result;
+    } catch (err) {
+      console.error("Error approving sync:", err);
+      throw err;
+    }
+  };
+
+  // --- ADD THESE NEW FUNCTIONS ---
   const handleApproveSyncClick = () => {
     if (pendingSyncRequests.length === 0) {
       setError("No pending sync requests to approve.");
@@ -648,10 +701,67 @@ const DonorRecord = () => {
       }
 
       const organizations = [...new Set(pendingSyncRequests.map(r => r.source_user_name))];
-      const result = await window.electronAPI.approveDonorSync(approvedBy);
+      const result = await approveDonorSync(pendingSyncRequests[0].source_organization, pendingSyncRequests[0].source_user_name);
       await new Promise(resolve => setTimeout(resolve, 1000)); // Loader animation
 
-      setApprovedDonorCount(result.totalProcessed);
+      // Save approved records to local database (upsert - add or update)
+      let savedCount = 0;
+      const existingRecords = await window.electronAPI.getAllDonorRecords();
+
+      for (const record of pendingSyncRequests) {
+        try {
+          const donorData = {
+            donorId: record.donor_id,
+            firstName: record.first_name,
+            middleName: record.middle_name || '',
+            lastName: record.last_name,
+            gender: record.gender,
+            birthdate: record.birthdate,
+            age: record.age,
+            bloodType: record.blood_type,
+            rhFactor: record.rh_factor,
+            contactNumber: record.contact_number,
+            address: record.address,
+            status: 'Active',
+            source: record.source_organization,
+            recentDonation: record.recent_donation || null,
+            donationCount: record.donation_count || 0
+          };
+
+          // Check if record already exists (donorId is camelCase from DB)
+          const existing = existingRecords.find(r => r.donorId === record.donor_id);
+
+          if (existing) {
+            // Update existing record but preserve donation history
+            // Parse existing recentDonation from "MM/DD/YYYY" format or handle "No donations"
+            let preservedRecentDonation = null;
+            if (existing.recentDonation && existing.recentDonation !== 'No donations') {
+              // Convert MM/DD/YYYY to ISO format for database
+              const parts = existing.recentDonation.split('/');
+              if (parts.length === 3) {
+                preservedRecentDonation = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+              }
+            }
+
+            const updateData = {
+              ...donorData,
+              recentDonation: preservedRecentDonation || donorData.recentDonation,
+              donationCount: existing.donationCount > 0 ? existing.donationCount : donorData.donationCount
+            };
+            await window.electronAPI.updateDonorRecord(existing.id, updateData);
+            savedCount++;
+          } else {
+            // Add new record
+            await window.electronAPI.addDonorRecord(donorData);
+            savedCount++;
+          }
+        } catch (saveErr) {
+          console.error('Error saving donor record locally:', saveErr);
+        }
+      }
+      console.log(`[APPROVAL SYNC] Saved ${savedCount} records to local database`);
+
+      setApprovedDonorCount(savedCount || result.totalProcessed || pendingSyncRequests.length);
 
       // Create notification for partnered organization
       try {
@@ -692,9 +802,9 @@ const DonorRecord = () => {
           action_description: `${userName} approved donor information syncing from ${organizations.join(', ')}`,
           details: {
             organizations: organizations,
-            donorCount: result.totalProcessed,
-            newRecords: result.newRecords.length,
-            mergedRecords: result.mergedRecords.length
+            donorCount: result.totalProcessed || 0,
+            newRecords: result.newRecords?.length || 0,
+            mergedRecords: result.mergedRecords?.length || 0
           }
         });
       } catch (logErr) {

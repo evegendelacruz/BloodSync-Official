@@ -118,6 +118,7 @@ const NotificationComponent = () => {
             read: (n.read || n.is_read || false) || readLocalIds.includes(n.notification_id) || readLocalIds.includes(n.id),
             appointmentId: n.appointment_id,
             declineReason: n.decline_reason,
+            cancellationReason: n.cancellation_reason || n.decline_reason, // Unified reason field
             expirationDate: expirationDate,
             serialId: serialId,
             stockData: stockData,
@@ -1168,14 +1169,14 @@ const NotificationComponent = () => {
               </div>
             )}
 
-            {/* Decline Reason Display */}
-            {selectedNotification.status === 'declined' && selectedNotification.declineReason && (
+            {/* Cancellation Reason Display for Cancelled Appointments */}
+            {selectedNotification.type === 'appointment_cancelled' && selectedNotification.cancellationReason && (
               <div className="decline-reason-display">
                 <div className="decline-reason-header">
                   <XCircle size={20} color="#ef4444" />
-                  <strong>Reason for Decline</strong>
+                  <strong>Cancellation Reason</strong>
                 </div>
-                <p className="decline-reason-text">{selectedNotification.declineReason}</p>
+                <p className="decline-reason-text">{selectedNotification.cancellationReason}</p>
               </div>
             )}
 
