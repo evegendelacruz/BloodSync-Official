@@ -926,7 +926,7 @@ async loginUser(email, password) {
     }
   },
 
-async getUserProfileById(userId) {
+async getUserProfileByIdOrg(userId) {
   try {
     const query = `
       SELECT 
@@ -934,40 +934,42 @@ async getUserProfileById(userId) {
         u_org_id as "orgId",
         u_full_name as "fullName",
         u_category as category,
+        u_organization_name as "organizationName",
+        u_barangay as barangay,
         u_email as email,
         u_gender as gender,
         TO_CHAR(u_date_of_birth, 'YYYY-MM-DD') as "dateOfBirth",
         u_nationality as nationality,
         u_civil_status as "civilStatus",
-        u_barangay as barangay,
         u_phone_number as "phoneNumber",
         u_blood_type as "bloodType",
         u_rh_factor as "rhFactor",
         u_profile_image as "profileImage",
         u_status as status,
-        u_last_login as "lastLogin",
-        u_created_at as "createdAt"
-      FROM public.user_org
+        u_permissions as permissions,
+        TO_CHAR(u_created_at, 'MM/DD/YYYY HH24:MI:SS') as "createdAt",
+        TO_CHAR(u_last_login, 'MM/DD/YYYY HH24:MI:SS') as "lastLogin"
+      FROM user_org
       WHERE u_id = $1
     `;
-    
+
     const result = await pool.query(query, [userId]);
-    
+
     if (result.rows.length === 0) {
       return null;
     }
-    
+
     return result.rows[0];
   } catch (error) {
-    console.error('Error in getUserProfileById:', error);
+    console.error("Error fetching user profile by ID:", error);
     throw error;
   }
 },
 
-async updateUserProfile(userId, data) {
+async updateUserProfileOrg(userId, data) {
   try {
     const query = `
-      UPDATE public.user_org
+      UPDATE user_org
       SET 
         u_full_name = $1,
         u_gender = $2,
@@ -978,20 +980,20 @@ async updateUserProfile(userId, data) {
         u_phone_number = $7,
         u_blood_type = $8,
         u_rh_factor = $9,
-        u_profile_image = $10,
         u_modified_at = NOW()
-      WHERE u_id = $11
+      WHERE u_id = $10
       RETURNING 
         u_id as id,
         u_org_id as "orgId",
         u_full_name as "fullName",
-        u_category as catergory,
+        u_category as category,
+        u_organization_name as "organizationName",
+        u_barangay as barangay,
         u_email as email,
         u_gender as gender,
-        u_date_of_birth as "dateOfBirth",
+        TO_CHAR(u_date_of_birth, 'YYYY-MM-DD') as "dateOfBirth",
         u_nationality as nationality,
         u_civil_status as "civilStatus",
-        u_barangay as barangay,
         u_phone_number as "phoneNumber",
         u_blood_type as "bloodType",
         u_rh_factor as "rhFactor",
@@ -1008,7 +1010,6 @@ async updateUserProfile(userId, data) {
       data.phoneNumber,
       data.bloodType,
       data.rhFactor,
-      data.profileImage,
       userId
     ];
     
@@ -1018,36 +1019,20 @@ async updateUserProfile(userId, data) {
       return { success: false, message: 'User not found' };
     }
     
-    const user = result.rows[0];
     return {
       success: true,
-      user: {
-        u_id: user.id,
-        u_org_id: user.orgId,
-        u_full_name: user.fullName,
-        u_category: user.category,
-        u_email: user.email,
-        u_gender: user.gender,
-        u_date_of_birth: user.dateOfBirth,
-        u_nationality: user.nationality,
-        u_civil_status: user.civilStatus,
-        u_barangay: user.barangay,
-        u_phone_number: user.phoneNumber,
-        u_blood_type: user.bloodType,
-        u_rh_factor: user.rhFactor,
-        u_profile_image: user.profileImage
-      }
+      user: result.rows[0]
     };
   } catch (error) {
-    console.error('Error in updateUserProfile:', error);
+    console.error('Error updating user profile:', error);
     throw error;
   }
 },
 
-async updateUserProfileImage(userId, imageData) {
+async updateUserProfileImageOrg(userId, imageData) {
   try {
     const query = `
-      UPDATE public.user_org
+      UPDATE user_org
       SET 
         u_profile_image = $1,
         u_modified_at = NOW()
@@ -1065,10 +1050,10 @@ async updateUserProfileImage(userId, imageData) {
     
     return {
       success: true,
-      user: result.rows[0]
+      profileImage: result.rows[0].profileImage
     };
   } catch (error) {
-    console.error('Error in updateUserProfileImage:', error);
+    console.error('Error updating profile image:', error);
     throw error;
   }
 },
@@ -1079,7 +1064,7 @@ async updateUserProfileImage(userId, imageData) {
 async logUserActivity(userId, action, description) {
   try {
     const query = `
-      INSERT INTO user_activity_log (
+      INSERT INTO user_org_log (
         ual_user_id,
         ual_action,
         ual_description,
@@ -1108,7 +1093,7 @@ async getUserActivityLog(userId, limit = 20, offset = 0) {
         TO_CHAR(ual_timestamp, 'MM/DD/YYYY') as date,
         TO_CHAR(ual_timestamp, 'HH12:MI AM') as time,
         ual_timestamp as timestamp
-      FROM user_activity_log
+      FROM user_org_log
       WHERE ual_user_id = $1
       ORDER BY ual_timestamp DESC
       LIMIT $2 OFFSET $3
@@ -1127,7 +1112,7 @@ async getUserActivityLogCount(userId) {
   try {
     const query = `
       SELECT COUNT(*) as total
-      FROM user_activity_log
+      FROM user_org_log
       WHERE ual_user_id = $1
     `;
 
@@ -1139,94 +1124,63 @@ async getUserActivityLogCount(userId) {
   }
 },
 
-// Update user password (in USER AUTHENTICATION METHODS section)
-async updateUserPassword(userId, currentPassword, newPassword) {
+async updateUserPasswordOrg(userId, currentPassword, newPassword) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     
-    console.log('Updating password for user ID:', userId);
-    
-    // Hash the current password to compare
+    // Hash the current password input to compare with database
     const hashedCurrentPassword = crypto.createHash('sha256').update(currentPassword).digest('hex');
     
-    // Verify current password - using the internal database ID (u_id)
+    // Get user data including current password
     const verifyQuery = `
       SELECT u_id, u_password, u_email, u_full_name 
       FROM user_org 
-      WHERE u_id = $1
+      WHERE u_id = $1 AND u_status = 'verified'
     `;
     
     const verifyResult = await client.query(verifyQuery, [userId]);
     
     if (verifyResult.rows.length === 0) {
       await client.query("ROLLBACK");
-      console.error('User not found with ID:', userId);
-      return {
-        success: false,
-        message: "User not found"
-      };
+      throw new Error("User not found");
     }
     
     const user = verifyResult.rows[0];
-    console.log('Found user:', user.u_email);
     
-    // Compare hashed passwords
+    // Compare the hashed current password with the one in database
     if (user.u_password !== hashedCurrentPassword) {
       await client.query("ROLLBACK");
-      console.log('Password mismatch for user:', user.u_email);
-      return {
-        success: false,
-        message: "Current password is incorrect"
-      };
+      throw new Error("Current password is incorrect");
     }
-    
-    console.log('Current password verified successfully');
     
     // Hash the new password
     const hashedNewPassword = crypto.createHash('sha256').update(newPassword).digest('hex');
     
-    // Update password with the internal database ID
+    // Update to the new password
     const updateQuery = `
       UPDATE user_org 
       SET u_password = $1, u_modified_at = NOW()
       WHERE u_id = $2
-      RETURNING u_id, u_email, u_full_name
+      RETURNING u_id
     `;
     
-    const result = await client.query(updateQuery, [hashedNewPassword, userId]);
+    const result = await client.query(updateQuery, [hashedNewPassword, user.u_id]);
     
     if (result.rows.length === 0) {
       await client.query("ROLLBACK");
-      console.error('Update failed - no rows affected');
-      return {
-        success: false,
-        message: "Failed to update password"
-      };
+      throw new Error("Failed to update password");
     }
-    
-    console.log('Password updated successfully for:', result.rows[0].u_email);
     
     // Log the password change activity
     try {
-      const logQuery = `
-        INSERT INTO user_activity_log (
-          ual_user_id,
-          ual_action,
-          ual_description,
-          ual_timestamp
-        ) VALUES ($1, $2, $3, NOW())
-      `;
-      
-      await client.query(logQuery, [
-        userId,
-        'PASSWORD_CHANGE',
+      await this.logUserActivity(
+        user.u_id, 
+        'PASSWORD_CHANGE', 
         `User ${user.u_full_name} changed their password`
-      ]);
-      console.log('Activity logged successfully');
+      );
     } catch (logError) {
       console.error('Failed to log activity (non-critical):', logError);
-      // Don't fail the entire operation if logging fails
     }
     
     await client.query("COMMIT");
@@ -1237,17 +1191,15 @@ async updateUserPassword(userId, currentPassword, newPassword) {
     };
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("Error updating user password:", error);
+    console.error("Error updating password:", error);
     return {
       success: false,
-      message: error.message || 'Failed to update password'
+      message: error.message
     };
   } finally {
     client.release();
   }
 },
-
-
 // ========== USER PERMISSIONS METHODS ==========
 
 // Save user permissions
@@ -1663,6 +1615,115 @@ async resetPasswordOrg(email, recoveryCode, newPassword) {
     throw error;
   } finally {
     client.release();
+  }
+},
+
+// ========== ACTIVITY LOG METHODS FOR PROFILE ==========
+
+// Get user activity log with pagination and date grouping
+async getUserActivityLogOrg(userId, page = 1, limit = 6) {
+  try {
+    const offset = (page - 1) * limit;
+    
+    const query = `
+      SELECT 
+        ual_id as id,
+        ual_user_id as "userId",
+        ual_action as action,
+        ual_description as description,
+        TO_CHAR(ual_timestamp, 'Month DD, YYYY') as date,
+        TO_CHAR(ual_timestamp, 'HH12:MI AM') as time,
+        ual_timestamp as timestamp
+      FROM user_org_log
+      WHERE ual_user_id = $1
+      ORDER BY ual_timestamp DESC
+      LIMIT $2 OFFSET $3
+    `;
+
+    const result = await pool.query(query, [userId, limit, offset]);
+    
+    // Group activities by date
+    const groupedActivities = result.rows.reduce((acc, activity) => {
+      const date = activity.date;
+      if (!acc[date]) {
+        acc[date] = [];
+      }
+      acc[date].push({
+        id: activity.id,
+        text: activity.description,
+        time: activity.time,
+        action: activity.action
+      });
+      return acc;
+    }, {});
+
+    return groupedActivities;
+  } catch (error) {
+    console.error("Error fetching user activity log org:", error);
+    throw error;
+  }
+},
+
+// Get total count for pagination
+async getUserActivityLogCountOrg(userId) {
+  try {
+    const query = `
+      SELECT COUNT(*) as total
+      FROM user_org_log
+      WHERE ual_user_id = $1
+    `;
+
+    const result = await pool.query(query, [userId]);
+    return parseInt(result.rows[0].total);
+  } catch (error) {
+    console.error("Error fetching user activity log count org:", error);
+    throw error;
+  }
+},
+
+// Get activity log with date range filter
+async getUserActivityLogWithFilterOrg(userId, startDate, endDate, page = 1, limit = 6) {
+  try {
+    const offset = (page - 1) * limit;
+    
+    const query = `
+      SELECT 
+        ual_id as id,
+        ual_user_id as "userId",
+        ual_action as action,
+        ual_description as description,
+        TO_CHAR(ual_timestamp, 'Month DD, YYYY') as date,
+        TO_CHAR(ual_timestamp, 'HH12:MI AM') as time,
+        ual_timestamp as timestamp
+      FROM user_org_log
+      WHERE ual_user_id = $1
+        AND ual_timestamp >= $2
+        AND ual_timestamp <= $3
+      ORDER BY ual_timestamp DESC
+      LIMIT $4 OFFSET $5
+    `;
+
+    const result = await pool.query(query, [userId, startDate, endDate, limit, offset]);
+    
+    // Group activities by date
+    const groupedActivities = result.rows.reduce((acc, activity) => {
+      const date = activity.date;
+      if (!acc[date]) {
+        acc[date] = [];
+      }
+      acc[date].push({
+        id: activity.id,
+        text: activity.description,
+        time: activity.time,
+        action: activity.action
+      });
+      return acc;
+    }, {});
+
+    return groupedActivities;
+  } catch (error) {
+    console.error("Error fetching filtered activity log org:", error);
+    throw error;
   }
 },
 
