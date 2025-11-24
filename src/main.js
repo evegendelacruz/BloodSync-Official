@@ -1319,8 +1319,87 @@ ipcMain.handle(
     return await dbService.searchActivities(searchTerm, limit);
   });
 
-  // ========== NOTIFICATION IPC HANDLERS (RBC) ==========
+  // ========== ORGANIZATION PROFILE ==========
+  ipcMain.handle('get-user-profile-org', async (event, userId) => {
+  try {
+    const result = await dbOrgService.getUserProfileByIdOrg(userId);
+    return result;
+  } catch (error) {
+    console.error('Error getting user profile org:', error);
+    throw error;
+  }
+});
 
+  ipcMain.handle('update-user-profile-org', async (event, userId, data) => {
+  try {
+    const result = await dbOrgService.updateUserProfileOrg(userId, data);
+    return result;
+  } catch (error) {
+    console.error('Error updating user profile org:', error);
+    throw error;
+  }
+});
+
+  ipcMain.handle('update-profile-image-org', async (event, userId, imageData) => {
+  try {
+    const result = await dbOrgService.updateUserProfileImageOrg(userId, imageData);
+    return result;
+  } catch (error) {
+    console.error('Error updating profile image org:', error);
+    throw error;
+  }
+});
+
+// ========== ACCOUNT SETTINGS ORG UPDATE METHOD ==========
+ipcMain.handle('updateUserPasswordOrg', async (event, userId, currentPassword, newPassword) => {
+  try {
+    console.log('IPC: updateUserPasswordOrg called for user ID:', userId);
+    
+    const result = await dbOrgService.updateUserPasswordOrg(userId, currentPassword, newPassword);
+    
+    console.log('IPC: Password update result:', result.success ? 'Success' : 'Failed');
+    
+    return result;
+  } catch (error) {
+    console.error('Error in updateUserPasswordOrg IPC:', error);
+    return {
+      success: false,
+      message: error.message || 'Failed to update password'
+    };
+  }
+});
+
+// ========== ACTIVITY ORG LOG HANDLERS ==========
+
+ipcMain.handle("get-user-activity-log-org", async (event, userId, page, limit) => {
+  try {
+    const activities = await dbOrgService.getUserActivityLogOrg(userId, page, limit);
+    return { success: true, activities };
+  } catch (error) {
+    console.error("Error getting user activity log org:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("get-user-activity-log-count-org", async (event, userId) => {
+  try {
+    const count = await dbOrgService.getUserActivityLogCountOrg(userId);
+    return { success: true, count };
+  } catch (error) {
+    console.error("Error getting activity log count org:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("get-user-activity-log-with-filter-org", async (event, userId, startDate, endDate, page, limit) => {
+  try {
+    const activities = await dbOrgService.getUserActivityLogWithFilterOrg(userId, startDate, endDate, page, limit);
+    return { success: true, activities };
+  } catch (error) {
+    console.error("Error getting filtered activity log org:", error);
+    return { success: false, error: error.message };
+  }
+});
   
 };
 

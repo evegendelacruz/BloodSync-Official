@@ -7117,19 +7117,20 @@ async deletePlasmaNonConforming(ids, userData) {
   },
 
   async getUserProfileById(userId) {
-    try {
-      const query = `
+  try {
+    const query = `
       SELECT 
         u_id as id,
-        u_doh_id as "dohId",
+        u_org_id as "orgId",
         u_full_name as "fullName",
-        u_role as role,
+        u_category as category,
+        u_organization_name as "organizationName",
+        u_barangay as barangay,
         u_email as email,
         u_gender as gender,
         TO_CHAR(u_date_of_birth, 'YYYY-MM-DD') as "dateOfBirth",
         u_nationality as nationality,
         u_civil_status as "civilStatus",
-        u_barangay as barangay,
         u_phone_number as "phoneNumber",
         u_blood_type as "bloodType",
         u_rh_factor as "rhFactor",
@@ -7137,22 +7138,22 @@ async deletePlasmaNonConforming(ids, userData) {
         u_status as status,
         u_last_login as "lastLogin",
         u_created_at as "createdAt"
-      FROM public.users
+      FROM public.user_org
       WHERE u_id = $1
     `;
-
-      const result = await pool.query(query, [userId]);
-
-      if (result.rows.length === 0) {
-        return null;
-      }
-
-      return result.rows[0];
-    } catch (error) {
-      console.error("Error in getUserProfileById:", error);
-      throw error;
+    
+    const result = await pool.query(query, [userId]);
+    
+    if (result.rows.length === 0) {
+      return null;
     }
-  },
+    
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error in getUserProfileById:', error);
+    throw error;
+  }
+},
 
   async updateUserProfile(userId, data) {
     try {
