@@ -861,8 +861,25 @@ contextBridge.exposeInMainWorld("electronAPI", {
     searchActivities: (searchTerm, limit) =>
     ipcRenderer.invoke('search-activities', searchTerm, limit),
 
-    //============NOTIFICATION DOH===============
+    //============ORGANIZATION PROFILE===============
+    getUserProfileByIdOrg: (userId) => ipcRenderer.invoke('get-user-profile-org', userId),
+    updateUserProfileOrg: (userId, data) => ipcRenderer.invoke('update-user-profile-org', userId, data),
+    updateUserProfileImageOrg: (userId, imageData) => ipcRenderer.invoke('update-profile-image-org', userId, imageData),
+
+    // ========== ACCOUNT SETTINGS ORG UPDATE METHOD ==========
+    updateUserPasswordOrg: (userId, currentPassword, newPassword) => 
+    ipcRenderer.invoke('updateUserPasswordOrg', userId, currentPassword, newPassword),
+
+    //================USER ORG ACTIVITY LOG=====================
+    getUserActivityLogOrg: (userId, page, limit) => 
+    ipcRenderer.invoke('get-user-activity-log-org', userId, page, limit),
   
+    getUserActivityLogCountOrg: (userId) => 
+      ipcRenderer.invoke('get-user-activity-log-count-org', userId),
+    
+    getUserActivityLogWithFilterOrg: (userId, startDate, endDate, page, limit) => 
+      ipcRenderer.invoke('get-user-activity-log-with-filter-org', userId, startDate, endDate, page, limit),
+    
 });
 
 console.log("electronAPI exposed successfully");

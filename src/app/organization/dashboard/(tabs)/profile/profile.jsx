@@ -81,10 +81,12 @@ const ProfileInformation = ({
             />
           </div>
           <div style={styles.formGroup}>
-            <label style={styles.label}>Role</label>
+            <label style={styles.label}>
+              Category
+            </label>
             <input
               type="text"
-              value={profileData.role}
+              value={profileData.category}
               disabled={true}
               style={{
                 ...styles.input,
@@ -310,7 +312,7 @@ const ProfileInformation = ({
 };
 
 const ProfileComponentOrg = () => {
-  const dbService = window.electronAPI;
+  const dbOrgService = window.electronAPI;
   const [activeTab, setActiveTab] = useState("information");
   const [showPhotoDropdown, setShowPhotoDropdown] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
@@ -322,7 +324,7 @@ const ProfileComponentOrg = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [profileData, setProfileData] = useState({
     fullName: "",
-    role: "",
+    category: "",
     gender: "",
     dateOfBirth: "",
     nationality: "",
@@ -335,47 +337,55 @@ const ProfileComponentOrg = () => {
     phoneNumber: "",
   });
 
-  useEffect(() => {
-    const loadCurrentUser = async () => {
-      try {
-        const userStr = localStorage.getItem("user");
-        if (userStr) {
-          const user = JSON.parse(userStr);
-          console.log("User from localStorage:", user);
-          setCurrentUser(user);
+ useEffect(() => {
+  const loadCurrentUser = async () => {
+    try {
+      const userStr = localStorage.getItem("user");
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        console.log("User from localStorage:", user);
+        setCurrentUser(user);
 
-          // Fetch fresh data directly from database
-          if (user.id) {
-            console.log("Fetching user profile for ID:", user.id);
-            const dbUser = await dbService.getUserProfileById(user.id);
-            console.log("DB User data:", dbUser);
+        // Fetch fresh data directly from database
+        if (user.id) {
+          console.log("Fetching user profile for ID:", user.id);
+          const dbUser = await dbOrgService.getUserProfileByIdOrg(user.id);
+          console.log("DB User data:", dbUser);
 
-            if (dbUser) {
-              setProfileImage(dbUser.profileImage);
-              setProfileData({
-                fullName: dbUser.fullName || "",
-                role: dbUser.role || "",
-                email: dbUser.email || "",
-                userId: dbUser.dohId || "",
-                gender: dbUser.gender || "",
-                dateOfBirth: dbUser.dateOfBirth || "",
-                nationality: dbUser.nationality || "",
-                civilStatus: dbUser.civilStatus || "",
-                barangay: dbUser.barangay || "",
-                phoneNumber: dbUser.phoneNumber || "",
-                bloodType: dbUser.bloodType || "",
-                rhFactor: dbUser.rhFactor || "",
-              });
-            }
+          if (dbUser) {
+            setProfileImage(dbUser.profileImage);
+            
+            // Determine entity name based on category
+            const entityName = dbUser.category === 'Organization' 
+              ? dbUser.organizationName 
+              : dbUser.barangay;
+            
+            setProfileData({
+              fullName: dbUser.fullName || "",
+              entity: entityName || "",
+              category: dbUser.category || "",
+              email: dbUser.email || "",
+              userId: dbUser.orgId || "",
+              gender: dbUser.gender || "",
+              dateOfBirth: dbUser.dateOfBirth || "",
+              nationality: dbUser.nationality || "",
+              civilStatus: dbUser.civilStatus || "",
+              barangay: dbUser.barangay || "",
+              phoneNumber: dbUser.phoneNumber || "",
+              bloodType: dbUser.bloodType || "",
+              rhFactor: dbUser.rhFactor || "",
+              organizationName: dbUser.organizationName || "",
+            });
           }
         }
-      } catch (error) {
-        console.error("Error loading current user:", error);
       }
-    };
+    } catch (error) {
+      console.error("Error loading current user:", error);
+    }
+  };
 
-    loadCurrentUser();
-  }, [dbService]);
+  loadCurrentUser();
+}, []);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -396,7 +406,7 @@ const ProfileComponentOrg = () => {
       console.log("Saving profile data:", profileData);
       console.log("Current user ID:", currentUser.id);
 
-      const result = await dbService.updateUserProfile(currentUser.id, {
+      const result = await dbOrgService.updateUserProfileOrg(currentUser.id, {
         ...profileData,
         profileImage: profileImage,
       });
@@ -436,13 +446,18 @@ const ProfileComponentOrg = () => {
     }
   };
 
-  const handleCancel = () => {
+    const handleCancel = () => {
     if (currentUser) {
+      const entityName = currentUser.category === 'Organization'
+        ? currentUser.organizationName
+        : currentUser.barangay;
+        
       setProfileData({
         fullName: currentUser.fullName || "",
-        role: currentUser.role || "",
+        entity: entityName || "",
+        category: currentUser.category || "",
         email: currentUser.email || "",
-        userId: currentUser.dohId || "",
+        userId: currentUser.orgId || "",
         gender: currentUser.gender || "",
         dateOfBirth: currentUser.dateOfBirth || "",
         nationality: currentUser.nationality || "",
@@ -458,97 +473,73 @@ const ProfileComponentOrg = () => {
     }
     setIsEditing(false);
   };
-
   const handleUploadPhoto = () => {
-    console.log('=== UPLOAD PHOTO CLICKED ===');
-    console.log('Current user:', currentUser);
+  console.log('Upload photo triggered');
+  setShowPhotoDropdown(false);
+  
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+
+  input.onchange = async (e) => {
+    const file = e.target.files?.[0];
     
-    setShowPhotoDropdown(false);
-    
-    console.log('Creating input element...');
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    
-    console.log('Input element created:', input);
-    console.log('Input type:', input.type);
-    console.log('Input accept:', input.accept);
-  
-    input.onchange = async (e) => {
-      console.log('=== FILE SELECTED ===');
-      console.log('Event:', e);
-      console.log('Files:', e.target.files);
-      const file = e.target.files?.[0];
-      
-      if (!file) {
-        console.log('No file selected - user cancelled');
-        return;
-      }
-  
-      console.log('File details:', {
-        name: file.name,
-        size: file.size,
-        type: file.type
-      });
-  
-      if (file.size > 5 * 1024 * 1024) {
-        alert("File must be less than 5MB");
-        return;
-      }
-  
-      const reader = new FileReader();
-      
-      reader.onload = async (event) => {
-        const base64Image = event.target.result;
-        console.log('Image converted to base64, length:', base64Image.length);
-  
-        try {
-          console.log('Updating profile image for user:', currentUser.id);
-          const result = await dbService.updateUserProfileImage(currentUser.id, base64Image);
-          console.log('Update image result:', result);
-  
-          if (result.success) {
-            setProfileImage(base64Image);
-            const updatedUser = { ...currentUser, profileImage: base64Image };
-            localStorage.setItem("user", JSON.stringify(updatedUser));
-            setCurrentUser(updatedUser);
-            setSuccessMessage("Profile photo uploaded successfully!");
-            setShowSuccessModal(true);
-          } else {
-            alert("Failed to upload photo. Please try again.");
-          }
-        } catch (error) {
-          console.error("Error uploading photo:", error);
-          alert("Failed to upload photo: " + error.message);
-        }
-      };
-  
-      reader.onerror = (error) => {
-        console.error("FileReader error:", error);
-        alert("Failed to read image file");
-      };
-  
-      reader.readAsDataURL(file);
-    };
-  
-    console.log('About to click input...');
-    
-    // Try multiple approaches
-    try {
-      input.click();
-      console.log('✓ Input clicked successfully');
-    } catch (error) {
-      console.error('✗ Error clicking input:', error);
+    if (!file) {
+      console.log('No file selected');
+      return;
     }
+
+    console.log('File selected:', file.name);
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert("File must be less than 5MB");
+      return;
+    }
+
+    const reader = new FileReader();
     
-    console.log('=== END UPLOAD PHOTO FUNCTION ===');
+    reader.onload = async (event) => {
+      const base64Image = event.target.result;
+      console.log('Image converted to base64');
+
+      try {
+        console.log('Updating profile image for user:', currentUser.id);
+        const result = await dbOrgService.updateUserProfileImageOrg(currentUser.id, base64Image);
+        console.log('Update image result:', result);
+
+        if (result.success) {
+          setProfileImage(base64Image);
+          const updatedUser = { ...currentUser, profileImage: base64Image };
+          localStorage.setItem("user", JSON.stringify(updatedUser));
+          setCurrentUser(updatedUser);
+          setSuccessMessage("Profile photo uploaded successfully!");
+          setShowSuccessModal(true);
+        } else {
+          alert("Failed to upload photo. Please try again.");
+        }
+      } catch (error) {
+        console.error("Error uploading photo:", error);
+        alert("Failed to upload photo: " + error.message);
+      }
+    };
+
+    reader.onerror = (error) => {
+      console.error("FileReader error:", error);
+      alert("Failed to read image file");
+    };
+
+    reader.readAsDataURL(file);
   };
+
+  // Trigger file input
+  input.click();
+};
 
   const handleRemovePhoto = async () => {
     setShowPhotoDropdown(false); // Close dropdown first
 
     try {
-      const result = await dbService.updateUserProfileImage(
+      const result = await dbOrgService.updateUserProfileImageOrg(
         currentUser.id,
         null
       );
@@ -1128,10 +1119,14 @@ const ProfileComponentOrg = () => {
           </div>
 
           <h3 style={styles.profileName}>
-            {currentUser?.fullName || "LOADING..."}
-          </h3>
-          <p style={styles.profileId}>{currentUser?.dohId || "DOH000000"}</p>
-          <p style={styles.profileRole}>{currentUser?.role || "Loading..."}</p>
+              {currentUser?.fullName || "LOADING..."}
+            </h3>
+            <p style={styles.profileId}>{currentUser?.orgId || "ORG000000"}</p>
+            <p style={styles.profileRole}>
+              {currentUser?.category === 'Organization' 
+                ? currentUser?.organizationName || "Loading..." 
+                : currentUser?.barangay || "Loading..."}
+            </p>
         </div>
 
         <nav style={styles.navigation}>
