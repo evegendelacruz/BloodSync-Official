@@ -27,6 +27,7 @@ const RedBloodCell = () => {
   const [filterConfig, setFilterConfig] = useState({ field: "", value: "" });
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
   const [stockItems, setStockItems] = useState([
     {
       id: 1,
@@ -57,8 +58,26 @@ const RedBloodCell = () => {
   const [releaseValidationErrors, setReleaseValidationErrors] = useState({});
   const sortDropdownRef = useRef(null);
   const filterDropdownRef = useRef(null);
-
+  
   useEffect(() => {
+    // Get current user from localStorage
+    const userStr = localStorage.getItem('currentUser');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        console.log('Current user loaded:', {
+          id: user.id || user.u_id,
+          fullName: user.fullName || user.u_full_name,
+          role: user.role || user.u_role
+        });
+        setCurrentUser(user);
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+      }
+    } else {
+      console.warn('No user found in localStorage');
+    }
+    
     if (window.electronAPI) {
       try {
         const testResult = window.electronAPI.test();
@@ -69,6 +88,29 @@ const RedBloodCell = () => {
     }
     loadBloodData();
   }, []);
+
+  // Add this helper function after all your useState declarations
+const getUserData = () => {
+  if (!currentUser) {
+    console.warn('No current user available');
+    return null;
+  }
+  
+  // Support both field naming conventions
+  const userData = {
+    id: currentUser.id || currentUser.u_id,
+    fullName: currentUser.fullName || currentUser.u_full_name || currentUser.full_name
+  };
+  
+  console.log('Using userData:', userData);
+  
+  if (!userData.id || !userData.fullName) {
+    console.error('Invalid user data:', userData);
+    return null;
+  }
+  
+  return userData;
+};
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -245,7 +287,6 @@ const RedBloodCell = () => {
     }
   };
 
-  // Modified handleSaveAllStock function
   const handleSaveAllStock = async (e) => {
     e.preventDefault();
     
@@ -272,6 +313,15 @@ const RedBloodCell = () => {
         return;
       }
   
+      // Get userData using helper function
+      const userData = getUserData();
+      
+      if (!userData) {
+        setValidationErrors({ api: "User information not available. Please log in again." });
+        return;
+      }
+
+  
       for (const item of stockItems) {
         const stockData = {
           serial_id: item.serial_id,
@@ -283,7 +333,8 @@ const RedBloodCell = () => {
           status: item.status,
           source: item.source,
         };
-        await window.electronAPI.addBloodStock(stockData);
+        
+        await window.electronAPI.addBloodStock(stockData, userData);
       }
   
       setShowAddModal(false);
@@ -313,16 +364,12 @@ const RedBloodCell = () => {
     } catch (err) {
       console.error("Error adding blood stock:", err);
       
-      // Extract the error message
       let errorMessage = err.message;
       
-      // Check if it's a duplicate serial ID error
       if (errorMessage.includes("already exists")) {
-        // Extract serial ID from error message
         const serialIdMatch = errorMessage.match(/Serial ID (\S+) already exists/);
         if (serialIdMatch) {
           const duplicateSerialId = serialIdMatch[1];
-          // Find which item has the duplicate serial ID and mark it with specific error
           const duplicateErrors = {};
           stockItems.forEach((item) => {
             if (item.serial_id === duplicateSerialId) {
@@ -388,6 +435,15 @@ const RedBloodCell = () => {
         return;
       }
   
+      // Get userData using helper function
+      const userData = getUserData();
+      
+      if (!userData) {
+        setEditValidationErrors({ api: "User information not available. Please log in again." });
+        return;
+      }
+
+  
       const stockData = {
         serial_id: editingItem.serial_id,
         type: editingItem.type,
@@ -399,7 +455,8 @@ const RedBloodCell = () => {
         source: editingItem.source, 
       };
   
-      await window.electronAPI.updateBloodStock(editingItem.id, stockData);
+      await window.electronAPI.updateBloodStock(editingItem.id, stockData, userData);
+      
       setShowEditModal(false);
       setEditingItem(null);
       setEditValidationErrors({});
@@ -442,12 +499,21 @@ const RedBloodCell = () => {
         return;
       }
   
+      // Get userData using helper function
+      const userData = getUserData();
+      
+      if (!userData) {
+        setError("User information not available. Please log in again.");
+        return;
+      }
+  
       const selectedIds = bloodData
         .filter((item) => item.selected)
         .map((item) => item.id);
       if (selectedIds.length === 0) return;
   
-      await window.electronAPI.deleteBloodStock(selectedIds);
+      await window.electronAPI.deleteBloodStock(selectedIds, userData);
+      
       setShowConfirmDeleteModal(false);
       await loadBloodData();
       clearAllSelection();
@@ -460,7 +526,7 @@ const RedBloodCell = () => {
       setShowSuccessModal(true);
     } catch (err) {
       console.error("Error deleting items:", err);
-      setError("Failed to delete items");
+      setError("Failed to delete items: " + err.message);
     }
   };
   
@@ -745,12 +811,23 @@ const RedBloodCell = () => {
       }
   
       const serialIds = validItems.map((item) => item.serialId);
+      
+      // Get userData using helper function
+      const userData = getUserData();
+      
+      if (!userData) {
+        setReleaseValidationErrors({ api: "User information not available. Please log in again." });
+        return;
+      }
+    
+      
+      // FIXED: Pass releaseData and userData as SEPARATE parameters
       const releasePayload = {
         ...releaseData,
         serialIds: serialIds,
       };
   
-      const result = await window.electronAPI.releaseBloodStock(releasePayload);
+      const result = await window.electronAPI.releaseBloodStock(releasePayload, userData);
   
       if (result.success) {
         setShowReleaseDetailsModal(false);

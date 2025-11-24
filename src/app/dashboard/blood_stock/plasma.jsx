@@ -55,11 +55,29 @@ const Plasma = () => {
     requestReference: "",
     releasedBy: "",
   });
-
+  const [currentUser, setCurrentUser] = useState(null);
   const sortDropdownRef = useRef(null);
   const filterDropdownRef = useRef(null);
 
   useEffect(() => {
+    // Get current user from localStorage
+    const userStr = localStorage.getItem('currentUser');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        console.log('Current user loaded:', {
+          id: user.id || user.u_id,
+          fullName: user.fullName || user.u_full_name,
+          role: user.role || user.u_role
+        });
+        setCurrentUser(user);
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+      }
+    } else {
+      console.warn('No user found in localStorage');
+    }
+    
     if (window.electronAPI) {
       try {
         const testResult = window.electronAPI.test();
@@ -70,6 +88,29 @@ const Plasma = () => {
     }
     loadPlasmaData();
   }, []);
+
+  const getUserData = () => {
+    if (!currentUser) {
+      console.warn('No current user available');
+      return null;
+    }
+    
+    // Support both field naming conventions
+    const userData = {
+      id: currentUser.id || currentUser.u_id,
+      fullName: currentUser.fullName || currentUser.u_full_name || currentUser.full_name
+    };
+    
+    console.log('Using userData:', userData);
+    
+    if (!userData.id || !userData.fullName) {
+      console.error('Invalid user data:', userData);
+      return null;
+    }
+    
+    return userData;
+  };
+  
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -270,6 +311,16 @@ const Plasma = () => {
         setValidationErrors({ api: "Electron API not available" });
         return;
       }
+
+      // Get userData using helper function
+      const userData = getUserData();
+      
+      if (!userData) {
+        setValidationErrors({ api: "User information not available. Please log in again." });
+        return;
+      }
+
+      console.log('Saving plasma stock with userData:', userData);
   
       for (const item of stockItems) {
         const stockData = {
@@ -282,8 +333,28 @@ const Plasma = () => {
           status: item.status,
           source: item.source,
         };
-        await window.electronAPI.addPlasmaStock(stockData);
+        await window.electronAPI.addPlasmaStock(stockData, userData);
       }
+
+      // ADDED: Record activity for each added item
+    for (const item of stockItems) {
+      await window.electronAPI.recordActivity(
+        userData.id,
+        userData.fullName,
+        'ADD',
+        `Added plasma stock with Serial ID: ${item.serial_id}, Blood Type: ${item.type}${item.rhFactor}, Volume: ${item.volume}mL`,
+        'blood_stock_plasma',
+        null,
+        {
+          serial_id: item.serial_id,
+          type: item.type,
+          rhFactor: item.rhFactor,
+          volume: item.volume,
+          source: item.source
+        }
+      );
+    }
+
   
       setShowAddModal(false);
       setValidationErrors({});
@@ -350,13 +421,66 @@ const Plasma = () => {
         setError("Electron API not available");
         return;
       }
-  
+
+      // Get userData using helper function
+      const userData = getUserData();
+      
+      if (!userData) {
+        setError("User information not available. Please log in again.");
+        return;
+      }
+
+      for (const item of selectedItems) {
+        await window.electronAPI.recordActivity(
+          userData.id,
+          userData.fullName,
+          'DELETE',
+          `Deleted platelet stock with Serial ID: ${item.serial_id}, Blood Type: ${item.type}${item.rhFactor}`,
+          'blood_stock_platelet',
+          item.id,
+          {
+            serial_id: item.serial_id,
+            type: item.type,
+            rhFactor: item.rhFactor,
+            volume: item.volume,
+            source: item.source
+          }
+        );
+      }
+
+      console.log('Deleting platelet stock with userData:', userData);
+
       const selectedIds = plasmaData
         .filter((item) => item.selected)
         .map((item) => item.id);
       if (selectedIds.length === 0) return;
   
-      await window.electronAPI.deletePlasmaStock(selectedIds);
+      // Get the items to be deleted for activity logging
+      const itemsToDelete = plasmaData.filter((item) => item.selected);
+
+      // ADDED: Record activity for each deleted item BEFORE deleting
+      for (const item of itemsToDelete) {
+        await window.electronAPI.recordActivity(
+          userData.id,
+          userData.fullName,
+          'DELETE',
+          `Deleted plasma stock with Serial ID: ${item.serial_id}, Blood Type: ${item.type}${item.rhFactor}`,
+          'blood_stock_plasma',
+          item.id,
+          {
+            serial_id: item.serial_id,
+            type: item.type,
+            rhFactor: item.rhFactor,
+            volume: item.volume,
+            source: item.source
+          }
+        );
+      }
+
+      console.log('Deleting plasma stock with userData:', userData);
+
+      // FIXED: Pass userData parameter
+      await window.electronAPI.deletePlasmaStock(selectedIds, userData);
       setShowConfirmDeleteModal(false);
       await loadPlasmaData();
       clearAllSelection();
@@ -419,6 +543,14 @@ const Plasma = () => {
         setEditValidationErrors({ api: "Electron API not available" });
         return;
       }
+
+      // Get userData using helper function
+      const userData = getUserData();
+      
+      if (!userData) {
+        setEditValidationErrors({ api: "User information not available. Please log in again." });
+        return;
+      }
   
       const stockData = {
         serial_id: editingItem.serial_id,
@@ -430,8 +562,26 @@ const Plasma = () => {
         status: editingItem.status,
         source: editingItem.source,
       };
-  
-      await window.electronAPI.updatePlasmaStock(editingItem.id, stockData);
+
+      // ADDED: Record activity BEFORE updating
+    await window.electronAPI.recordActivity(
+      userData.id,
+      userData.fullName,
+      'UPDATE',
+      `Updated plasma stock with Serial ID: ${editingItem.serial_id}, Blood Type: ${editingItem.type}${editingItem.rhFactor}`,
+      'blood_stock_plasma',
+      editingItem.id,
+      {
+        serial_id: editingItem.serial_id,
+        type: editingItem.type,
+        rhFactor: editingItem.rhFactor,
+        volume: editingItem.volume,
+        source: editingItem.source
+      }
+    );
+
+      // FIXED: Pass userData parameter
+      await window.electronAPI.updatePlasmaStock(editingItem.id, stockData, userData);
       setShowEditModal(false);
       setEditingItem(null);
       setEditValidationErrors({});
@@ -800,12 +950,21 @@ const Plasma = () => {
       }
   
       const serialIds = validItems.map((item) => item.serialId);
+      
+      // Get userData using helper function
+      const userData = getUserData();
+      
+      if (!userData) {
+        setReleaseValidationErrors({ api: "User information not available. Please log in again." });
+        return;
+      }
+      
       const releasePayload = {
         ...releaseData,
         serialIds: serialIds,
       };
-  
-      const result = await window.electronAPI.releasePlasmaStock(releasePayload);
+
+      const result = await window.electronAPI.releasePlasmaStock(releasePayload, userData);
   
       if (result.success) {
         setShowReleaseDetailsModal(false);

@@ -49,6 +49,7 @@ const RedBloodCellNC = () => {
     methodOfDisposal: "",
     remarks: "",
   });
+  const [currentUser, setCurrentUser] = useState(null);
   const [showDiscardConfirmModal, setShowDiscardConfirmModal] = useState(false);
   const [showDiscardSuccessModal, setShowDiscardSuccessModal] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
@@ -86,6 +87,13 @@ const RedBloodCellNC = () => {
   const sortDropdownRef = useRef(null);
   const filterDropdownRef = useRef(null);
   const searchTimeoutsRef = useRef({});
+
+  useEffect(() => {
+    const userData = JSON.parse(localStorage.getItem('currentUser'));
+    setCurrentUser(userData);
+    loadNonConformingData();
+  }, []);
+
 
   useEffect(() => {
     if (window.electronAPI) {
@@ -608,8 +616,9 @@ const RedBloodCellNC = () => {
         remarks: discardFormData.remarks,
       };
       
-      const result =
-        await window.electronAPI.discardNonConformingStock(discardData);
+      // ADDED: Pass currentUser to the discard function
+      const result = await window.electronAPI.discardNonConformingStock(discardData, currentUser);
+      
       if (result.success) {
         setShowDiscardDetailsModal(false);
         setShowDiscardModal(false);
@@ -738,9 +747,11 @@ const RedBloodCellNC = () => {
       }
   
       const serialIds = validItems.map((item) => item.serialId);
-  
-      const result =
-        await window.electronAPI.transferToNonConforming(serialIds);
+
+      const result = await window.electronAPI.transferToNonConforming(
+        serialIds,
+        currentUser 
+      );
   
       if (result.success) {
         setShowAddModal(false);
@@ -854,7 +865,8 @@ const RedBloodCellNC = () => {
         source: editingItem.source 
       };
   
-      await window.electronAPI.updateNonConforming(editingItem.id, ncData);
+      await window.electronAPI.updateNonConforming(editingItem.id, ncData, currentUser);
+
       setShowEditModal(false);
       setEditingItem(null);
       setEditValidationErrors({});
@@ -912,7 +924,7 @@ const RedBloodCellNC = () => {
         .filter((item) => item.selected)
         .map((item) => item.id);
 
-      await window.electronAPI.deleteNonConforming(selectedIds);
+      await window.electronAPI.deleteNonConforming(selectedIds, currentUser);
       setShowDeleteConfirmModal(false);
       await loadNonConformingData();
       clearAllSelection();

@@ -70,8 +70,27 @@ const Platelet = () => {
   const [validationErrors, setValidationErrors] = useState({});
   const [editValidationErrors, setEditValidationErrors] = useState({});
   const [releaseValidationErrors, setReleaseValidationErrors] = useState({});
+  const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
+    // Get current user from localStorage
+    const userStr = localStorage.getItem('currentUser');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        console.log('Current user loaded:', {
+          id: user.id || user.u_id,
+          fullName: user.fullName || user.u_full_name,
+          role: user.role || user.u_role
+        });
+        setCurrentUser(user);
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+      }
+    } else {
+      console.warn('No user found in localStorage');
+    }
+    
     if (window.electronAPI) {
       try {
         const testResult = window.electronAPI.test();
@@ -82,6 +101,27 @@ const Platelet = () => {
     }
     loadBloodData();
   }, []);
+
+  const getUserData = () => {
+    if (!currentUser) {
+      console.warn('No current user available');
+      return null;
+    }
+    
+    const userData = {
+      id: currentUser.id || currentUser.u_id,
+      fullName: currentUser.fullName || currentUser.u_full_name || currentUser.full_name
+    };
+    
+    console.log('Using userData:', userData);
+    
+    if (!userData.id || !userData.fullName) {
+      console.error('Invalid user data:', userData);
+      return null;
+    }
+    
+    return userData;
+  };
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -305,7 +345,16 @@ const Platelet = () => {
         setValidationErrors({ api: "Electron API not available" });
         return;
       }
-  
+
+      const userData = getUserData();
+    
+      if (!userData) {
+        setValidationErrors({ api: "User information not available. Please log in again." });
+        return;
+      }
+
+      console.log('Saving blood stock with userData:', userData);
+    
       for (const item of stockItems) {
         const stockData = {
           serial_id: item.serial_id,
@@ -319,6 +368,24 @@ const Platelet = () => {
           source: item.source,
         };
         await window.electronAPI.addPlateletStock(stockData);
+      }
+
+      for (const item of stockItems) {
+        await window.electronAPI.recordActivity(
+          userData.id,
+          userData.fullName,
+          'ADD',
+          `Added platelet stock with Serial ID: ${item.serial_id}, Blood Type: ${item.type}${item.rhFactor}, Volume: ${item.volume}mL`,
+          'blood_stock_platelet',
+          null,
+          {
+            serial_id: item.serial_id,
+            type: item.type,
+            rhFactor: item.rhFactor,
+            volume: item.volume,
+            source: item.source
+          }
+        );
       }
   
       setShowAddModal(false);
@@ -423,6 +490,14 @@ const Platelet = () => {
         return;
       }
   
+      // FIXED: Get userData using helper function
+      const userData = getUserData();
+      
+      if (!userData) {
+        setEditValidationErrors({ api: "User information not available. Please log in again." });
+        return;
+      }
+  
       const stockData = {
         serial_id: editingItem.serial_id,
         type: editingItem.type,
@@ -434,7 +509,9 @@ const Platelet = () => {
         source: editingItem.source,
       };
   
-      await window.electronAPI.updatePlateletStock(editingItem.id, stockData);
+      // FIXED: Pass userData as second parameter
+      await window.electronAPI.updatePlateletStock(editingItem.id, stockData, userData);
+      
       setShowEditModal(false);
       setEditingItem(null);
       setEditValidationErrors({});
@@ -469,25 +546,35 @@ const Platelet = () => {
       setSaving(false);
     }
   };
-
+  
+  // In the confirmDelete function (around line 580-630), make sure it looks like this:
   const confirmDelete = async () => {
     try {
       if (!window.electronAPI) {
         setError("Electron API not available");
         return;
       }
-
+  
+      // FIXED: Get userData using helper function
+      const userData = getUserData();
+      
+      if (!userData) {
+        setError("User information not available. Please log in again.");
+        return;
+      }
+  
       const selectedIds = bloodData
         .filter((item) => item.selected)
         .map((item) => item.id);
       if (selectedIds.length === 0) return;
-
-      await window.electronAPI.deletePlateletStock(selectedIds);
+  
+      // FIXED: Pass userData as second parameter
+      await window.electronAPI.deletePlateletStock(selectedIds, userData);
       setShowConfirmDeleteModal(false);
       await loadBloodData();
       clearAllSelection();
       setError(null);
-
+  
       setSuccessMessage({
         title: "Deleted Successfully!",
         description: `${selectedIds.length} platelet stock record(s) have been deleted.`,
@@ -498,6 +585,7 @@ const Platelet = () => {
       setError("Failed to delete items");
     }
   };
+
 
   const handleDelete = async () => {
     try {
@@ -809,13 +897,22 @@ const Platelet = () => {
       }
   
       const serialIds = validItems.map((item) => item.serialId);
+      
+      // Get userData using helper function
+      const userData = getUserData();
+      
+      if (!userData) {
+        setReleaseValidationErrors({ api: "User information not available. Please log in again." });
+        return;
+      }
+      
+      
       const releasePayload = {
         ...releaseData,
         serialIds: serialIds,
       };
   
-      const result =
-        await window.electronAPI.releasePlateletStock(releasePayload);
+      const result = await window.electronAPI.releasePlateletStock(releasePayload, userData);
   
       if (result.success) {
         setShowReleaseDetailsModal(false);

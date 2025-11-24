@@ -1,6 +1,6 @@
 const { Pool } = require("pg");
-const nodemailer = require('nodemailer');
-const crypto = require('crypto');
+const nodemailer = require("nodemailer");
+const crypto = require("crypto");
 
 // Database connection configuration
 const pool = new Pool({
@@ -40,16 +40,16 @@ const testConnection = async () => {
 testConnection();
 
 const emailTransporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
+  host: "smtp.gmail.com",
   port: 587,
   secure: false, // Use TLS
   auth: {
-    user: 'bloodsync.doh@gmail.com',
-    pass: 'ouks otjf ajgu yxfc' // Your App Password without spaces
+    user: "bloodsync.doh@gmail.com",
+    pass: "ouks otjf ajgu yxfc", // Your App Password without spaces
   },
   tls: {
-    rejectUnauthorized: false
-  }
+    rejectUnauthorized: false,
+  },
 });
 
 // Database service functions
@@ -160,7 +160,7 @@ const dbService = {
     }
   },
 
-  async addBloodStock(bloodData) {
+  async addBloodStock(bloodData, userData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -205,7 +205,42 @@ const dbService = {
 
       const result = await client.query(query, values);
       const stockId = result.rows[0].bs_id;
-
+      
+      // Record activity
+      if (userData && userData.id && userData.fullName) {
+        try {
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "ADD",
+            `Added Red Blood Cell stock: ${bloodData.serial_id} (${bloodData.type}${bloodData.rhFactor})`,
+            "blood_stock_rbc",
+            bloodData.serial_id,
+            JSON.stringify({ 
+              bloodType: bloodData.type, 
+              rhFactor: bloodData.rhFactor, 
+              volume: bloodData.volume, 
+              source 
+            })
+          ];
+          
+          const activityResult = await client.query(activityQuery, activityValues);
+        } catch (activityError) {
+          console.error('Failed to record activity (non-critical):', activityError);
+          // Don't fail the transaction if activity logging fails
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging');
+      }
+      
       await client.query("COMMIT");
       return result.rows[0];
     } catch (error) {
@@ -217,26 +252,27 @@ const dbService = {
     }
   },
 
-  async updateBloodStock(id, bloodData) {
+  async updateBloodStock(id, bloodData, userData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
       const query = `
-      UPDATE blood_stock SET
-        bs_serial_id = $2,
-        bs_blood_type = $3,
-        bs_rh_factor = $4,
-        bs_volume = $5,
-        bs_timestamp = $6,
-        bs_expiration_date = $7,
-        bs_status = $8,
-        bs_modified_at = NOW(),
-        bs_category = $9,
-        bs_source = $10
-      WHERE bs_id = $1
-    `;
-
+        UPDATE blood_stock SET
+          bs_serial_id = $2,
+          bs_blood_type = $3,
+          bs_rh_factor = $4,
+          bs_volume = $5,
+          bs_timestamp = $6,
+          bs_expiration_date = $7,
+          bs_status = $8,
+          bs_modified_at = NOW(),
+          bs_category = $9,
+          bs_source = $10
+        WHERE bs_id = $1
+        RETURNING bs_serial_id
+      `;
+  
       const values = [
         id,
         bloodData.serial_id,
@@ -249,9 +285,44 @@ const dbService = {
         "Red Blood Cell",
         bloodData.source || "Walk-In",
       ];
-
-      await client.query(query, values);
-
+  
+      // FIXED: Execute the query BEFORE trying to use result
+      const result = await client.query(query, values);
+  
+      // Record activity - Check if we have rows returned
+      if (userData && userData.id && userData.fullName && result.rows.length > 0) {
+        try {
+          const serialId = result.rows[0].bs_serial_id;
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "UPDATE",
+            `Updated Red Blood Cell stock: ${serialId} (${bloodData.type}${bloodData.rhFactor})`,
+            "blood_stock_rbc",
+            serialId,
+            JSON.stringify({ 
+              bloodType: bloodData.type, 
+              rhFactor: bloodData.rhFactor, 
+              volume: bloodData.volume 
+            })
+          ];
+          
+          const activityResult = await client.query(activityQuery, activityValues);
+        } catch (activityError) {
+          console.error('Failed to record update activity (non-critical):', activityError);
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging during update');
+      }
+  
       await client.query("COMMIT");
       return true;
     } catch (error) {
@@ -308,7 +379,7 @@ const dbService = {
   },
 
   // Delete red blood cell stock records
-  async deleteBloodStock(ids) {
+  async deleteBloodStock(ids, userData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -326,6 +397,46 @@ const dbService = {
         "DELETE FROM blood_stock WHERE bs_id = ANY($1) AND bs_category = 'Red Blood Cell'";
       await client.query(query, [ids]);
 
+      // Record activity
+    if (userData && userData.id && userData.fullName && records.rows.length > 0) {
+      try {
+        const serialIds = records.rows.map(r => r.bs_serial_id).join(", ");
+        
+        const activityQuery = `
+          INSERT INTO recent_activity (
+            ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+            ra_entity_type, ra_entity_id, ra_details, ra_created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+          RETURNING ra_id
+        `;
+        
+        const activityValues = [
+          userData.id,
+          userData.fullName,
+          "DELETE",
+          `Deleted ${records.rows.length} Red Blood Cell stock record(s): ${serialIds}`,
+          "blood_stock_rbc",
+          serialIds,
+          JSON.stringify({ 
+            deletedCount: records.rows.length, 
+            records: records.rows.map(r => ({
+              serial_id: r.bs_serial_id,
+              bloodType: r.bs_blood_type,
+              rhFactor: r.bs_rh_factor,
+              volume: r.bs_volume,
+              source: r.bs_source
+            }))
+          })
+        ];
+        
+        const activityResult = await client.query(activityQuery, activityValues);
+      } catch (activityError) {
+        console.error('Failed to record activity (non-critical):', activityError);
+      }
+    } else {
+      console.warn('⚠ No userData provided for activity logging');
+    }
+
       await client.query("COMMIT");
       return true;
     } catch (error) {
@@ -339,11 +450,11 @@ const dbService = {
 
   // ========== RELEASE STOCK METHODS ==========
 
-  async releaseBloodStock(releaseData) {
+  async releaseBloodStock(releaseData, userData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
       const getStockQuery = `
         SELECT * FROM blood_stock 
         WHERE bs_serial_id = ANY($1) AND bs_category = 'Red Blood Cell' AND bs_status = 'Stored'
@@ -351,13 +462,13 @@ const dbService = {
       const stockResult = await client.query(getStockQuery, [
         releaseData.serialIds,
       ]);
-
+  
       if (stockResult.rows.length === 0) {
         throw new Error("No valid blood stock records found for release");
       }
-
+  
       const releasedBloodIds = [];
-
+  
       for (const stockRecord of stockResult.rows) {
         const insertQuery = `
           INSERT INTO released_blood (
@@ -371,7 +482,7 @@ const dbService = {
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
           RETURNING rb_id
         `;
-
+  
         const values = [
           stockRecord.bs_serial_id,
           stockRecord.bs_blood_type,
@@ -397,23 +508,60 @@ const dbService = {
           releaseData.releasedBy || "",
           stockRecord.bs_source || "Walk-In",
         ];
-
+  
         const insertResult = await client.query(insertQuery, values);
         releasedBloodIds.push(insertResult.rows[0].rb_id);
       }
-
+  
       const deleteQuery = `
         DELETE FROM blood_stock 
         WHERE bs_serial_id = ANY($1) AND bs_category = 'Red Blood Cell' AND bs_status = 'Stored'
       `;
       await client.query(deleteQuery, [releaseData.serialIds]);
-
+  
       const invoiceResult = await this.generateInvoiceWithClient(
         client,
         releaseData,
         releasedBloodIds
       );
 
+      // Record activity - FIXED VERSION
+      if (userData && userData.id && userData.fullName) {
+        try {
+          const serialIds = releaseData.serialIds.join(", ");
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "RELEASE",
+            `Released ${stockResult.rows.length} Red Blood Cell unit(s): ${serialIds} to ${releaseData.receivingFacility}`,
+            "released_blood_rbc",
+            serialIds,
+            JSON.stringify({ 
+              releasedCount: stockResult.rows.length,
+              receivingFacility: releaseData.receivingFacility,
+              classification: releaseData.classification,
+              requestReference: releaseData.requestReference,
+              serialIds: releaseData.serialIds
+            })
+          ];
+          
+          const activityResult = await client.query(activityQuery, activityValues);
+        } catch (activityError) {
+          console.error('Failed to record release activity (non-critical):', activityError);
+          // Don't fail the transaction if activity logging fails
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging during release');
+      }
+  
       await client.query("COMMIT");
       return {
         success: true,
@@ -477,96 +625,6 @@ const dbService = {
     }
   },
 
-  async releasePlasmaStock(releaseData) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-
-      const getStockQuery = `
-        SELECT * FROM blood_stock 
-        WHERE bs_serial_id = ANY($1) AND bs_category = 'Plasma' AND bs_status = 'Stored'
-      `;
-      const stockResult = await client.query(getStockQuery, [
-        releaseData.serialIds,
-      ]);
-
-      if (stockResult.rows.length === 0) {
-        throw new Error("No valid plasma stock records found for release");
-      }
-
-      const releasedBloodIds = [];
-
-      for (const stockRecord of stockResult.rows) {
-        const insertQuery = `
-          INSERT INTO released_blood (
-            rb_serial_id, rb_blood_type, rb_rh_factor, rb_volume,
-            rb_timestamp, rb_expiration_date, rb_status, rb_created_at, 
-            rb_released_at, rb_category, rb_original_id,
-            rb_receiving_facility, rb_address, rb_contact_number,
-            rb_classification, rb_authorized_recipient, rb_recipient_designation,
-            rb_date_of_release, rb_condition_upon_release, rb_request_reference,
-            rb_released_by, rb_source
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
-          RETURNING rb_id
-        `;
-
-        const values = [
-          stockRecord.bs_serial_id,
-          stockRecord.bs_blood_type,
-          stockRecord.bs_rh_factor,
-          stockRecord.bs_volume,
-          stockRecord.bs_timestamp,
-          stockRecord.bs_expiration_date,
-          "Released",
-          stockRecord.bs_created_at,
-          "Plasma",
-          stockRecord.bs_id,
-          releaseData.receivingFacility || "",
-          releaseData.address || "",
-          releaseData.contactNumber || "",
-          releaseData.classification || "",
-          releaseData.authorizedRecipient || "",
-          releaseData.recipientDesignation || "",
-          releaseData.dateOfRelease
-            ? new Date(releaseData.dateOfRelease)
-            : new Date(),
-          releaseData.conditionUponRelease || "",
-          releaseData.requestReference || "",
-          releaseData.releasedBy || "",
-          stockRecord.bs_source || "Walk-In", // FIXED: Use actual source
-        ];
-
-        const insertResult = await client.query(insertQuery, values);
-        releasedBloodIds.push(insertResult.rows[0].rb_id);
-      }
-
-      const deleteQuery = `
-        DELETE FROM blood_stock 
-        WHERE bs_serial_id = ANY($1) AND bs_category = 'Plasma' AND bs_status = 'Stored'
-      `;
-      await client.query(deleteQuery, [releaseData.serialIds]);
-
-      const invoiceResult = await this.generateInvoiceWithClient(
-        client,
-        releaseData,
-        releasedBloodIds
-      );
-
-      await client.query("COMMIT");
-      return {
-        success: true,
-        releasedCount: stockResult.rows.length,
-        invoiceId: invoiceResult.invoiceId,
-        invoiceDbId: invoiceResult.invoiceDbId,
-      };
-    } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("Error releasing plasma stock:", error);
-      throw error;
-    } finally {
-      client.release();
-    }
-  },
   // ========== PLATELET METHODS ==========
 
   // Get all platelet stock records
@@ -606,7 +664,7 @@ const dbService = {
     }
   },
 
-  async addPlateletStock(plateletData) {
+  async addPlateletStock(plateletData, userData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -650,6 +708,41 @@ const dbService = {
       const result = await client.query(query, values);
       const stockId = result.rows[0].bs_id;
 
+      // Record activity
+      if (userData && userData.id && userData.fullName) {
+        try {
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "ADD",
+            `Added Platelet stock: ${plateletData.serial_id} (${plateletData.type}${plateletData.rhFactor})`,
+            "blood_stock_platelet",
+            plateletData.serial_id,
+            JSON.stringify({ 
+              bloodType: plateletData.type, 
+              rhFactor: plateletData.rhFactor, 
+              volume: plateletData.volume,
+              source: plateletData.source || "Walk-In"
+            })
+          ];
+          
+          const activityResult = await client.query(activityQuery, activityValues);
+        } catch (activityError) {
+          console.error('Failed to record activity (non-critical):', activityError);
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging');
+      }
+
+
       await client.query("COMMIT");
       return result.rows[0];
     } catch (error) {
@@ -661,7 +754,7 @@ const dbService = {
     }
   },
 
-  async deletePlateletStock(ids) {
+  async deletePlateletStock(ids, userData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -679,6 +772,44 @@ const dbService = {
         "DELETE FROM blood_stock WHERE bs_id = ANY($1) AND bs_category = 'Platelet'";
       await client.query(query, [ids]);
 
+      // Record activity
+    if (userData && userData.id && userData.fullName && records.rows.length > 0) {
+      try {
+        const serialIds = records.rows.map(r => r.bs_serial_id).join(", ");
+        const activityQuery = `
+          INSERT INTO recent_activity (
+            ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+            ra_entity_type, ra_entity_id, ra_details, ra_created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+          RETURNING ra_id
+        `;
+        
+        const activityValues = [
+          userData.id,
+          userData.fullName,
+          "DELETE",
+          `Deleted ${records.rows.length} Platelet stock record(s): ${serialIds}`,
+          "blood_stock_platelet",
+          serialIds,
+          JSON.stringify({ 
+            deletedCount: records.rows.length, 
+            records: records.rows.map(r => ({
+              serial_id: r.bs_serial_id,
+              bloodType: r.bs_blood_type,
+              rhFactor: r.bs_rh_factor,
+              volume: r.bs_volume,
+              source: r.bs_source
+            }))
+          })
+        ];
+        
+        const activityResult = await client.query(activityQuery, activityValues);
+      } catch (activityError) {
+        console.error('Failed to record delete activity (non-critical):', activityError);
+      }
+    } else {
+      console.warn('⚠ No userData provided for activity logging');
+    }
       await client.query("COMMIT");
       return true;
     } catch (error) {
@@ -733,7 +864,7 @@ const dbService = {
     }
   },
 
-  async updatePlateletStock(id, plateletData) {
+  async updatePlateletStock(id, plateletData, userData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -784,6 +915,41 @@ const dbService = {
       ];
 
       await client.query(query, values);
+
+       // Record activity
+      if (userData && userData.id && userData.fullName && result.rows.length > 0) {
+        try {
+          const serialId = result.rows[0].bs_serial_id;
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "UPDATE",
+            `Updated Platelet stock: ${serialId} (${plateletData.type}${plateletData.rhFactor})`,
+            "blood_stock_platelet",
+            serialId,
+            JSON.stringify({ 
+              bloodType: plateletData.type, 
+              rhFactor: plateletData.rhFactor, 
+              volume: plateletData.volume,
+              source: plateletData.source
+            })
+          ];
+          
+          const activityResult = await client.query(activityQuery, activityValues);
+        } catch (activityError) {
+          console.error('Failed to record update activity (non-critical):', activityError);
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging during update');
+      }
 
       await client.query("COMMIT");
       return true;
@@ -865,40 +1031,39 @@ const dbService = {
     }
   },
 
-  // Release platelet stock - moves records from blood_stock to released_blood
-  async releasePlateletStock(releaseData) {
+  async releasePlateletStock(releaseData, userData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
       const getStockQuery = `
-      SELECT * FROM blood_stock 
-      WHERE bs_serial_id = ANY($1) AND bs_category = 'Platelet' AND bs_status = 'Stored'
-    `;
+        SELECT * FROM blood_stock 
+        WHERE bs_serial_id = ANY($1) AND bs_category = 'Platelet' AND bs_status = 'Stored'
+      `;
       const stockResult = await client.query(getStockQuery, [
         releaseData.serialIds,
       ]);
-
+  
       if (stockResult.rows.length === 0) {
         throw new Error("No valid platelet stock records found for release");
       }
-
+  
       const releasedBloodIds = [];
-
+  
       for (const stockRecord of stockResult.rows) {
         const insertQuery = `
-        INSERT INTO released_blood (
-          rb_serial_id, rb_blood_type, rb_rh_factor, rb_volume,
-          rb_timestamp, rb_expiration_date, rb_status, rb_created_at, 
-          rb_released_at, rb_category, rb_original_id,
-          rb_receiving_facility, rb_address, rb_contact_number,
-          rb_classification, rb_authorized_recipient, rb_recipient_designation,
-          rb_date_of_release, rb_condition_upon_release, rb_request_reference,
-          rb_released_by, rb_source
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
-        RETURNING rb_id
-      `;
-
+          INSERT INTO released_blood (
+            rb_serial_id, rb_blood_type, rb_rh_factor, rb_volume,
+            rb_timestamp, rb_expiration_date, rb_status, rb_created_at, 
+            rb_released_at, rb_category, rb_original_id,
+            rb_receiving_facility, rb_address, rb_contact_number,
+            rb_classification, rb_authorized_recipient, rb_recipient_designation,
+            rb_date_of_release, rb_condition_upon_release, rb_request_reference,
+            rb_released_by, rb_source
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+          RETURNING rb_id
+        `;
+  
         const values = [
           stockRecord.bs_serial_id,
           stockRecord.bs_blood_type,
@@ -922,25 +1087,62 @@ const dbService = {
           releaseData.conditionUponRelease || "",
           releaseData.requestReference || "",
           releaseData.releasedBy || "",
-          stockRecord.bs_source || "Walk-In", // FIXED: Use actual source
+          stockRecord.bs_source || "Walk-In",
         ];
-
+  
         const insertResult = await client.query(insertQuery, values);
         releasedBloodIds.push(insertResult.rows[0].rb_id);
       }
-
+  
       const deleteQuery = `
-      DELETE FROM blood_stock 
-      WHERE bs_serial_id = ANY($1) AND bs_category = 'Platelet' AND bs_status = 'Stored'
-    `;
+        DELETE FROM blood_stock 
+        WHERE bs_serial_id = ANY($1) AND bs_category = 'Platelet' AND bs_status = 'Stored'
+      `;
       await client.query(deleteQuery, [releaseData.serialIds]);
-
+  
+      // Record activity - FIXED VERSION
+      if (userData && userData.id && userData.fullName) {
+        try {
+          const serialIds = releaseData.serialIds.join(", ");
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "RELEASE",
+            `Released ${stockResult.rows.length} Platelet unit(s): ${serialIds} to ${releaseData.receivingFacility}`,
+            "released_blood_platelet",
+            serialIds,
+            JSON.stringify({ 
+              releasedCount: stockResult.rows.length,
+              receivingFacility: releaseData.receivingFacility,
+              classification: releaseData.classification,
+              requestReference: releaseData.requestReference,
+              serialIds: releaseData.serialIds
+            })
+          ];
+          
+          const activityResult = await client.query(activityQuery, activityValues);
+        } catch (activityError) {
+          console.error('Failed to record release activity (non-critical):', activityError);
+          // Don't fail the transaction if activity logging fails
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging during release');
+      }
+  
       const invoiceResult = await this.generateInvoiceWithClient(
         client,
         releaseData,
         releasedBloodIds
       );
-
+  
       await client.query("COMMIT");
       return {
         success: true,
@@ -1109,7 +1311,7 @@ const dbService = {
     }
   },
 
-  async addPlasmaStock(plasmaData) {
+  async addPlasmaStock(plasmaData, userData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -1153,6 +1355,28 @@ const dbService = {
       const result = await client.query(query, values);
       const stockId = result.rows[0].bs_id;
 
+      // Record activity
+    if (userData && userData.id && userData.fullName) {
+      try {
+        await this.recordActivity(
+          userData.id,
+          userData.fullName,
+          "ADD",
+          `Added Plasma stock: ${plasmaData.serial_id} (${plasmaData.type}${plasmaData.rhFactor})`,
+          "blood_stock_plasma",
+          plasmaData.serial_id,
+          { 
+            bloodType: plasmaData.type, 
+            rhFactor: plasmaData.rhFactor, 
+            volume: plasmaData.volume,
+            source: plasmaData.source || "Walk-In"
+          }
+        );
+      } catch (activityError) {
+        console.error('Failed to record activity (non-critical):', activityError);
+      }
+    }
+
       await client.query("COMMIT");
       return result.rows[0];
     } catch (error) {
@@ -1164,7 +1388,7 @@ const dbService = {
     }
   },
 
-  async updatePlasmaStock(id, plasmaData) {
+  async updatePlasmaStock(id, plasmaData, userData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -1182,6 +1406,7 @@ const dbService = {
         bs_category = $9,
         bs_source = $10
       WHERE bs_id = $1
+      RETURNING bs_serial_id
     `;
 
       const values = [
@@ -1199,6 +1424,32 @@ const dbService = {
 
       await client.query(query, values);
 
+      // FIXED: Assign the query result to a variable
+      const result = await client.query(query, values);
+
+      // Record activity - Check if we have rows returned
+      if (userData && userData.id && userData.fullName && result.rows.length > 0) {
+        try {
+          const serialId = result.rows[0].bs_serial_id;
+          await this.recordActivity(
+            userData.id,
+            userData.fullName,
+            "UPDATE",
+            `Updated Plasma stock: ${serialId} (${plasmaData.type}${plasmaData.rhFactor})`,
+            "blood_stock_plasma",
+            serialId,
+            { 
+              bloodType: plasmaData.type, 
+              rhFactor: plasmaData.rhFactor, 
+              volume: plasmaData.volume,
+              source: plasmaData.source
+            }
+          );
+        } catch (activityError) {
+          console.error('Failed to record update activity (non-critical):', activityError);
+        }
+      }
+
       await client.query("COMMIT");
       return true;
     } catch (error) {
@@ -1210,47 +1461,73 @@ const dbService = {
     }
   },
 
-  async deletePlasmaStock(ids) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
+    async deletePlasmaStock(ids, userData) {  // ADDED userData parameter
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
 
-      // Get records before deletion
-      const getRecordsQuery = `
-      SELECT bs_id, bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
-             bs_timestamp, bs_expiration_date, bs_status, bs_source
-      FROM blood_stock 
-      WHERE bs_id = ANY($1) AND bs_category = 'Plasma'
-    `;
-      const records = await client.query(getRecordsQuery, [ids]);
+        // Get records before deletion
+        const getRecordsQuery = `
+          SELECT bs_id, bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
+                bs_timestamp, bs_expiration_date, bs_status, bs_source
+          FROM blood_stock 
+          WHERE bs_id = ANY($1) AND bs_category = 'Plasma'
+        `;
+        const records = await client.query(getRecordsQuery, [ids]);
 
-      const query =
-        "DELETE FROM blood_stock WHERE bs_id = ANY($1) AND bs_category = 'Plasma'";
-      await client.query(query, [ids]);
+        const query =
+          "DELETE FROM blood_stock WHERE bs_id = ANY($1) AND bs_category = 'Plasma'";
+        await client.query(query, [ids]);
 
-      await client.query("COMMIT");
-      return true;
-    } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("Error deleting plasma stock:", error);
-      throw error;
-    } finally {
-      client.release();
-    }
-  },
+        // Record activity
+        if (userData && userData.id && userData.fullName && records.rows.length > 0) {
+          try {
+            const serialIds = records.rows.map(r => r.bs_serial_id).join(", ");
+            const activityQuery = `
+              INSERT INTO recent_activity (
+                ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+                ra_entity_type, ra_entity_id, ra_details, ra_created_at
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+              RETURNING ra_id
+            `;
+            
+            const activityValues = [
+              userData.id,
+              userData.fullName,
+              "DELETE",
+              `Deleted ${records.rows.length} Plasma stock record(s): ${serialIds}`,
+              "blood_stock_plasma",
+              serialIds,
+              JSON.stringify({ 
+                deletedCount: records.rows.length, 
+                records: records.rows.map(r => ({
+                  serial_id: r.bs_serial_id,
+                  bloodType: r.bs_blood_type,
+                  rhFactor: r.bs_rh_factor,
+                  volume: r.bs_volume,
+                  source: r.bs_source
+                }))
+              })
+            ];
+            
+            const activityResult = await client.query(activityQuery, activityValues);
+          } catch (activityError) {
+            console.error('Failed to record delete activity (non-critical):', activityError);
+          }
+        } else {
+          console.warn('⚠ No userData provided for activity logging');
+        }
 
-  // Delete plasma stock records
-  async deletePlasmaStock(ids) {
-    try {
-      const query =
-        "DELETE FROM blood_stock WHERE bs_id = ANY($1) AND bs_category = 'Plasma'";
-      await pool.query(query, [ids]);
-      return true;
-    } catch (error) {
-      console.error("Error deleting plasma stock:", error);
-      throw error;
-    }
-  },
+        await client.query("COMMIT");
+        return true;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        console.error("Error deleting plasma stock:", error);
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
 
   // Search plasma stock (only Stored status)
   async searchPlasmaStock(searchTerm) {
@@ -1299,7 +1576,7 @@ const dbService = {
   // ========== RELEASE PLASMA STOCK METHODS ==========
 
   // Release plasma stock - moves records from blood_stock to released_blood
-  async releasePlasmaStock(releaseData) {
+  async releasePlasmaStock(releaseData, userData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -1367,6 +1644,28 @@ const dbService = {
     `;
       await client.query(deleteQuery, [releaseData.serialIds]);
 
+      // Record activity
+    if (userData && userData.id && userData.fullName) {
+      try {
+        const serialIds = releaseData.serialIds.join(", ");
+        await this.recordActivity(
+          userData.id,
+          userData.fullName,
+          "RELEASE",
+          `Released ${stockResult.rows.length} Plasma unit(s): ${serialIds} to ${releaseData.receivingFacility}`,
+          "released_blood_plasma",
+          serialIds,
+          { 
+            releasedCount: stockResult.rows.length,
+            receivingFacility: releaseData.receivingFacility,
+            classification: releaseData.classification,
+            requestReference: releaseData.requestReference
+          }
+        );
+      } catch (activityError) {
+        console.error('Failed to record release activity (non-critical):', activityError);
+      }
+    }
       // Generate invoice with the released blood IDs using the transaction client
       const invoiceResult = await this.generateInvoiceWithClient(
         client,
@@ -1480,18 +1779,20 @@ const dbService = {
     }
   },
 
-  // Add new donor record
-  async addDonorRecord(donorData) {
+  async addDonorRecord(donorData, userData) {
+    const client = await pool.connect();
     try {
+      await client.query("BEGIN");
+      
       const query = `
         INSERT INTO donor_records (
           dr_donor_id, dr_first_name, dr_middle_name, dr_last_name,
           dr_gender, dr_birthdate, dr_age, dr_blood_type, dr_rh_factor,
           dr_contact_number, dr_address, dr_status, dr_recent_donation, dr_donation_count, dr_created_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
-        RETURNING dr_id
+        RETURNING dr_id, dr_donor_id
       `;
-
+  
       const values = [
         donorData.donorId,
         donorData.firstName,
@@ -1508,18 +1809,62 @@ const dbService = {
         donorData.recentDonation ? new Date(donorData.recentDonation) : null,
         parseInt(donorData.donationCount) || 0,
       ];
-
-      const result = await pool.query(query, values);
+  
+      const result = await client.query(query, values);
+      
+      // Record activity
+      if (userData && userData.id && userData.fullName) {
+        try {
+          const donorId = result.rows[0].dr_donor_id;
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "ADD",
+            `Added donor record: ${donorId} - ${donorData.firstName} ${donorData.lastName}`,
+            "donor_record",
+            donorId,
+            JSON.stringify({ 
+              donorId: donorData.donorId,
+              fullName: `${donorData.firstName} ${donorData.lastName}`,
+              bloodType: donorData.bloodType,
+              rhFactor: donorData.rhFactor,
+              status: donorData.status
+            })
+          ];
+          
+          await client.query(activityQuery, activityValues);
+          console.log('✓ Activity logged for donor addition');
+        } catch (activityError) {
+          console.error('Failed to record activity (non-critical):', activityError);
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging');
+      }
+  
+      await client.query("COMMIT");
       return result.rows[0];
     } catch (error) {
+      await client.query("ROLLBACK");
       console.error("Error adding donor record:", error);
       throw error;
+    } finally {
+      client.release();
     }
   },
 
-  // Update donor record
-  async updateDonorRecord(id, donorData) {
+  async updateDonorRecord(id, donorData, userData) {
+    const client = await pool.connect();
     try {
+      await client.query("BEGIN");
+      
       const query = `
         UPDATE donor_records SET
           dr_donor_id = $2,
@@ -1538,8 +1883,9 @@ const dbService = {
           dr_donation_count = $15,
           dr_modified_at = NOW()
         WHERE dr_id = $1
+        RETURNING dr_donor_id
       `;
-
+  
       const values = [
         id,
         donorData.donorId,
@@ -1557,24 +1903,120 @@ const dbService = {
         donorData.recentDonation ? new Date(donorData.recentDonation) : null,
         parseInt(donorData.donationCount) || 0,
       ];
-
-      await pool.query(query, values);
+  
+      const result = await client.query(query, values);
+      
+      // Record activity
+      if (userData && userData.id && userData.fullName && result.rows.length > 0) {
+        try {
+          const donorId = result.rows[0].dr_donor_id;
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "UPDATE",
+            `Updated donor record: ${donorId} - ${donorData.firstName} ${donorData.lastName}`,
+            "donor_record",
+            donorId,
+            JSON.stringify({ 
+              donorId: donorData.donorId,
+              fullName: `${donorData.firstName} ${donorData.lastName}`,
+              bloodType: donorData.bloodType,
+              rhFactor: donorData.rhFactor,
+              status: donorData.status
+            })
+          ];
+          
+          await client.query(activityQuery, activityValues);
+          console.log('✓ Activity logged for donor update');
+        } catch (activityError) {
+          console.error('Failed to record update activity (non-critical):', activityError);
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging during update');
+      }
+  
+      await client.query("COMMIT");
       return true;
     } catch (error) {
+      await client.query("ROLLBACK");
       console.error("Error updating donor record:", error);
       throw error;
+    } finally {
+      client.release();
     }
   },
 
-  // Delete donor records
-  async deleteDonorRecords(ids) {
+  async deleteDonorRecords(ids, userData) {
+    const client = await pool.connect();
     try {
+      await client.query("BEGIN");
+      
+      // Get records before deletion
+      const getRecordsQuery = `
+        SELECT dr_donor_id, dr_first_name, dr_last_name, dr_blood_type, dr_rh_factor
+        FROM donor_records 
+        WHERE dr_id = ANY($1)
+      `;
+      const records = await client.query(getRecordsQuery, [ids]);
+      
       const query = "DELETE FROM donor_records WHERE dr_id = ANY($1)";
-      await pool.query(query, [ids]);
+      await client.query(query, [ids]);
+      
+      // Record activity
+      if (userData && userData.id && userData.fullName && records.rows.length > 0) {
+        try {
+          const donorIds = records.rows.map(r => r.dr_donor_id).join(", ");
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "DELETE",
+            `Deleted ${records.rows.length} donor record(s): ${donorIds}`,
+            "donor_record",
+            donorIds,
+            JSON.stringify({ 
+              deletedCount: records.rows.length, 
+              records: records.rows.map(r => ({
+                donorId: r.dr_donor_id,
+                fullName: `${r.dr_first_name} ${r.dr_last_name}`,
+                bloodType: r.dr_blood_type,
+                rhFactor: r.dr_rh_factor
+              }))
+            })
+          ];
+          
+          await client.query(activityQuery, activityValues);
+          console.log('✓ Activity logged for donor deletion');
+        } catch (activityError) {
+          console.error('Failed to record delete activity (non-critical):', activityError);
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging');
+      }
+  
+      await client.query("COMMIT");
       return true;
     } catch (error) {
+      await client.query("ROLLBACK");
       console.error("Error deleting donor records:", error);
       throw error;
+    } finally {
+      client.release();
     }
   },
 
@@ -1618,6 +2060,32 @@ const dbService = {
         ORDER BY dr_created_at DESC
       `;
 
+      // Record activity
+    if (userData && userData.id && userData.fullName && records.rows.length > 0) {
+      try {
+        const donorIds = records.rows.map(r => r.dr_donor_id).join(", ");
+        await this.recordActivity(
+          userData.id,
+          userData.fullName,
+          "DELETE",
+          `Deleted ${records.rows.length} donor record(s): ${donorIds}`,
+          "donor_record",
+          donorIds,
+          { 
+            deletedCount: records.rows.length, 
+            records: records.rows.map(r => ({
+              donorId: r.dr_donor_id,
+              fullName: `${r.dr_first_name} ${r.dr_last_name}`,
+              bloodType: r.dr_blood_type,
+              rhFactor: r.dr_rh_factor
+            }))
+          }
+        );
+      } catch (activityError) {
+        console.error('Failed to record delete activity (non-critical):', activityError);
+      }
+    }
+
       const result = await pool.query(query, [`%${searchTerm}%`]);
       return result.rows.map((row) => ({
         ...row,
@@ -1643,14 +2111,14 @@ const dbService = {
       const result = await pool.query(query);
 
       if (result.rows.length === 0) {
-        return "DNR-0001-ON";
+        return "DNR-0000001";
       }
 
       const lastId = result.rows[0].dr_donor_id;
       const numberPart = parseInt(lastId.split("-")[1]);
-      const nextNumber = (numberPart + 1).toString().padStart(4, "0");
+      const nextNumber = (numberPart + 1).toString().padStart(7, "0");
 
-      return `DNR-${nextNumber}-ON`;
+      return `DNR-${nextNumber}`;
     } catch (error) {
       console.error("Error generating donor ID:", error);
       throw error;
@@ -1658,11 +2126,13 @@ const dbService = {
   },
 
   // ========== UPDATE/DELETE RELEASED BLOOD METHODS ==========
-
   // Update released RBC record
-  async updateReleasedBloodStock(id, bloodData) {
-    try {
-      const query = `
+async updateReleasedBloodStock(id, bloodData, userData) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    
+    const query = `
       UPDATE released_blood SET
         rb_serial_id = $2,
         rb_blood_type = $3,
@@ -1674,45 +2144,118 @@ const dbService = {
         rb_source = $9,
         rb_modified_at = NOW()
       WHERE rb_id = $1 AND rb_category = 'Red Blood Cell'
+      RETURNING rb_serial_id
     `;
 
-      const values = [
-        id,
-        bloodData.serial_id,
-        bloodData.type,
-        bloodData.rhFactor,
-        parseInt(bloodData.volume),
-        new Date(bloodData.collection),
-        new Date(bloodData.expiration),
-        bloodData.status || "Released",
-        bloodData.source || "Walk-In",
-      ];
+    const values = [
+      id,
+      bloodData.serial_id,
+      bloodData.type,
+      bloodData.rhFactor,
+      parseInt(bloodData.volume),
+      new Date(bloodData.collection),
+      new Date(bloodData.expiration),
+      bloodData.status || "Released",
+      bloodData.source || "Walk-In",
+    ];
 
-      await pool.query(query, values);
-      return true;
-    } catch (error) {
-      console.error("Error updating released blood stock:", error);
-      throw error;
+    const result = await client.query(query, values);
+
+    // Record activity
+    if (userData && userData.id && userData.fullName && result.rows.length > 0) {
+      try {
+        const serialId = result.rows[0].rb_serial_id;
+        await this.recordActivity(
+          userData.id,
+          userData.fullName,
+          "UPDATE",
+          `Updated Released RBC: ${serialId} (${bloodData.type}${bloodData.rhFactor})`,
+          "released_blood_rbc",
+          serialId,
+          { 
+            bloodType: bloodData.type, 
+            rhFactor: bloodData.rhFactor, 
+            volume: bloodData.volume,
+            source: bloodData.source
+          }
+        );
+      } catch (activityError) {
+        console.error('Failed to record update activity (non-critical):', activityError);
+      }
     }
-  },
+
+    await client.query("COMMIT");
+    return true;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error updating released blood stock:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
 
   // Delete released RBC records
-  async deleteReleasedBloodStock(ids) {
-    try {
-      const query =
-        "DELETE FROM released_blood WHERE rb_id = ANY($1) AND rb_category = 'Red Blood Cell'";
-      await pool.query(query, [ids]);
-      return true;
-    } catch (error) {
-      console.error("Error deleting released blood stock:", error);
-      throw error;
-    }
-  },
+async deleteReleasedBloodStock(ids, userData) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
 
-  // Update released Plasma record
-  async updateReleasedPlasmaStock(id, plasmaData) {
-    try {
-      const query = `
+    // Get records before deletion
+    const getRecordsQuery = `
+      SELECT rb_id, rb_serial_id, rb_blood_type, rb_rh_factor, rb_volume, rb_source
+      FROM released_blood 
+      WHERE rb_id = ANY($1) AND rb_category = 'Red Blood Cell'
+    `;
+    const records = await client.query(getRecordsQuery, [ids]);
+
+    const query = "DELETE FROM released_blood WHERE rb_id = ANY($1) AND rb_category = 'Red Blood Cell'";
+    await client.query(query, [ids]);
+
+    // Record activity
+    if (userData && userData.id && userData.fullName && records.rows.length > 0) {
+      try {
+        const serialIds = records.rows.map(r => r.rb_serial_id).join(", ");
+        await this.recordActivity(
+          userData.id,
+          userData.fullName,
+          "DELETE",
+          `Deleted ${records.rows.length} Released RBC record(s): ${serialIds}`,
+          "released_blood_rbc",
+          serialIds,
+          { 
+            deletedCount: records.rows.length, 
+            records: records.rows.map(r => ({
+              serial_id: r.rb_serial_id,
+              bloodType: r.rb_blood_type,
+              rhFactor: r.rb_rh_factor,
+              volume: r.rb_volume,
+              source: r.rb_source
+            }))
+          }
+        );
+      } catch (activityError) {
+        console.error('Failed to record delete activity (non-critical):', activityError);
+      }
+    }
+
+    await client.query("COMMIT");
+    return true;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error deleting released blood stock:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
+async updateReleasedPlasmaStock(id, plasmaData, userData) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const query = `
       UPDATE released_blood SET
         rb_serial_id = $2,
         rb_blood_type = $3,
@@ -1721,46 +2264,147 @@ const dbService = {
         rb_timestamp = $6,
         rb_expiration_date = $7,
         rb_status = $8,
+        rb_source = $9,
         rb_modified_at = NOW()
       WHERE rb_id = $1 AND rb_category = 'Plasma'
+      RETURNING rb_serial_id
     `;
 
-      const values = [
-        id,
-        plasmaData.serial_id,
-        plasmaData.type,
-        plasmaData.rhFactor,
-        parseInt(plasmaData.volume),
-        new Date(plasmaData.collection),
-        new Date(plasmaData.expiration),
-        plasmaData.status || "Released",
-      ];
+    const values = [
+      id,
+      plasmaData.serial_id,
+      plasmaData.type,
+      plasmaData.rhFactor,
+      parseInt(plasmaData.volume),
+      new Date(plasmaData.collection),
+      new Date(plasmaData.expiration),
+      plasmaData.status || "Released",
+      plasmaData.source || "Walk-In",
+    ];
 
-      await pool.query(query, values);
-      return true;
-    } catch (error) {
-      console.error("Error updating released plasma stock:", error);
-      throw error;
+    const result = await client.query(query, values);
+
+    // Record activity with proper userData check
+    if (userData && userData.id && userData.fullName && result.rows.length > 0) {
+      try {
+        const serialId = result.rows[0].rb_serial_id;
+        
+        const activityQuery = `
+          INSERT INTO recent_activity (
+            ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+            ra_entity_type, ra_entity_id, ra_details, ra_created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+          RETURNING ra_id
+        `;
+        
+        const activityValues = [
+          userData.id,
+          userData.fullName,
+          "UPDATE",
+          `Updated Released Plasma: ${serialId} (${plasmaData.type}${plasmaData.rhFactor})`,
+          "released_blood_plasma",
+          serialId,
+          JSON.stringify({ 
+            bloodType: plasmaData.type, 
+            rhFactor: plasmaData.rhFactor, 
+            volume: plasmaData.volume,
+            source: plasmaData.source
+          })
+        ];
+        
+        await client.query(activityQuery, activityValues);
+        console.log('✓ Activity logged for Plasma update');
+      } catch (activityError) {
+        console.error('Failed to record update activity (non-critical):', activityError);
+      }
+    } else {
+      console.warn('⚠ No userData provided for Plasma update activity logging');
     }
-  },
 
-  // Delete released Plasma records
-  async deleteReleasedPlasmaStock(ids) {
-    try {
-      const query =
-        "DELETE FROM released_blood WHERE rb_id = ANY($1) AND rb_category = 'Plasma'";
-      await pool.query(query, [ids]);
-      return true;
-    } catch (error) {
-      console.error("Error deleting released plasma stock:", error);
-      throw error;
+    await client.query("COMMIT");
+    return true;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error updating released plasma stock:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+  
+async deleteReleasedPlasmaStock(ids, userData) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Get records before deletion
+    const getRecordsQuery = `
+      SELECT rb_id, rb_serial_id, rb_blood_type, rb_rh_factor, rb_volume, rb_source
+      FROM released_blood 
+      WHERE rb_id = ANY($1) AND rb_category = 'Plasma'
+    `;
+    const records = await client.query(getRecordsQuery, [ids]);
+
+    const query = "DELETE FROM released_blood WHERE rb_id = ANY($1) AND rb_category = 'Plasma'";
+    await client.query(query, [ids]);
+
+    // FIXED: Record activity with proper userData check
+    if (userData && userData.id && userData.fullName && records.rows.length > 0) {
+      try {
+        const serialIds = records.rows.map(r => r.rb_serial_id).join(", ");
+        const activityQuery = `
+          INSERT INTO recent_activity (
+            ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+            ra_entity_type, ra_entity_id, ra_details, ra_created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+          RETURNING ra_id
+        `;
+        
+        const activityValues = [
+          userData.id,
+          userData.fullName,
+          "DELETE",
+          `Deleted ${records.rows.length} Released Plasma record(s): ${serialIds}`,
+          "released_blood_plasma",
+          serialIds,
+          JSON.stringify({ 
+            deletedCount: records.rows.length, 
+            records: records.rows.map(r => ({
+              serial_id: r.rb_serial_id,
+              bloodType: r.rb_blood_type,
+              rhFactor: r.rb_rh_factor,
+              volume: r.rb_volume,
+              source: r.rb_source
+            }))
+          })
+        ];
+        
+        await client.query(activityQuery, activityValues);
+        console.log('✓ Activity logged for Plasma deletion');
+      } catch (activityError) {
+        console.error('Failed to record delete activity (non-critical):', activityError);
+      }
+    } else {
+      console.warn('⚠ No userData provided for Plasma delete activity logging');
     }
-  },
 
-  // Update released Platelet record
-  async updateReleasedPlateletStock(id, plateletData) {
-    try {
-      const query = `
+    await client.query("COMMIT");
+    return true;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error deleting released plasma stock:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
+async updateReleasedPlateletStock(id, plateletData, userData) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    
+    const query = `
       UPDATE released_blood SET
         rb_serial_id = $2,
         rb_blood_type = $3,
@@ -1769,41 +2413,141 @@ const dbService = {
         rb_timestamp = $6,
         rb_expiration_date = $7,
         rb_status = $8,
+        rb_source = $9,
         rb_modified_at = NOW()
       WHERE rb_id = $1 AND rb_category = 'Platelet'
+      RETURNING rb_serial_id
     `;
 
-      const values = [
-        id,
-        plateletData.serial_id,
-        plateletData.type,
-        plateletData.rhFactor,
-        parseInt(plateletData.volume),
-        new Date(plateletData.collection),
-        new Date(plateletData.expiration),
-        plateletData.status || "Released",
-      ];
+    const values = [
+      id,
+      plateletData.serial_id,
+      plateletData.type,
+      plateletData.rhFactor,
+      parseInt(plateletData.volume),
+      new Date(plateletData.collection),
+      new Date(plateletData.expiration),
+      plateletData.status || "Released",
+      plateletData.source || "Walk-In",
+    ];
 
-      await pool.query(query, values);
-      return true;
-    } catch (error) {
-      console.error("Error updating released platelet stock:", error);
-      throw error;
-    }
-  },
+    // FIXED: Execute query only once and store result
+    const result = await client.query(query, values);
 
-  // Delete released Platelet records
-  async deleteReleasedPlateletStock(ids) {
-    try {
-      const query =
-        "DELETE FROM released_blood WHERE rb_id = ANY($1) AND rb_category = 'Platelet'";
-      await pool.query(query, [ids]);
-      return true;
-    } catch (error) {
-      console.error("Error deleting released platelet stock:", error);
-      throw error;
+    // FIXED: Record activity with proper userData check
+    if (userData && userData.id && userData.fullName && result.rows.length > 0) {
+      try {
+        const serialId = result.rows[0].rb_serial_id;
+        const activityQuery = `
+          INSERT INTO recent_activity (
+            ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+            ra_entity_type, ra_entity_id, ra_details, ra_created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+          RETURNING ra_id
+        `;
+        
+        const activityValues = [
+          userData.id,
+          userData.fullName,
+          "UPDATE",
+          `Updated Released Platelet: ${serialId} (${plateletData.type}${plateletData.rhFactor})`,
+          "released_blood_platelet",
+          serialId,
+          JSON.stringify({ 
+            bloodType: plateletData.type, 
+            rhFactor: plateletData.rhFactor, 
+            volume: plateletData.volume,
+            source: plateletData.source
+          })
+        ];
+        
+        await client.query(activityQuery, activityValues);
+        console.log('✓ Activity logged for Platelet update');
+      } catch (activityError) {
+        console.error('Failed to record update activity (non-critical):', activityError);
+      }
+    } else {
+      console.warn('⚠ No userData provided for Platelet update activity logging');
     }
-  },
+
+    await client.query("COMMIT");
+    return true;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error updating released platelet stock:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
+
+async deleteReleasedPlateletStock(ids, userData) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Get records before deletion
+    const getRecordsQuery = `
+      SELECT rb_id, rb_serial_id, rb_blood_type, rb_rh_factor, rb_volume, rb_source
+      FROM released_blood 
+      WHERE rb_id = ANY($1) AND rb_category = 'Platelet'
+    `;
+    const records = await client.query(getRecordsQuery, [ids]);
+
+    const query = "DELETE FROM released_blood WHERE rb_id = ANY($1) AND rb_category = 'Platelet'";
+    await client.query(query, [ids]);
+
+    // FIXED: Record activity with proper userData check
+    if (userData && userData.id && userData.fullName && records.rows.length > 0) {
+      try {
+        const serialIds = records.rows.map(r => r.rb_serial_id).join(", ");
+        const activityQuery = `
+          INSERT INTO recent_activity (
+            ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+            ra_entity_type, ra_entity_id, ra_details, ra_created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+          RETURNING ra_id
+        `;
+        
+        const activityValues = [
+          userData.id,
+          userData.fullName,
+          "DELETE",
+          `Deleted ${records.rows.length} Released Platelet record(s): ${serialIds}`,
+          "released_blood_platelet",
+          serialIds,
+          JSON.stringify({ 
+            deletedCount: records.rows.length, 
+            records: records.rows.map(r => ({
+              serial_id: r.rb_serial_id,
+              bloodType: r.rb_blood_type,
+              rhFactor: r.rb_rh_factor,
+              volume: r.rb_volume,
+              source: r.rb_source
+            }))
+          })
+        ];
+        
+        await client.query(activityQuery, activityValues);
+        console.log('✓ Activity logged for Platelet deletion');
+      } catch (activityError) {
+        console.error('Failed to record delete activity (non-critical):', activityError);
+      }
+    } else {
+      console.warn('⚠ No userData provided for Platelet delete activity logging');
+    }
+
+    await client.query("COMMIT");
+    return true;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error deleting released platelet stock:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
 
   // ========== RESTORE BLOOD STOCK METHODS ==========
 
@@ -2156,11 +2900,11 @@ const dbService = {
     }
   },
 
-  async transferToNonConforming(serialIds) {
+  async transferToNonConforming(serialIds, userData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
       const getStockQuery = `
         SELECT * FROM blood_stock 
         WHERE bs_serial_id = ANY($1) 
@@ -2168,16 +2912,16 @@ const dbService = {
           AND bs_category = 'Red Blood Cell'
       `;
       const stockResult = await client.query(getStockQuery, [serialIds]);
-
+  
       if (stockResult.rows.length === 0) {
         throw new Error(
           "No valid Red Blood Cell stock records found for transfer to non-conforming"
         );
       }
-
+  
       let transferredCount = 0;
       const serialIdsToDelete = [];
-
+  
       for (const stockRecord of stockResult.rows) {
         const checkExistingQuery = `
           SELECT nc_id FROM non_conforming 
@@ -2186,21 +2930,21 @@ const dbService = {
         const existingResult = await client.query(checkExistingQuery, [
           stockRecord.bs_serial_id,
         ]);
-
+  
         if (existingResult.rows.length > 0) {
           console.warn(
             `Serial ID ${stockRecord.bs_serial_id} already exists in non_conforming for Red Blood Cell category, skipping`
           );
           continue;
         }
-
+  
         const insertQuery = `
           INSERT INTO non_conforming (
             nc_serial_id, nc_blood_type, nc_rh_factor, nc_volume,
             nc_timestamp, nc_expiration_date, nc_status, nc_created_at, nc_category, nc_source
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         `;
-
+  
         const values = [
           stockRecord.bs_serial_id,
           stockRecord.bs_blood_type,
@@ -2213,12 +2957,12 @@ const dbService = {
           "Red Blood Cell",
           stockRecord.bs_source || "Walk-In",
         ];
-
+  
         await client.query(insertQuery, values);
         transferredCount++;
         serialIdsToDelete.push(stockRecord.bs_serial_id);
       }
-
+  
       if (serialIdsToDelete.length > 0) {
         const deleteQuery = `
           DELETE FROM blood_stock 
@@ -2228,7 +2972,42 @@ const dbService = {
         `;
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
-
+  
+      // Record activity
+      if (userData && userData.id && userData.fullName && transferredCount > 0) {
+        try {
+          const serialIdsList = serialIdsToDelete.join(", ");
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "TRANSFER",
+            `Transferred ${transferredCount} RBC unit(s) to Non-Conforming: ${serialIdsList}`,
+            "non_conforming_rbc",
+            serialIdsList,
+            JSON.stringify({ 
+              transferredCount: transferredCount,
+              serialIds: serialIdsToDelete,
+              category: "Red Blood Cell"
+            })
+          ];
+          
+          await client.query(activityQuery, activityValues);
+          console.log('✓ Activity logged for transfer to non-conforming');
+        } catch (activityError) {
+          console.error('Failed to record transfer activity (non-critical):', activityError);
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging during transfer');
+      }
+  
       await client.query("COMMIT");
       return { success: true, transferredCount: transferredCount };
     } catch (error) {
@@ -2240,8 +3019,11 @@ const dbService = {
     }
   },
 
-  async updateNonConforming(id, ncData) {
+  async updateNonConforming(id, ncData, userData) {
+    const client = await pool.connect();
     try {
+      await client.query("BEGIN");
+  
       const query = `
         UPDATE non_conforming SET
           nc_serial_id = $2,
@@ -2255,8 +3037,9 @@ const dbService = {
           nc_category = $9,
           nc_source = $10
         WHERE nc_id = $1 AND nc_category = 'Red Blood Cell'
+        RETURNING nc_serial_id
       `;
-
+  
       const values = [
         id,
         ncData.serial_id,
@@ -2267,16 +3050,267 @@ const dbService = {
         new Date(ncData.expiration),
         "Non-Conforming",
         "Red Blood Cell",
-        ncData.source || "Walk-In", // ENSURE THIS IS HERE
+        ncData.source || "Walk-In",
       ];
-
-      await pool.query(query, values);
+  
+      const result = await client.query(query, values);
+  
+      // Record activity
+      if (userData && userData.id && userData.fullName && result.rows.length > 0) {
+        try {
+          const serialId = result.rows[0].nc_serial_id;
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "UPDATE",
+            `Updated Non-Conforming RBC: ${serialId} (${ncData.type}${ncData.rhFactor})`,
+            "non_conforming_rbc",
+            serialId,
+            JSON.stringify({ 
+              bloodType: ncData.type, 
+              rhFactor: ncData.rhFactor, 
+              volume: ncData.volume,
+              source: ncData.source || "Walk-In"
+            })
+          ];
+          
+          await client.query(activityQuery, activityValues);
+          console.log('✓ Activity logged for non-conforming update');
+        } catch (activityError) {
+          console.error('Failed to record update activity (non-critical):', activityError);
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging during update');
+      }
+  
+      await client.query("COMMIT");
       return true;
     } catch (error) {
+      await client.query("ROLLBACK");
       console.error("Error updating non-conforming record:", error);
       throw error;
+    } finally {
+      client.release();
     }
   },
+
+  async deleteNonConforming(ids, userData) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+  
+      // Get records before deletion
+      const getRecordsQuery = `
+        SELECT nc_serial_id, nc_blood_type, nc_rh_factor, nc_volume, nc_source 
+        FROM non_conforming 
+        WHERE nc_id = ANY($1) AND nc_category = 'Red Blood Cell'
+      `;
+      const records = await client.query(getRecordsQuery, [ids]);
+  
+      const query = "DELETE FROM non_conforming WHERE nc_id = ANY($1) AND nc_category = 'Red Blood Cell'";
+      await client.query(query, [ids]);
+  
+      // Record activity
+      if (userData && userData.id && userData.fullName && records.rows.length > 0) {
+        try {
+          const serialIds = records.rows.map(r => r.nc_serial_id).join(", ");
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "DELETE",
+            `Deleted ${records.rows.length} Non-Conforming RBC record(s): ${serialIds}`,
+            "non_conforming_rbc",
+            serialIds,
+            JSON.stringify({ 
+              deletedCount: records.rows.length, 
+              records: records.rows.map(r => ({
+                serial_id: r.nc_serial_id,
+                bloodType: r.nc_blood_type,
+                rhFactor: r.nc_rh_factor,
+                volume: r.nc_volume,
+                source: r.nc_source
+              }))
+            })
+          ];
+          
+          await client.query(activityQuery, activityValues);
+          console.log('✓ Activity logged for non-conforming deletion');
+        } catch (activityError) {
+          console.error('Failed to record delete activity (non-critical):', activityError);
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging');
+      }
+  
+      await client.query("COMMIT");
+      return true;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error deleting non-conforming records:", error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+  
+  async discardNonConformingStock(discardData, userData) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const getNonConformingQuery = `
+      SELECT * FROM non_conforming 
+      WHERE nc_serial_id = ANY($1) AND nc_category = 'Red Blood Cell'
+    `;
+    const ncResult = await client.query(getNonConformingQuery, [
+      discardData.serialIds,
+    ]);
+
+    if (ncResult.rows.length === 0) {
+      throw new Error(
+        "No valid non-conforming Red Blood Cell records found for discard"
+      );
+    }
+
+    let discardedCount = 0;
+    const serialIdsToDelete = [];
+    const discardedBloodIds = [];
+
+    for (const ncRecord of ncResult.rows) {
+      const checkExistingQuery = `
+        SELECT db_id FROM discarded_blood 
+        WHERE db_serial_id = $1 AND db_category = $2
+      `;
+      const existingResult = await client.query(checkExistingQuery, [
+        ncRecord.nc_serial_id,
+        "Red Blood Cell",
+      ]);
+
+      if (existingResult.rows.length > 0) {
+        console.warn(
+          `Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood for Red Blood Cell category, skipping`
+        );
+        continue;
+      }
+
+      const insertQuery = `
+        INSERT INTO discarded_blood (
+          db_serial_id, db_blood_type, db_rh_factor, db_volume,
+          db_timestamp, db_expiration_date, db_status, db_created_at, 
+          db_discarded_at, db_category, db_original_id,
+          db_responsible_personnel, db_reason_for_discarding, db_authorized_by,
+          db_date_of_discard, db_time_of_discard, db_method_of_disposal, db_remarks
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        RETURNING db_id
+      `;
+
+      const values = [
+        ncRecord.nc_serial_id,
+        ncRecord.nc_blood_type,
+        ncRecord.nc_rh_factor,
+        ncRecord.nc_volume,
+        ncRecord.nc_timestamp,
+        ncRecord.nc_expiration_date,
+        "Discarded",
+        ncRecord.nc_created_at,
+        "Red Blood Cell",
+        ncRecord.nc_id,
+        discardData.responsiblePersonnel,
+        discardData.reasonForDiscarding,
+        discardData.authorizedBy,
+        new Date(discardData.dateOfDiscard),
+        discardData.timeOfDiscard,
+        discardData.methodOfDisposal,
+        discardData.remarks || "",
+      ];
+
+      const insertResult = await client.query(insertQuery, values);
+      discardedBloodIds.push(insertResult.rows[0].db_id);
+      discardedCount++;
+      serialIdsToDelete.push(ncRecord.nc_serial_id);
+    }
+
+    if (serialIdsToDelete.length > 0) {
+      const deleteQuery = `
+        DELETE FROM non_conforming 
+        WHERE nc_serial_id = ANY($1) AND nc_category = 'Red Blood Cell'
+      `;
+      await client.query(deleteQuery, [serialIdsToDelete]);
+    }
+
+    const invoiceResult = await this.generateDiscardedInvoiceWithClient(
+      client,
+      discardData,
+      discardedBloodIds
+    );
+
+    // FIXED: Record activity with correct variables
+    if (userData && userData.id && userData.fullName && discardedCount > 0) {
+      try {
+        const serialIdsList = serialIdsToDelete.join(", ");
+        const activityQuery = `
+          INSERT INTO recent_activity (
+            ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+            ra_entity_type, ra_entity_id, ra_details, ra_created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+          RETURNING ra_id
+        `;
+        
+        const activityValues = [
+          userData.id,
+          userData.fullName,
+          "DISCARD",
+          `Discarded ${discardedCount} Non-Conforming RBC unit(s): ${serialIdsList}`,
+          "discarded_blood_rbc",
+          serialIdsList,
+          JSON.stringify({ 
+            discardedCount: discardedCount,
+            reason: discardData.reasonForDiscarding,
+            authorizedBy: discardData.authorizedBy,
+            serialIds: serialIdsToDelete
+          })
+        ];
+        
+        await client.query(activityQuery, activityValues);
+        console.log('✓ Activity logged for discard');
+      } catch (activityError) {
+        console.error('Failed to record discard activity (non-critical):', activityError);
+      }
+    } else {
+      console.warn('⚠ No userData provided for activity logging during discard');
+    }
+
+    await client.query("COMMIT");
+    return {
+      success: true,
+      discardedCount: discardedCount,
+      invoiceId: invoiceResult.invoiceId,
+      invoiceDbId: invoiceResult.invoiceDbId,
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error discarding non-conforming stock:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
 
   async searchNonConforming(searchTerm) {
     try {
@@ -2318,127 +3352,6 @@ const dbService = {
     } catch (error) {
       console.error("Error searching non-conforming records:", error);
       throw error;
-    }
-  },
-
-  // Delete non-conforming records
-  async deleteNonConforming(ids) {
-    try {
-      const query =
-        "DELETE FROM non_conforming WHERE nc_id = ANY($1) AND nc_category = 'Red Blood Cell'";
-      await pool.query(query, [ids]);
-      return true;
-    } catch (error) {
-      console.error("Error deleting non-conforming records:", error);
-      throw error;
-    }
-  },
-  // Discard non-conforming stock (RED BLOOD CELL ONLY)
-  async discardNonConformingStock(discardData) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-
-      const getNonConformingQuery = `
-        SELECT * FROM non_conforming 
-        WHERE nc_serial_id = ANY($1) AND nc_category = 'Red Blood Cell'
-      `;
-      const ncResult = await client.query(getNonConformingQuery, [
-        discardData.serialIds,
-      ]);
-
-      if (ncResult.rows.length === 0) {
-        throw new Error(
-          "No valid non-conforming Red Blood Cell records found for discard"
-        );
-      }
-
-      let discardedCount = 0;
-      const serialIdsToDelete = [];
-      const discardedBloodIds = [];
-
-      for (const ncRecord of ncResult.rows) {
-        // Check for duplicate with BOTH serial_id AND category
-        const checkExistingQuery = `
-          SELECT db_id FROM discarded_blood 
-          WHERE db_serial_id = $1 AND db_category = $2
-        `;
-        const existingResult = await client.query(checkExistingQuery, [
-          ncRecord.nc_serial_id,
-          "Red Blood Cell",
-        ]);
-
-        if (existingResult.rows.length > 0) {
-          console.warn(
-            `Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood for Red Blood Cell category, skipping`
-          );
-          continue;
-        }
-
-        const insertQuery = `
-          INSERT INTO discarded_blood (
-            db_serial_id, db_blood_type, db_rh_factor, db_volume,
-            db_timestamp, db_expiration_date, db_status, db_created_at, 
-            db_discarded_at, db_category, db_original_id,
-            db_responsible_personnel, db_reason_for_discarding, db_authorized_by,
-            db_date_of_discard, db_time_of_discard, db_method_of_disposal, db_remarks, 
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
-          RETURNING db_id
-        `;
-
-        const values = [
-          ncRecord.nc_serial_id,
-          ncRecord.nc_blood_type,
-          ncRecord.nc_rh_factor,
-          ncRecord.nc_volume,
-          ncRecord.nc_timestamp,
-          ncRecord.nc_expiration_date,
-          "Discarded",
-          ncRecord.nc_created_at,
-          "Red Blood Cell",
-          ncRecord.nc_id,
-          discardData.responsiblePersonnel,
-          discardData.reasonForDiscarding,
-          discardData.authorizedBy,
-          new Date(discardData.dateOfDiscard),
-          discardData.timeOfDiscard,
-          discardData.methodOfDisposal,
-          discardData.remarks || "",
-        ];
-
-        const insertResult = await client.query(insertQuery, values);
-        discardedBloodIds.push(insertResult.rows[0].db_id);
-        discardedCount++;
-        serialIdsToDelete.push(ncRecord.nc_serial_id);
-      }
-
-      if (serialIdsToDelete.length > 0) {
-        const deleteQuery = `
-          DELETE FROM non_conforming 
-          WHERE nc_serial_id = ANY($1) AND nc_category = 'Red Blood Cell'
-        `;
-        await client.query(deleteQuery, [serialIdsToDelete]);
-      }
-
-      const invoiceResult = await this.generateDiscardedInvoiceWithClient(
-        client,
-        discardData,
-        discardedBloodIds
-      );
-
-      await client.query("COMMIT");
-      return {
-        success: true,
-        discardedCount: discardedCount,
-        invoiceId: invoiceResult.invoiceId,
-        invoiceDbId: invoiceResult.invoiceDbId,
-      };
-    } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("Error discarding non-conforming stock:", error);
-      throw error;
-    } finally {
-      client.release();
     }
   },
 
@@ -2530,6 +3443,29 @@ const dbService = {
       const ncResult = await client.query(getNonConformingQuery, [
         discardData.serialIds,
       ]);
+
+      if (userData && userData.id && userData.fullName && result.rows.length > 0) {
+        try {
+          const serialId = result.rows[0].nc_serial_id;
+          await this.recordActivity(
+            userData.id,
+            userData.fullName,
+            "DISCARDED",
+            `Discard Non-Conforming Platelet: ${serialId} (${ncData.type}${ncData.rhFactor})`,
+            "non_conforming_platelet",
+            serialId,
+            { 
+              bloodType: ncData.type, 
+              rhFactor: ncData.rhFactor, 
+              volume: ncData.volume,
+              source: ncData.source
+            }
+          );
+        } catch (activityError) {
+          console.error('Failed to record update activity (non-critical):', activityError);
+        }
+      }
+  
 
       if (ncResult.rows.length === 0) {
         throw new Error(
@@ -2666,6 +3602,27 @@ const dbService = {
           continue;
         }
 
+        if (userData && userData.id && userData.fullName) {
+          try {
+            await this.recordActivity(
+              userData.id,
+              userData.fullName,
+              "DISCARD",  
+              `Discard Non-Conforming Plasma: ${serialId} (${ncData.type}${ncData.rhFactor})`,
+              "non_conforming_plasma",
+              serialId,
+            { 
+              bloodType: ncData.type, 
+              rhFactor: ncData.rhFactor, 
+              volume: ncData.volume,
+              source: ncData.source
+            }
+          );
+        } catch (activityError) {
+          console.error('Failed to record update activity (non-critical):', activityError);
+        }
+      }
+
         const insertQuery = `
           INSERT INTO discarded_blood (
             db_serial_id, db_blood_type, db_rh_factor, db_volume,
@@ -2727,115 +3684,6 @@ const dbService = {
     } catch (error) {
       await client.query("ROLLBACK");
       console.error("Error discarding plasma non-conforming stock:", error);
-      throw error;
-    } finally {
-      client.release();
-    }
-  },
-
-  // Search non-conforming records for discard modal (RED BLOOD CELL ONLY)
-  async discardNonConformingStock(discardData) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-
-      const getNonConformingQuery = `
-        SELECT * FROM non_conforming 
-        WHERE nc_serial_id = ANY($1) AND nc_category = 'Red Blood Cell'
-      `;
-      const ncResult = await client.query(getNonConformingQuery, [
-        discardData.serialIds,
-      ]);
-
-      if (ncResult.rows.length === 0) {
-        throw new Error(
-          "No valid non-conforming Red Blood Cell records found for discard"
-        );
-      }
-
-      let discardedCount = 0;
-      const serialIdsToDelete = [];
-      const discardedBloodIds = [];
-
-      for (const ncRecord of ncResult.rows) {
-        // FIXED: Check for duplicate with BOTH serial_id AND category
-        const checkExistingQuery = `
-          SELECT db_id FROM discarded_blood 
-          WHERE db_serial_id = $1 AND db_category = $2
-        `;
-        const existingResult = await client.query(checkExistingQuery, [
-          ncRecord.nc_serial_id,
-          "Red Blood Cell", // Add category to the check
-        ]);
-
-        if (existingResult.rows.length > 0) {
-          console.warn(
-            `Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood for Red Blood Cell category, skipping`
-          );
-          continue;
-        }
-
-        const insertQuery = `
-          INSERT INTO discarded_blood (
-            db_serial_id, db_blood_type, db_rh_factor, db_volume,
-            db_timestamp, db_expiration_date, db_status, db_created_at, 
-            db_discarded_at, db_category, db_original_id,
-            db_responsible_personnel, db_reason_for_discarding, db_authorized_by,
-            db_date_of_discard, db_time_of_discard, db_method_of_disposal, db_remarks
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
-          RETURNING db_id
-        `;
-
-        const values = [
-          ncRecord.nc_serial_id,
-          ncRecord.nc_blood_type,
-          ncRecord.nc_rh_factor,
-          ncRecord.nc_volume,
-          ncRecord.nc_timestamp,
-          ncRecord.nc_expiration_date,
-          "Discarded",
-          ncRecord.nc_created_at,
-          "Red Blood Cell",
-          ncRecord.nc_id,
-          discardData.responsiblePersonnel,
-          discardData.reasonForDiscarding,
-          discardData.authorizedBy,
-          new Date(discardData.dateOfDiscard),
-          discardData.timeOfDiscard,
-          discardData.methodOfDisposal,
-          discardData.remarks || "",
-        ];
-
-        const insertResult = await client.query(insertQuery, values);
-        discardedBloodIds.push(insertResult.rows[0].db_id);
-        discardedCount++;
-        serialIdsToDelete.push(ncRecord.nc_serial_id);
-      }
-
-      if (serialIdsToDelete.length > 0) {
-        const deleteQuery = `
-          DELETE FROM non_conforming 
-          WHERE nc_serial_id = ANY($1) AND nc_category = 'Red Blood Cell'
-        `;
-        await client.query(deleteQuery, [serialIdsToDelete]);
-      }
-
-      const invoiceResult = await this.generateDiscardedInvoiceWithClient(
-        client,
-        discardData,
-        discardedBloodIds
-      );
-
-      await client.query("COMMIT");
-      return {
-        success: true,
-        discardedCount: discardedCount,
-        invoiceId: invoiceResult.invoiceId,
-        invoiceDbId: invoiceResult.invoiceDbId,
-      };
-    } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("Error discarding non-conforming stock:", error);
       throw error;
     } finally {
       client.release();
@@ -2952,12 +3800,11 @@ const dbService = {
     }
   },
 
-  // Transfer platelet stock to non-conforming
-  async transferPlateletToNonConforming(serialIds) {
+  async transferPlateletToNonConforming(serialIds, userData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
       const getStockQuery = `
         SELECT * FROM blood_stock 
         WHERE bs_serial_id = ANY($1) 
@@ -2965,16 +3812,16 @@ const dbService = {
           AND bs_category = 'Platelet'
       `;
       const stockResult = await client.query(getStockQuery, [serialIds]);
-
+  
       if (stockResult.rows.length === 0) {
         throw new Error(
           "No valid Platelet stock records found for transfer to non-conforming"
         );
       }
-
+  
       let transferredCount = 0;
       const serialIdsToDelete = [];
-
+  
       for (const stockRecord of stockResult.rows) {
         const checkExistingQuery = `
           SELECT nc_id FROM non_conforming 
@@ -2983,21 +3830,21 @@ const dbService = {
         const existingResult = await client.query(checkExistingQuery, [
           stockRecord.bs_serial_id,
         ]);
-
+  
         if (existingResult.rows.length > 0) {
           console.warn(
             `Serial ID ${stockRecord.bs_serial_id} already exists in non_conforming for Platelet category, skipping`
           );
           continue;
         }
-
+  
         const insertQuery = `
           INSERT INTO non_conforming (
             nc_serial_id, nc_blood_type, nc_rh_factor, nc_volume,
             nc_timestamp, nc_expiration_date, nc_status, nc_created_at, nc_category, nc_source
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         `;
-
+  
         const values = [
           stockRecord.bs_serial_id,
           stockRecord.bs_blood_type,
@@ -3010,12 +3857,12 @@ const dbService = {
           "Platelet",
           stockRecord.bs_source || "Walk-In",
         ];
-
+  
         await client.query(insertQuery, values);
         transferredCount++;
         serialIdsToDelete.push(stockRecord.bs_serial_id);
       }
-
+  
       if (serialIdsToDelete.length > 0) {
         const deleteQuery = `
           DELETE FROM blood_stock 
@@ -3025,7 +3872,42 @@ const dbService = {
         `;
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
-
+  
+      // FIXED: Record activity with proper userData check
+      if (userData && userData.id && userData.fullName && transferredCount > 0) {
+        try {
+          const serialIdsList = serialIdsToDelete.join(", ");
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "TRANSFER",
+            `Transferred ${transferredCount} Platelet unit(s) to Non-Conforming: ${serialIdsList}`,
+            "non_conforming_platelet",
+            serialIdsList,
+            JSON.stringify({ 
+              transferredCount: transferredCount,
+              serialIds: serialIdsToDelete,
+              category: "Platelet"
+            })
+          ];
+          
+          await client.query(activityQuery, activityValues);
+          console.log('✓ Activity logged for Platelet transfer to non-conforming');
+        } catch (activityError) {
+          console.error('Failed to record transfer activity (non-critical):', activityError);
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging during transfer');
+      }
+  
       await client.query("COMMIT");
       return { success: true, transferredCount: transferredCount };
     } catch (error) {
@@ -3037,9 +3919,11 @@ const dbService = {
     }
   },
 
-  // Update platelet non-conforming record
-  async updatePlateletNonConforming(id, ncData) {
+  async updatePlateletNonConforming(id, ncData, userData) {
+    const client = await pool.connect();
     try {
+      await client.query("BEGIN");
+  
       const query = `
         UPDATE non_conforming SET
           nc_serial_id = $2,
@@ -3050,10 +3934,12 @@ const dbService = {
           nc_expiration_date = $7,
           nc_status = $8,
           nc_modified_at = NOW(),
-          nc_category = $9
+          nc_category = $9,
+          nc_source = $10
         WHERE nc_id = $1 AND nc_category = 'Platelet'
+        RETURNING nc_serial_id
       `;
-
+  
       const values = [
         id,
         ncData.serial_id,
@@ -3064,26 +3950,266 @@ const dbService = {
         new Date(ncData.expiration),
         "Non-Conforming",
         "Platelet",
+        ncData.source || "Walk-In",
       ];
-
-      await pool.query(query, values);
+  
+      const result = await client.query(query, values);
+  
+      // FIXED: Record activity with proper userData check
+      if (userData && userData.id && userData.fullName && result.rows.length > 0) {
+        try {
+          const serialId = result.rows[0].nc_serial_id;
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "UPDATE",
+            `Updated Non-Conforming Platelet: ${serialId} (${ncData.type}${ncData.rhFactor})`,
+            "non_conforming_platelet",
+            serialId,
+            JSON.stringify({ 
+              bloodType: ncData.type, 
+              rhFactor: ncData.rhFactor, 
+              volume: ncData.volume,
+              source: ncData.source || "Walk-In"
+            })
+          ];
+          
+          await client.query(activityQuery, activityValues);
+          console.log('✓ Activity logged for Platelet non-conforming update');
+        } catch (activityError) {
+          console.error('Failed to record update activity (non-critical):', activityError);
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging during update');
+      }
+  
+      await client.query("COMMIT");
       return true;
     } catch (error) {
+      await client.query("ROLLBACK");
       console.error("Error updating platelet non-conforming record:", error);
       throw error;
+    } finally {
+      client.release();
     }
   },
 
-  // Delete platelet non-conforming records
-  async deletePlateletNonConforming(ids) {
+  async deletePlateletNonConforming(ids, userData) {
+    const client = await pool.connect();
     try {
+      await client.query("BEGIN");
+  
+      // Get records before deletion
+      const getRecordsQuery = `
+        SELECT nc_serial_id, nc_blood_type, nc_rh_factor, nc_volume, nc_source
+        FROM non_conforming 
+        WHERE nc_id = ANY($1) AND nc_category = 'Platelet'
+      `;
+      const records = await client.query(getRecordsQuery, [ids]);
+  
       const query =
         "DELETE FROM non_conforming WHERE nc_id = ANY($1) AND nc_category = 'Platelet'";
-      await pool.query(query, [ids]);
+      await client.query(query, [ids]);
+  
+      // FIXED: Record activity with proper userData check
+      if (userData && userData.id && userData.fullName && records.rows.length > 0) {
+        try {
+          const serialIds = records.rows.map(r => r.nc_serial_id).join(", ");
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "DELETE",
+            `Deleted ${records.rows.length} Non-Conforming Platelet record(s): ${serialIds}`,
+            "non_conforming_platelet",
+            serialIds,
+            JSON.stringify({ 
+              deletedCount: records.rows.length, 
+              records: records.rows.map(r => ({
+                serial_id: r.nc_serial_id,
+                bloodType: r.nc_blood_type,
+                rhFactor: r.nc_rh_factor,
+                volume: r.nc_volume,
+                source: r.nc_source
+              }))
+            })
+          ];
+          
+          await client.query(activityQuery, activityValues);
+          console.log('✓ Activity logged for Platelet non-conforming deletion');
+        } catch (activityError) {
+          console.error('Failed to record delete activity (non-critical):', activityError);
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging');
+      }
+  
+      await client.query("COMMIT");
       return true;
     } catch (error) {
+      await client.query("ROLLBACK");
       console.error("Error deleting platelet non-conforming records:", error);
       throw error;
+    } finally {
+      client.release();
+    }
+  },
+  
+  async discardPlateletNonConformingStock(discardData, userData) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+  
+      const getNonConformingQuery = `
+        SELECT * FROM non_conforming 
+        WHERE nc_serial_id = ANY($1) AND nc_category = 'Platelet'
+      `;
+      const ncResult = await client.query(getNonConformingQuery, [
+        discardData.serialIds,
+      ]);
+  
+      if (ncResult.rows.length === 0) {
+        throw new Error(
+          "No valid platelet non-conforming records found for discard"
+        );
+      }
+  
+      let discardedCount = 0;
+      const serialIdsToDelete = [];
+      const discardedBloodIds = [];
+  
+      for (const ncRecord of ncResult.rows) {
+        const checkExistingQuery = `
+          SELECT db_id FROM discarded_blood 
+          WHERE db_serial_id = $1 AND db_category = $2
+        `;
+        const existingResult = await client.query(checkExistingQuery, [
+          ncRecord.nc_serial_id,
+          "Platelet",
+        ]);
+  
+        if (existingResult.rows.length > 0) {
+          console.warn(
+            `Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood for Platelet category, skipping`
+          );
+          continue;
+        }
+  
+        const insertQuery = `
+          INSERT INTO discarded_blood (
+            db_serial_id, db_blood_type, db_rh_factor, db_volume,
+            db_timestamp, db_expiration_date, db_status, db_created_at, 
+            db_discarded_at, db_category, db_original_id,
+            db_responsible_personnel, db_reason_for_discarding, db_authorized_by,
+            db_date_of_discard, db_time_of_discard, db_method_of_disposal, db_remarks
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
+          RETURNING db_id
+        `;
+  
+        const values = [
+          ncRecord.nc_serial_id,
+          ncRecord.nc_blood_type,
+          ncRecord.nc_rh_factor,
+          ncRecord.nc_volume,
+          ncRecord.nc_timestamp,
+          ncRecord.nc_expiration_date,
+          "Discarded",
+          ncRecord.nc_created_at,
+          "Platelet",
+          ncRecord.nc_id,
+          discardData.responsiblePersonnel,
+          discardData.reasonForDiscarding,
+          discardData.authorizedBy,
+          new Date(discardData.dateOfDiscard),
+          discardData.timeOfDiscard,
+          discardData.methodOfDisposal,
+          discardData.remarks || "",
+        ];
+  
+        const insertResult = await client.query(insertQuery, values);
+        discardedBloodIds.push(insertResult.rows[0].db_id);
+        discardedCount++;
+        serialIdsToDelete.push(ncRecord.nc_serial_id);
+      }
+  
+      if (serialIdsToDelete.length > 0) {
+        const deleteQuery = `
+          DELETE FROM non_conforming 
+          WHERE nc_serial_id = ANY($1) AND nc_category = 'Platelet'
+        `;
+        await client.query(deleteQuery, [serialIdsToDelete]);
+      }
+  
+      const invoiceResult = await this.generateDiscardedInvoiceWithClient(
+        client,
+        discardData,
+        discardedBloodIds
+      );
+  
+      // FIXED: Record activity with proper userData check
+      if (userData && userData.id && userData.fullName && discardedCount > 0) {
+        try {
+          const serialIdsList = serialIdsToDelete.join(", ");
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "DISCARD",
+            `Discarded ${discardedCount} Non-Conforming Platelet unit(s): ${serialIdsList}`,
+            "discarded_blood_platelet",
+            serialIdsList,
+            JSON.stringify({ 
+              discardedCount: discardedCount,
+              reason: discardData.reasonForDiscarding,
+              authorizedBy: discardData.authorizedBy,
+              serialIds: serialIdsToDelete
+            })
+          ];
+          
+          await client.query(activityQuery, activityValues);
+          console.log('✓ Activity logged for Platelet non-conforming discard');
+        } catch (activityError) {
+          console.error('Failed to record discard activity (non-critical):', activityError);
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging during discard');
+      }
+  
+      await client.query("COMMIT");
+      return {
+        success: true,
+        discardedCount: discardedCount,
+        invoiceId: invoiceResult.invoiceId,
+        invoiceDbId: invoiceResult.invoiceDbId,
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error discarding platelet non-conforming stock:", error);
+      throw error;
+    } finally {
+      client.release();
     }
   },
 
@@ -3130,11 +4256,11 @@ const dbService = {
   },
 
   // Discard platelet non-conforming stock
-  async discardPlateletNonConformingStock(discardData) {
+  async discardPlateletNonConformingStock(discardData, userData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
       const getNonConformingQuery = `
         SELECT * FROM non_conforming 
         WHERE nc_serial_id = ANY($1) AND nc_category = 'Platelet'
@@ -3142,17 +4268,17 @@ const dbService = {
       const ncResult = await client.query(getNonConformingQuery, [
         discardData.serialIds,
       ]);
-
+  
       if (ncResult.rows.length === 0) {
         throw new Error(
           "No valid platelet non-conforming records found for discard"
         );
       }
-
+  
       let discardedCount = 0;
       const serialIdsToDelete = [];
       const discardedBloodIds = [];
-
+  
       for (const ncRecord of ncResult.rows) {
         // Check for duplicate with BOTH serial_id AND category
         const checkExistingQuery = `
@@ -3163,14 +4289,14 @@ const dbService = {
           ncRecord.nc_serial_id,
           "Platelet",
         ]);
-
+  
         if (existingResult.rows.length > 0) {
           console.warn(
             `Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood for Platelet category, skipping`
           );
           continue;
         }
-
+  
         const insertQuery = `
           INSERT INTO discarded_blood (
             db_serial_id, db_blood_type, db_rh_factor, db_volume,
@@ -3181,7 +4307,7 @@ const dbService = {
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
           RETURNING db_id
         `;
-
+  
         const values = [
           ncRecord.nc_serial_id,
           ncRecord.nc_blood_type,
@@ -3201,13 +4327,13 @@ const dbService = {
           discardData.methodOfDisposal,
           discardData.remarks || "",
         ];
-
+  
         const insertResult = await client.query(insertQuery, values);
         discardedBloodIds.push(insertResult.rows[0].db_id);
         discardedCount++;
         serialIdsToDelete.push(ncRecord.nc_serial_id);
       }
-
+  
       if (serialIdsToDelete.length > 0) {
         const deleteQuery = `
           DELETE FROM non_conforming 
@@ -3215,13 +4341,49 @@ const dbService = {
         `;
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
-
+  
       const invoiceResult = await this.generateDiscardedInvoiceWithClient(
         client,
         discardData,
         discardedBloodIds
       );
-
+  
+      // FIXED: Record activity with proper userData check
+      if (userData && userData.id && userData.fullName && discardedCount > 0) {
+        try {
+          const serialIdsList = serialIdsToDelete.join(", ");
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "DISCARD",
+            `Discarded ${discardedCount} Non-Conforming Platelet unit(s): ${serialIdsList}`,
+            "discarded_blood_platelet",
+            serialIdsList,
+            JSON.stringify({ 
+              discardedCount: discardedCount,
+              reason: discardData.reasonForDiscarding,
+              authorizedBy: discardData.authorizedBy,
+              serialIds: serialIdsToDelete
+            })
+          ];
+          
+          await client.query(activityQuery, activityValues);
+          console.log('✓ Activity logged for Platelet non-conforming discard');
+        } catch (activityError) {
+          console.error('Failed to record discard activity (non-critical):', activityError);
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging during discard');
+      }
+  
       await client.query("COMMIT");
       return {
         success: true,
@@ -3413,7 +4575,7 @@ const dbService = {
   },
 
   // Transfer plasma stock to non-conforming
-  async transferPlasmaToNonConforming(serialIds) {
+  async transferPlasmaToNonConforming(serialIds, userData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -3486,6 +4648,41 @@ const dbService = {
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
 
+      // FIXED: Record activity with proper userData check
+      if (userData && userData.id && userData.fullName && transferredCount > 0) {
+        try {
+          const serialIdsList = serialIdsToDelete.join(", ");
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "TRANSFER",
+            `Transferred ${transferredCount} Plasma unit(s) to Non-Conforming: ${serialIdsList}`,
+            "non_conforming_plasma",
+            serialIdsList,
+            JSON.stringify({ 
+              transferredCount: transferredCount,
+              serialIds: serialIdsToDelete,
+              category: "Plasma"
+            })
+          ];
+          
+          await client.query(activityQuery, activityValues);
+          console.log('✓ Activity logged for Plasma transfer to non-conforming');
+        } catch (activityError) {
+          console.error('Failed to record transfer activity (non-critical):', activityError);
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging during transfer');
+      }
+
       await client.query("COMMIT");
       return { success: true, transferredCount: transferredCount };
     } catch (error) {
@@ -3496,10 +4693,12 @@ const dbService = {
       client.release();
     }
   },
-
   // Update plasma non-conforming record
-  async updatePlasmaNonConforming(id, ncData) {
+  async updatePlasmaNonConforming(id, ncData, userData) {
+    const client = await pool.connect();
     try {
+      await client.query("BEGIN");
+  
       const query = `
         UPDATE non_conforming SET
           nc_serial_id = $2,
@@ -3510,10 +4709,12 @@ const dbService = {
           nc_expiration_date = $7,
           nc_status = $8,
           nc_modified_at = NOW(),
-          nc_category = $9
+          nc_category = $9,
+          nc_source = $10
         WHERE nc_id = $1 AND nc_category = 'Plasma'
+        RETURNING nc_serial_id
       `;
-
+  
       const values = [
         id,
         ncData.serial_id,
@@ -3524,28 +4725,126 @@ const dbService = {
         new Date(ncData.expiration),
         "Non-Conforming",
         "Plasma",
+        ncData.source || "Walk-In",
       ];
-
-      await pool.query(query, values);
+  
+      const result = await client.query(query, values);
+  
+      // FIXED: Record activity with proper userData check
+      if (userData && userData.id && userData.fullName && result.rows.length > 0) {
+        try {
+          const serialId = result.rows[0].nc_serial_id;
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "UPDATE",
+            `Updated Non-Conforming Plasma: ${serialId} (${ncData.type}${ncData.rhFactor})`,
+            "non_conforming_plasma",
+            serialId,
+            JSON.stringify({ 
+              bloodType: ncData.type, 
+              rhFactor: ncData.rhFactor, 
+              volume: ncData.volume,
+              source: ncData.source || "Walk-In"
+            })
+          ];
+          
+          await client.query(activityQuery, activityValues);
+          console.log('✓ Activity logged for Plasma non-conforming update');
+        } catch (activityError) {
+          console.error('Failed to record update activity (non-critical):', activityError);
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging during update');
+      }
+  
+      await client.query("COMMIT");
       return true;
     } catch (error) {
+      await client.query("ROLLBACK");
       console.error("Error updating plasma non-conforming record:", error);
       throw error;
+    } finally {
+      client.release();
     }
   },
 
   // Delete plasma non-conforming records
-  async deletePlasmaNonConforming(ids) {
-    try {
-      const query =
-        "DELETE FROM non_conforming WHERE nc_id = ANY($1) AND nc_category = 'Plasma'";
-      await pool.query(query, [ids]);
-      return true;
-    } catch (error) {
-      console.error("Error deleting plasma non-conforming records:", error);
-      throw error;
+async deletePlasmaNonConforming(ids, userData) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Get records before deletion
+    const getRecordsQuery = `
+      SELECT nc_serial_id, nc_blood_type, nc_rh_factor, nc_volume, nc_source
+      FROM non_conforming 
+      WHERE nc_id = ANY($1) AND nc_category = 'Plasma'
+    `;
+    const records = await client.query(getRecordsQuery, [ids]);
+
+    const query =
+      "DELETE FROM non_conforming WHERE nc_id = ANY($1) AND nc_category = 'Plasma'";
+    await client.query(query, [ids]);
+
+    // FIXED: Record activity with proper userData check
+    if (userData && userData.id && userData.fullName && records.rows.length > 0) {
+      try {
+        const serialIds = records.rows.map(r => r.nc_serial_id).join(", ");
+        const activityQuery = `
+          INSERT INTO recent_activity (
+            ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+            ra_entity_type, ra_entity_id, ra_details, ra_created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+          RETURNING ra_id
+        `;
+        
+        const activityValues = [
+          userData.id,
+          userData.fullName,
+          "DELETE",
+          `Deleted ${records.rows.length} Non-Conforming Plasma record(s): ${serialIds}`,
+          "non_conforming_plasma",
+          serialIds,
+          JSON.stringify({ 
+            deletedCount: records.rows.length, 
+            records: records.rows.map(r => ({
+              serial_id: r.nc_serial_id,
+              bloodType: r.nc_blood_type,
+              rhFactor: r.nc_rh_factor,
+              volume: r.nc_volume,
+              source: r.nc_source
+            }))
+          })
+        ];
+        
+        await client.query(activityQuery, activityValues);
+        console.log('✓ Activity logged for Plasma non-conforming deletion');
+      } catch (activityError) {
+        console.error('Failed to record delete activity (non-critical):', activityError);
+      }
+    } else {
+      console.warn('⚠ No userData provided for activity logging');
     }
-  },
+
+    await client.query("COMMIT");
+    return true;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error deleting plasma non-conforming records:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
 
   // Search plasma non-conforming records
   async searchPlasmaNonConforming(searchTerm) {
@@ -3589,12 +4888,11 @@ const dbService = {
     }
   },
 
-  // Discard plasma non-conforming stock
-  async discardPlasmaNonConformingStock(discardData) {
+  async discardPlasmaNonConformingStock(discardData, userData) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-
+  
       const getNonConformingQuery = `
         SELECT * FROM non_conforming 
         WHERE nc_serial_id = ANY($1) AND nc_category = 'Plasma'
@@ -3602,19 +4900,18 @@ const dbService = {
       const ncResult = await client.query(getNonConformingQuery, [
         discardData.serialIds,
       ]);
-
+  
       if (ncResult.rows.length === 0) {
         throw new Error(
           "No valid plasma non-conforming records found for discard"
         );
       }
-
+  
       let discardedCount = 0;
       const serialIdsToDelete = [];
       const discardedBloodIds = [];
-
+  
       for (const ncRecord of ncResult.rows) {
-        // Check for duplicate with BOTH serial_id AND category
         const checkExistingQuery = `
           SELECT db_id FROM discarded_blood 
           WHERE db_serial_id = $1 AND db_category = $2
@@ -3623,14 +4920,14 @@ const dbService = {
           ncRecord.nc_serial_id,
           "Plasma",
         ]);
-
+  
         if (existingResult.rows.length > 0) {
           console.warn(
             `Serial ID ${ncRecord.nc_serial_id} already exists in discarded_blood for Plasma category, skipping`
           );
           continue;
         }
-
+  
         const insertQuery = `
           INSERT INTO discarded_blood (
             db_serial_id, db_blood_type, db_rh_factor, db_volume,
@@ -3641,7 +4938,7 @@ const dbService = {
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16, $17)
           RETURNING db_id
         `;
-
+  
         const values = [
           ncRecord.nc_serial_id,
           ncRecord.nc_blood_type,
@@ -3661,13 +4958,13 @@ const dbService = {
           discardData.methodOfDisposal,
           discardData.remarks || "",
         ];
-
+  
         const insertResult = await client.query(insertQuery, values);
         discardedBloodIds.push(insertResult.rows[0].db_id);
         discardedCount++;
         serialIdsToDelete.push(ncRecord.nc_serial_id);
       }
-
+  
       if (serialIdsToDelete.length > 0) {
         const deleteQuery = `
           DELETE FROM non_conforming 
@@ -3675,13 +4972,49 @@ const dbService = {
         `;
         await client.query(deleteQuery, [serialIdsToDelete]);
       }
-
+  
       const invoiceResult = await this.generateDiscardedInvoiceWithClient(
         client,
         discardData,
         discardedBloodIds
       );
-
+  
+      // FIXED: Record activity with proper userData check
+      if (userData && userData.id && userData.fullName && discardedCount > 0) {
+        try {
+          const serialIdsList = serialIdsToDelete.join(", ");
+          const activityQuery = `
+            INSERT INTO recent_activity (
+              ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+              ra_entity_type, ra_entity_id, ra_details, ra_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING ra_id
+          `;
+          
+          const activityValues = [
+            userData.id,
+            userData.fullName,
+            "DISCARD",
+            `Discarded ${discardedCount} Non-Conforming Plasma unit(s): ${serialIdsList}`,
+            "discarded_blood_plasma",
+            serialIdsList,
+            JSON.stringify({ 
+              discardedCount: discardedCount,
+              reason: discardData.reasonForDiscarding,
+              authorizedBy: discardData.authorizedBy,
+              serialIds: serialIdsToDelete
+            })
+          ];
+          
+          await client.query(activityQuery, activityValues);
+          console.log('✓ Activity logged for Plasma non-conforming discard');
+        } catch (activityError) {
+          console.error('Failed to record discard activity (non-critical):', activityError);
+        }
+      } else {
+        console.warn('⚠ No userData provided for activity logging during discard');
+      }
+  
       await client.query("COMMIT");
       return {
         success: true,
@@ -4024,6 +5357,27 @@ const dbService = {
         await client.query(clearInvoiceRefQuery, [releasedBloodIds]);
       }
 
+      // Record activity
+    if (userData && userData.id && userData.fullName && transferredCount > 0) {
+      try {
+        const serialIdsList = serialIdsToDelete.join(", ");
+        await this.recordActivity(
+          userData.id,
+          userData.fullName,
+          "DELETE",
+          `Deleted Discarded Invoice unit(s) to Non-Conforming: ${serialIdsList}`,
+          "non_conforming",
+          serialIdsList,
+          { 
+            transferredCount: transferredCount,
+            serialIds: serialIdsToDelete
+          }
+        );
+      } catch (activityError) {
+        console.error('Failed to record transfer activity (non-critical):', activityError);
+      }
+    }
+
       await client.query("COMMIT");
 
       return {
@@ -4209,7 +5563,6 @@ const dbService = {
   },
 
   // Get all discarded invoices with item counts
-  // Get all discarded invoices with item counts
   async getAllDiscardedBloodInvoices() {
     try {
       const query = `
@@ -4296,7 +5649,6 @@ const dbService = {
   },
 
   // Search discarded invoices
-  // Search discarded invoices
   async searchDiscardedBloodInvoices(searchTerm) {
     try {
       const query = `
@@ -4379,6 +5731,28 @@ const dbService = {
         DELETE FROM discarded_blood_invoices
         WHERE dbi_id = ANY($1::integer[])
       `;
+
+       // Record activity
+    if (userData && userData.id && userData.fullName && transferredCount > 0) {
+      try {
+        const serialIdsList = serialIdsToDelete.join(", ");
+        await this.recordActivity(
+          userData.id,
+          userData.fullName,
+          "DELETE",
+          `Delete Discarded Invoice: ${serialIdsList}`,
+          "non_conforming_rbc",
+          serialIdsList,
+          { 
+            transferredCount: transferredCount,
+            serialIds: serialIdsToDelete
+          }
+        );
+      } catch (activityError) {
+        console.error('Failed to record transfer activity (non-critical):', activityError);
+      }
+    }
+
       const deleteResult = await client.query(deleteInvoicesQuery, [
         invoiceIds,
       ]);
@@ -5222,15 +6596,15 @@ const dbService = {
           AND rb_status = 'Released'
         ORDER BY rb_date_of_release DESC
       `;
-  
+
       const result = await pool.query(query);
       return result.rows;
     } catch (error) {
-      console.error('Error fetching RBC released items:', error);
+      console.error("Error fetching RBC released items:", error);
       throw error;
     }
   },
-  
+
   async getReleasedPlasmaStockItems() {
     try {
       const query = `
@@ -5245,15 +6619,15 @@ const dbService = {
           AND rb_status = 'Released'
         ORDER BY rb_date_of_release DESC
       `;
-  
+
       const result = await pool.query(query);
       return result.rows;
     } catch (error) {
-      console.error('Error fetching Plasma released items:', error);
+      console.error("Error fetching Plasma released items:", error);
       throw error;
     }
   },
-  
+
   async getReleasedPlateletStockItems() {
     try {
       const query = `
@@ -5268,16 +6642,16 @@ const dbService = {
           AND rb_status = 'Released'
         ORDER BY rb_date_of_release DESC
       `;
-  
+
       const result = await pool.query(query);
       return result.rows;
     } catch (error) {
-      console.error('Error fetching Platelet released items:', error);
+      console.error("Error fetching Platelet released items:", error);
       throw error;
     }
   },
 
-    // Get blood stock history for a specific year
+  // Get blood stock history for a specific year
   async getBloodStockHistory(year) {
     try {
       const query = `
@@ -5303,37 +6677,40 @@ const dbService = {
     }
   },
 
-// ========== USER AUTHENTICATION METHODS ==========
+  // ========== USER AUTHENTICATION METHODS ==========
 
-// Register new user
-async registerUser(userData) {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
+  // Register new user
+  async registerUser(userData) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
 
-    // Check if email already exists
-    const checkEmailQuery = `
+      // Check if email already exists
+      const checkEmailQuery = `
       SELECT u_id FROM users WHERE u_email = $1
     `;
-    const emailCheck = await client.query(checkEmailQuery, [userData.email]);
+      const emailCheck = await client.query(checkEmailQuery, [userData.email]);
 
-    if (emailCheck.rows.length > 0) {
-      throw new Error("Email already registered");
-    }
+      if (emailCheck.rows.length > 0) {
+        throw new Error("Email already registered");
+      }
 
-    // Generate DOH ID
-    const dohIdQuery = `SELECT generate_doh_id() as doh_id`;
-    const dohIdResult = await client.query(dohIdQuery);
-    const dohId = dohIdResult.rows[0].doh_id;
+      // Generate DOH ID
+      const dohIdQuery = `SELECT generate_doh_id() as doh_id`;
+      const dohIdResult = await client.query(dohIdQuery);
+      const dohId = dohIdResult.rows[0].doh_id;
 
-    // Generate verification token
-    const verificationToken = crypto.randomBytes(32).toString('hex');
+      // Generate verification token
+      const verificationToken = crypto.randomBytes(32).toString("hex");
 
-    // Hash password
-    const hashedPassword = crypto.createHash('sha256').update(userData.password).digest('hex');
+      // Hash password
+      const hashedPassword = crypto
+        .createHash("sha256")
+        .update(userData.password)
+        .digest("hex");
 
-    // Insert new user
-    const insertQuery = `
+      // Insert new user
+      const insertQuery = `
       INSERT INTO users (
         u_doh_id, u_full_name, u_role, u_email, u_password,
         u_verification_token, u_status, u_created_at
@@ -5341,26 +6718,26 @@ async registerUser(userData) {
       RETURNING u_id, u_doh_id, u_email, u_full_name, u_role
     `;
 
-    const values = [
-      dohId,
-      userData.fullName,
-      userData.role,
-      userData.email,
-      hashedPassword,
-      verificationToken,
-      'pending'
-    ];
+      const values = [
+        dohId,
+        userData.fullName,
+        userData.role,
+        userData.email,
+        hashedPassword,
+        verificationToken,
+        "pending",
+      ];
 
-    const result = await client.query(insertQuery, values);
-    const newUser = result.rows[0];
+      const result = await client.query(insertQuery, values);
+      const newUser = result.rows[0];
 
-    const verificationUrl = `http://localhost:5173/verify-user?token=${verificationToken}`;
+      const verificationUrl = `http://localhost:5173/verify-user?token=${verificationToken}`;
 
-    const mailOptions = {
-      from: 'bloodsync.doh@gmail.com',
-      to: 'bloodsync.doh@gmail.com',
-      subject: 'New User Registration - BloodSync',
-      html: `
+      const mailOptions = {
+        from: "bloodsync.doh@gmail.com",
+        to: "bloodsync.doh@gmail.com",
+        subject: "New User Registration - BloodSync",
+        html: `
         <!DOCTYPE html>
         <html>
         <head>
@@ -5411,34 +6788,34 @@ async registerUser(userData) {
           </div>
         </body>
         </html>
-      `
-    };
+      `,
+      };
 
-    await emailTransporter.sendMail(mailOptions);
+      await emailTransporter.sendMail(mailOptions);
 
-    await client.query("COMMIT");
+      await client.query("COMMIT");
 
-    return {
-      success: true,
-      message: 'Registration successful! Please wait for admin approval.',
-      user: newUser
-    };
-  } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("Error registering user:", error);
-    throw error;
-  } finally {
-    client.release();
-  }
-},
+      return {
+        success: true,
+        message: "Registration successful! Please wait for admin approval.",
+        user: newUser,
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error registering user:", error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
 
-// Verify user
-async verifyUser(token) {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
+  // Verify user
+  async verifyUser(token) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
 
-    const query = `
+      const query = `
       UPDATE users 
       SET u_status = 'verified', 
           u_verified_at = NOW(),
@@ -5447,20 +6824,20 @@ async verifyUser(token) {
       RETURNING u_id, u_doh_id, u_email, u_full_name, u_role
     `;
 
-    const result = await client.query(query, [token]);
+      const result = await client.query(query, [token]);
 
-    if (result.rows.length === 0) {
-      throw new Error("Invalid or expired verification token");
-    }
+      if (result.rows.length === 0) {
+        throw new Error("Invalid or expired verification token");
+      }
 
-    const verifiedUser = result.rows[0];
+      const verifiedUser = result.rows[0];
 
-    // Send confirmation email to user
-    const mailOptions = {
-      from: 'bloodsync.doh@gmail.com',
-      to: verifiedUser.u_email,
-      subject: 'Account Verified - BloodSync',
-      html: `
+      // Send confirmation email to user
+      const mailOptions = {
+        from: "bloodsync.doh@gmail.com",
+        to: verifiedUser.u_email,
+        subject: "Account Verified - BloodSync",
+        html: `
         <!DOCTYPE html>
         <html>
         <head>
@@ -5493,32 +6870,31 @@ async verifyUser(token) {
           </div>
         </body>
         </html>
-      `
-    };
+      `,
+      };
 
-    await emailTransporter.sendMail(mailOptions);
+      await emailTransporter.sendMail(mailOptions);
 
-    await client.query("COMMIT");
+      await client.query("COMMIT");
 
-    return {
-      success: true,
-      message: 'User verified successfully',
-      user: verifiedUser
-    };
-  } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("Error verifying user:", error);
-    throw error;
-  } finally {
-    client.release();
-  }
-},
-
+      return {
+        success: true,
+        message: "User verified successfully",
+        user: verifiedUser,
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error verifying user:", error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
 
   // Get pending users
-async getPendingUsers() {
-  try {
-    const query = `
+  async getPendingUsers() {
+    try {
+      const query = `
       SELECT 
         u_id as id,
         u_doh_id as "dohId",
@@ -5532,18 +6908,18 @@ async getPendingUsers() {
       ORDER BY u_created_at DESC
     `;
 
-    const result = await pool.query(query);
-    return result.rows;
-  } catch (error) {
-    console.error("Error fetching pending users:", error);
-    throw error;
-  }
-},
+      const result = await pool.query(query);
+      return result.rows;
+    } catch (error) {
+      console.error("Error fetching pending users:", error);
+      throw error;
+    }
+  },
 
-// Get verified users
-async getVerifiedUsers() {
-  try {
-    const query = `
+  // Get verified users
+  async getVerifiedUsers() {
+    try {
+      const query = `
       SELECT 
         u_id as id,
         u_doh_id as "dohId",
@@ -5557,21 +6933,21 @@ async getVerifiedUsers() {
       ORDER BY u_verified_at DESC
     `;
 
-    const result = await pool.query(query);
-    return result.rows;
-  } catch (error) {
-    console.error("Error fetching verified users:", error);
-    throw error;
-  }
-},
+      const result = await pool.query(query);
+      return result.rows;
+    } catch (error) {
+      console.error("Error fetching verified users:", error);
+      throw error;
+    }
+  },
 
-// Verify user by ID (instead of token)
-async verifyUserById(userId) {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
+  // Verify user by ID (instead of token)
+  async verifyUserById(userId) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
 
-    const query = `
+      const query = `
       UPDATE users 
       SET u_status = 'verified', 
           u_verified_at = NOW(),
@@ -5580,106 +6956,106 @@ async verifyUserById(userId) {
       RETURNING u_id, u_doh_id, u_email, u_full_name, u_role
     `;
 
-    const result = await client.query(query, [userId]);
+      const result = await client.query(query, [userId]);
 
-    if (result.rows.length === 0) {
-      throw new Error("User not found");
-    }
+      if (result.rows.length === 0) {
+        throw new Error("User not found");
+      }
 
-    const verifiedUser = result.rows[0];
+      const verifiedUser = result.rows[0];
 
-    // Send confirmation email to user
-    const mailOptions = {
-      from: 'bloodsync.doh@gmail.com',
-      to: verifiedUser.u_email,
-      subject: 'Account Verified - BloodSync',
-      html: `
+      // Send confirmation email to user
+      const mailOptions = {
+        from: "bloodsync.doh@gmail.com",
+        to: verifiedUser.u_email,
+        subject: "Account Verified - BloodSync",
+        html: `
         <h2>Your BloodSync account has been verified!</h2>
         <p>Hello ${verifiedUser.u_full_name},</p>
         <p>Your account has been approved. You can now log in to BloodSync.</p>
         <p><strong>Your DOH ID:</strong> ${verifiedUser.u_doh_id}</p>
-      `
-    };
+      `,
+      };
 
-    // Only send email if transporter is configured
-    try {
-      await emailTransporter.sendMail(mailOptions);
-    } catch (emailError) {
-      console.error("Email sending failed (non-critical):", emailError);
+      // Only send email if transporter is configured
+      try {
+        await emailTransporter.sendMail(mailOptions);
+      } catch (emailError) {
+        console.error("Email sending failed (non-critical):", emailError);
+      }
+
+      await client.query("COMMIT");
+
+      return {
+        success: true,
+        message: "User verified successfully",
+        user: verifiedUser,
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error verifying user by ID:", error);
+      throw error;
+    } finally {
+      client.release();
     }
+  },
 
-    await client.query("COMMIT");
+  // Reject user
+  async rejectUser(userId) {
+    try {
+      const query = `DELETE FROM users WHERE u_id = $1`;
+      await pool.query(query, [userId]);
+      return { success: true };
+    } catch (error) {
+      console.error("Error rejecting user:", error);
+      throw error;
+    }
+  },
 
-    return {
-      success: true,
-      message: 'User verified successfully',
-      user: verifiedUser
-    };
-  } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("Error verifying user by ID:", error);
-    throw error;
-  } finally {
-    client.release();
-  }
-},
-
-// Reject user
-async rejectUser(userId) {
-  try {
-    const query = `DELETE FROM users WHERE u_id = $1`;
-    await pool.query(query, [userId]);
-    return { success: true };
-  } catch (error) {
-    console.error("Error rejecting user:", error);
-    throw error;
-  }
-},
-
-// Update user role
-async updateUserRole(userId, newRole) {
-  try {
-    const query = `
+  // Update user role
+  async updateUserRole(userId, newRole) {
+    try {
+      const query = `
       UPDATE users 
       SET u_role = $1
       WHERE u_id = $2
       RETURNING u_id, u_doh_id, u_email, u_full_name, u_role
     `;
 
-    const result = await pool.query(query, [newRole, userId]);
+      const result = await pool.query(query, [newRole, userId]);
 
-    if (result.rows.length === 0) {
-      throw new Error("User not found");
+      if (result.rows.length === 0) {
+        throw new Error("User not found");
+      }
+
+      return {
+        success: true,
+        message: "User role updated successfully",
+        user: result.rows[0],
+      };
+    } catch (error) {
+      console.error("Error updating user role:", error);
+      throw error;
     }
+  },
 
-    return {
-      success: true,
-      message: 'User role updated successfully',
-      user: result.rows[0]
-    };
-  } catch (error) {
-    console.error("Error updating user role:", error);
-    throw error;
-  }
-},
+  // Remove user (delete from database)
+  async removeUser(userId) {
+    try {
+      const query = `DELETE FROM users WHERE u_id = $1`;
+      await pool.query(query, [userId]);
+      return { success: true, message: "User removed successfully" };
+    } catch (error) {
+      console.error("Error removing user:", error);
+      throw error;
+    }
+  },
 
-// Remove user (delete from database)
-async removeUser(userId) {
-  try {
-    const query = `DELETE FROM users WHERE u_id = $1`;
-    await pool.query(query, [userId]);
-    return { success: true, message: 'User removed successfully' };
-  } catch (error) {
-    console.error("Error removing user:", error);
-    throw error;
-  }
-},
+  async loginUser(email, password) {
+    try {
+      const normalizedEmail = email.trim().toLowerCase();
 
-async loginUser(email, password) {
-  try {
-    const normalizedEmail = email.trim().toLowerCase();
-    
-    const query = `
+      const query = `
       SELECT 
         u_id as id,
         u_doh_id as "dohId",
@@ -5692,49 +7068,57 @@ async loginUser(email, password) {
       WHERE LOWER(TRIM(u_email)) = $1
     `;
 
-    const result = await pool.query(query, [normalizedEmail]);
+      const result = await pool.query(query, [normalizedEmail]);
 
-    if (result.rows.length === 0) {
-      throw new Error("Invalid email or password");
+      if (result.rows.length === 0) {
+        throw new Error("Invalid email or password");
+      }
+
+      const user = result.rows[0];
+
+      if (user.status !== "verified") {
+        throw new Error(
+          "Account pending verification. Please wait for admin approval."
+        );
+      }
+
+      const hashedPassword = crypto
+        .createHash("sha256")
+        .update(password)
+        .digest("hex");
+
+      if (user.password !== hashedPassword) {
+        throw new Error("Invalid email or password");
+      }
+
+      // Update last login
+      await pool.query(
+        "UPDATE users SET u_last_login = NOW() WHERE u_id = $1",
+        [user.id]
+      );
+
+      // Log the login activity
+      await this.logUserActivity(
+        user.id,
+        "LOGIN",
+        `User ${user.fullName} logged into the system`
+      );
+
+      delete user.password;
+
+      return {
+        success: true,
+        user,
+      };
+    } catch (error) {
+      console.error("Error logging in user:", error);
+      throw error;
     }
+  },
 
-    const user = result.rows[0];
-
-    if (user.status !== 'verified') {
-      throw new Error("Account pending verification. Please wait for admin approval.");
-    }
-
-    const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
-    
-    if (user.password !== hashedPassword) {
-      throw new Error("Invalid email or password");
-    }
-
-    // Update last login
-    await pool.query('UPDATE users SET u_last_login = NOW() WHERE u_id = $1', [user.id]);
-
-    // Log the login activity
-    await this.logUserActivity(
-      user.id,
-      'LOGIN',
-      `User ${user.fullName} logged into the system`
-    );
-
-    delete user.password;
-
-    return {
-      success: true,
-      user
-    };
-  } catch (error) {
-    console.error("Error logging in user:", error);
-    throw error;
-  }
-},
-
-async getUserProfileById(userId) {
-  try {
-    const query = `
+  async getUserProfileById(userId) {
+    try {
+      const query = `
       SELECT 
         u_id as id,
         u_doh_id as "dohId",
@@ -5756,23 +7140,23 @@ async getUserProfileById(userId) {
       FROM public.users
       WHERE u_id = $1
     `;
-    
-    const result = await pool.query(query, [userId]);
-    
-    if (result.rows.length === 0) {
-      return null;
-    }
-    
-    return result.rows[0];
-  } catch (error) {
-    console.error('Error in getUserProfileById:', error);
-    throw error;
-  }
-},
 
-async updateUserProfile(userId, data) {
-  try {
-    const query = `
+      const result = await pool.query(query, [userId]);
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      return result.rows[0];
+    } catch (error) {
+      console.error("Error in getUserProfileById:", error);
+      throw error;
+    }
+  },
+
+  async updateUserProfile(userId, data) {
+    try {
+      const query = `
       UPDATE public.users
       SET 
         u_full_name = $1,
@@ -5803,56 +7187,56 @@ async updateUserProfile(userId, data) {
         u_rh_factor as "rhFactor",
         u_profile_image as "profileImage"
     `;
-    
-    const values = [
-      data.fullName,
-      data.gender,
-      data.dateOfBirth,
-      data.nationality,
-      data.civilStatus,
-      data.barangay,
-      data.phoneNumber,
-      data.bloodType,
-      data.rhFactor,
-      data.profileImage,
-      userId
-    ];
-    
-    const result = await pool.query(query, values);
-    
-    if (result.rows.length === 0) {
-      return { success: false, message: 'User not found' };
-    }
-    
-    const user = result.rows[0];
-    return {
-      success: true,
-      user: {
-        u_id: user.id,
-        u_doh_id: user.dohId,
-        u_full_name: user.fullName,
-        u_role: user.role,
-        u_email: user.email,
-        u_gender: user.gender,
-        u_date_of_birth: user.dateOfBirth,
-        u_nationality: user.nationality,
-        u_civil_status: user.civilStatus,
-        u_barangay: user.barangay,
-        u_phone_number: user.phoneNumber,
-        u_blood_type: user.bloodType,
-        u_rh_factor: user.rhFactor,
-        u_profile_image: user.profileImage
-      }
-    };
-  } catch (error) {
-    console.error('Error in updateUserProfile:', error);
-    throw error;
-  }
-},
 
-async updateUserProfileImage(userId, imageData) {
-  try {
-    const query = `
+      const values = [
+        data.fullName,
+        data.gender,
+        data.dateOfBirth,
+        data.nationality,
+        data.civilStatus,
+        data.barangay,
+        data.phoneNumber,
+        data.bloodType,
+        data.rhFactor,
+        data.profileImage,
+        userId,
+      ];
+
+      const result = await pool.query(query, values);
+
+      if (result.rows.length === 0) {
+        return { success: false, message: "User not found" };
+      }
+
+      const user = result.rows[0];
+      return {
+        success: true,
+        user: {
+          u_id: user.id,
+          u_doh_id: user.dohId,
+          u_full_name: user.fullName,
+          u_role: user.role,
+          u_email: user.email,
+          u_gender: user.gender,
+          u_date_of_birth: user.dateOfBirth,
+          u_nationality: user.nationality,
+          u_civil_status: user.civilStatus,
+          u_barangay: user.barangay,
+          u_phone_number: user.phoneNumber,
+          u_blood_type: user.bloodType,
+          u_rh_factor: user.rhFactor,
+          u_profile_image: user.profileImage,
+        },
+      };
+    } catch (error) {
+      console.error("Error in updateUserProfile:", error);
+      throw error;
+    }
+  },
+
+  async updateUserProfileImage(userId, imageData) {
+    try {
+      const query = `
       UPDATE public.users
       SET 
         u_profile_image = $1,
@@ -5862,29 +7246,29 @@ async updateUserProfileImage(userId, imageData) {
         u_id as id,
         u_profile_image as "profileImage"
     `;
-    
-    const result = await pool.query(query, [imageData, userId]);
-    
-    if (result.rows.length === 0) {
-      return { success: false, message: 'User not found' };
+
+      const result = await pool.query(query, [imageData, userId]);
+
+      if (result.rows.length === 0) {
+        return { success: false, message: "User not found" };
+      }
+
+      return {
+        success: true,
+        user: result.rows[0],
+      };
+    } catch (error) {
+      console.error("Error in updateUserProfileImage:", error);
+      throw error;
     }
-    
-    return {
-      success: true,
-      user: result.rows[0]
-    };
-  } catch (error) {
-    console.error('Error in updateUserProfileImage:', error);
-    throw error;
-  }
-},
+  },
 
-// ========== USER ACTIVITY LOG METHODS ==========
+  // ========== USER ACTIVITY LOG METHODS ==========
 
-// Log user activity
-async logUserActivity(userId, action, description) {
-  try {
-    const query = `
+  // Log user activity
+  async logUserActivity(userId, action, description) {
+    try {
+      const query = `
       INSERT INTO user_activity_log (
         ual_user_id,
         ual_action,
@@ -5894,18 +7278,18 @@ async logUserActivity(userId, action, description) {
       RETURNING ual_id
     `;
 
-    const result = await pool.query(query, [userId, action, description]);
-    return result.rows[0];
-  } catch (error) {
-    console.error("Error logging user activity:", error);
-    throw error;
-  }
-},
+      const result = await pool.query(query, [userId, action, description]);
+      return result.rows[0];
+    } catch (error) {
+      console.error("Error logging user activity:", error);
+      throw error;
+    }
+  },
 
-// Get user activity log with pagination
-async getUserActivityLog(userId, limit = 20, offset = 0) {
-  try {
-    const query = `
+  // Get user activity log with pagination
+  async getUserActivityLog(userId, limit = 20, offset = 0) {
+    try {
+      const query = `
       SELECT 
         ual_id as id,
         ual_user_id as "userId",
@@ -5920,102 +7304,111 @@ async getUserActivityLog(userId, limit = 20, offset = 0) {
       LIMIT $2 OFFSET $3
     `;
 
-    const result = await pool.query(query, [userId, limit, offset]);
-    return result.rows;
-  } catch (error) {
-    console.error("Error fetching user activity log:", error);
-    throw error;
-  }
-},
+      const result = await pool.query(query, [userId, limit, offset]);
+      return result.rows;
+    } catch (error) {
+      console.error("Error fetching user activity log:", error);
+      throw error;
+    }
+  },
 
-// Get total count for pagination
-async getUserActivityLogCount(userId) {
-  try {
-    const query = `
+  // Get total count for pagination
+  async getUserActivityLogCount(userId) {
+    try {
+      const query = `
       SELECT COUNT(*) as total
       FROM user_activity_log
       WHERE ual_user_id = $1
     `;
 
-    const result = await pool.query(query, [userId]);
-    return parseInt(result.rows[0].total);
-  } catch (error) {
-    console.error("Error fetching user activity log count:", error);
-    throw error;
-  }
-},
+      const result = await pool.query(query, [userId]);
+      return parseInt(result.rows[0].total);
+    } catch (error) {
+      console.error("Error fetching user activity log count:", error);
+      throw error;
+    }
+  },
 
-// Update user password (in USER AUTHENTICATION METHODS section)
-async updateUserPassword(userId, currentPassword, newPassword) {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    
-    console.log('Updating password for user ID:', userId);
-    
-    // Hash the current password to compare
-    const hashedCurrentPassword = crypto.createHash('sha256').update(currentPassword).digest('hex');
-    
-    // Verify current password - using the internal database ID (u_id)
-    const verifyQuery = `
+  // Update user password (in USER AUTHENTICATION METHODS section)
+  async updateUserPassword(userId, currentPassword, newPassword) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      console.log("Updating password for user ID:", userId);
+
+      // Hash the current password to compare
+      const hashedCurrentPassword = crypto
+        .createHash("sha256")
+        .update(currentPassword)
+        .digest("hex");
+
+      // Verify current password - using the internal database ID (u_id)
+      const verifyQuery = `
       SELECT u_id, u_password, u_email, u_full_name 
       FROM users 
       WHERE u_id = $1
     `;
-    
-    const verifyResult = await client.query(verifyQuery, [userId]);
-    
-    if (verifyResult.rows.length === 0) {
-      await client.query("ROLLBACK");
-      console.error('User not found with ID:', userId);
-      return {
-        success: false,
-        message: "User not found"
-      };
-    }
-    
-    const user = verifyResult.rows[0];
-    console.log('Found user:', user.u_email);
-    
-    // Compare hashed passwords
-    if (user.u_password !== hashedCurrentPassword) {
-      await client.query("ROLLBACK");
-      console.log('Password mismatch for user:', user.u_email);
-      return {
-        success: false,
-        message: "Current password is incorrect"
-      };
-    }
-    
-    console.log('Current password verified successfully');
-    
-    // Hash the new password
-    const hashedNewPassword = crypto.createHash('sha256').update(newPassword).digest('hex');
-    
-    // Update password with the internal database ID
-    const updateQuery = `
+
+      const verifyResult = await client.query(verifyQuery, [userId]);
+
+      if (verifyResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        console.error("User not found with ID:", userId);
+        return {
+          success: false,
+          message: "User not found",
+        };
+      }
+
+      const user = verifyResult.rows[0];
+      console.log("Found user:", user.u_email);
+
+      // Compare hashed passwords
+      if (user.u_password !== hashedCurrentPassword) {
+        await client.query("ROLLBACK");
+        console.log("Password mismatch for user:", user.u_email);
+        return {
+          success: false,
+          message: "Current password is incorrect",
+        };
+      }
+
+      console.log("Current password verified successfully");
+
+      // Hash the new password
+      const hashedNewPassword = crypto
+        .createHash("sha256")
+        .update(newPassword)
+        .digest("hex");
+
+      // Update password with the internal database ID
+      const updateQuery = `
       UPDATE users 
       SET u_password = $1, u_modified_at = NOW()
       WHERE u_id = $2
       RETURNING u_id, u_email, u_full_name
     `;
-    
-    const result = await client.query(updateQuery, [hashedNewPassword, userId]);
-    
-    if (result.rows.length === 0) {
-      await client.query("ROLLBACK");
-      console.error('Update failed - no rows affected');
-      return {
-        success: false,
-        message: "Failed to update password"
-      };
-    }
-    
-    console.log('Password updated successfully for:', result.rows[0].u_email);
-    
-    // Log the password change activity
-    try {
-      const logQuery = `
+
+      const result = await client.query(updateQuery, [
+        hashedNewPassword,
+        userId,
+      ]);
+
+      if (result.rows.length === 0) {
+        await client.query("ROLLBACK");
+        console.error("Update failed - no rows affected");
+        return {
+          success: false,
+          message: "Failed to update password",
+        };
+      }
+
+      console.log("Password updated successfully for:", result.rows[0].u_email);
+
+      // Log the password change activity
+      try {
+        const logQuery = `
         INSERT INTO user_activity_log (
           ual_user_id,
           ual_action,
@@ -6023,102 +7416,104 @@ async updateUserPassword(userId, currentPassword, newPassword) {
           ual_timestamp
         ) VALUES ($1, $2, $3, NOW())
       `;
-      
-      await client.query(logQuery, [
-        userId,
-        'PASSWORD_CHANGE',
-        `User ${user.u_full_name} changed their password`
-      ]);
-      console.log('Activity logged successfully');
-    } catch (logError) {
-      console.error('Failed to log activity (non-critical):', logError);
-      // Don't fail the entire operation if logging fails
+
+        await client.query(logQuery, [
+          userId,
+          "PASSWORD_CHANGE",
+          `User ${user.u_full_name} changed their password`,
+        ]);
+        console.log("Activity logged successfully");
+      } catch (logError) {
+        console.error("Failed to log activity (non-critical):", logError);
+        // Don't fail the entire operation if logging fails
+      }
+
+      await client.query("COMMIT");
+
+      return {
+        success: true,
+        message: "Password updated successfully",
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error updating user password:", error);
+      return {
+        success: false,
+        message: error.message || "Failed to update password",
+      };
+    } finally {
+      client.release();
     }
-    
-    await client.query("COMMIT");
-    
-    return {
-      success: true,
-      message: 'Password updated successfully'
-    };
-  } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("Error updating user password:", error);
-    return {
-      success: false,
-      message: error.message || 'Failed to update password'
-    };
-  } finally {
-    client.release();
-  }
-},
+  },
 
+  // ========== USER PERMISSIONS METHODS ==========
 
-// ========== USER PERMISSIONS METHODS ==========
+  // Save user permissions
+  async saveUserPermissions(userId, permissions) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
 
-// Save user permissions
-async saveUserPermissions(userId, permissions) {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
-    const query = `
+      const query = `
       UPDATE users
       SET u_permissions = $1::jsonb, u_modified_at = NOW()
       WHERE u_id = $2
       RETURNING u_id, u_permissions
     `;
 
-    const result = await client.query(query, [JSON.stringify(permissions), userId]);
+      const result = await client.query(query, [
+        JSON.stringify(permissions),
+        userId,
+      ]);
 
-    // Log the permission change
-    await this.logUserActivity(
-      userId,
-      'PERMISSIONS_UPDATED',
-      `User permissions were updated by administrator`
-    );
+      // Log the permission change
+      await this.logUserActivity(
+        userId,
+        "PERMISSIONS_UPDATED",
+        `User permissions were updated by administrator`
+      );
 
-    await client.query("COMMIT");
+      await client.query("COMMIT");
 
-    return {
-      success: true,
-      user: result.rows[0]
-    };
-  } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("Error saving user permissions:", error);
-    throw error;
-  } finally {
-    client.release();
-  }
-},
+      return {
+        success: true,
+        user: result.rows[0],
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error saving user permissions:", error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
 
-// Get user permissions
-async getUserPermissions(userId) {
-  try {
-    const query = `
+  // Get user permissions
+  async getUserPermissions(userId) {
+    try {
+      const query = `
       SELECT u_permissions
       FROM users
       WHERE u_id = $1
     `;
 
-    const result = await pool.query(query, [userId]);
+      const result = await pool.query(query, [userId]);
 
-    if (result.rows.length === 0) {
-      return null;
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      return result.rows[0].u_permissions || null;
+    } catch (error) {
+      console.error("Error getting user permissions:", error);
+      throw error;
     }
+  },
 
-    return result.rows[0].u_permissions || null;
-  } catch (error) {
-    console.error("Error getting user permissions:", error);
-    throw error;
-  }
-},
-
-// Get all verified users with permissions
-async getVerifiedUsersWithPermissions() {
-  try {
-    const query = `
+  // Get all verified users with permissions
+  async getVerifiedUsersWithPermissions() {
+    try {
+      const query = `
       SELECT 
         u_id as id,
         u_doh_id as "dohId",
@@ -6133,17 +7528,17 @@ async getVerifiedUsersWithPermissions() {
       ORDER BY u_verified_at DESC
     `;
 
-    const result = await pool.query(query);
-    return result.rows;
-  } catch (error) {
-    console.error("Error fetching verified users with permissions:", error);
-    throw error;
-  }
-},
+      const result = await pool.query(query);
+      return result.rows;
+    } catch (error) {
+      console.error("Error fetching verified users with permissions:", error);
+      throw error;
+    }
+  },
 
-async getUserById(userId) {
-  try {
-    const query = `
+  async getUserById(userId) {
+    try {
+      const query = `
       SELECT 
         u_id as id,
         u_doh_id as "dohId",
@@ -6167,62 +7562,66 @@ async getUserById(userId) {
       WHERE u_id = $1
     `;
 
-    const result = await pool.query(query, [userId]);
+      const result = await pool.query(query, [userId]);
 
-    if (result.rows.length === 0) {
-      return null;
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      return result.rows[0];
+    } catch (error) {
+      console.error("Error fetching user by ID:", error);
+      throw error;
     }
+  },
 
-    return result.rows[0];
-  } catch (error) {
-    console.error("Error fetching user by ID:", error);
-    throw error;
-  }
-},
+  //====================== RESET PASSWORD METHODS ======================
+  // Send recovery code via email
+  async sendRecoveryCode(email) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
 
-//====================== RESET PASSWORD METHODS ======================
-// Send recovery code via email
-async sendRecoveryCode(email) {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
-    // Check if email exists
-    const checkEmailQuery = `
+      // Check if email exists
+      const checkEmailQuery = `
       SELECT u_id, u_full_name, u_email 
       FROM users 
       WHERE LOWER(TRIM(u_email)) = $1 AND u_status = 'verified'
     `;
-    const emailCheck = await client.query(checkEmailQuery, [email.trim().toLowerCase()]);
+      const emailCheck = await client.query(checkEmailQuery, [
+        email.trim().toLowerCase(),
+      ]);
 
-    if (emailCheck.rows.length === 0) {
-      throw new Error("Email not found or account not verified");
-    }
+      if (emailCheck.rows.length === 0) {
+        throw new Error("Email not found or account not verified");
+      }
 
-    const user = emailCheck.rows[0];
+      const user = emailCheck.rows[0];
 
-    // Generate 6-digit recovery code
-    const recoveryCode = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    // Set expiration time (15 minutes from now)
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+      // Generate 6-digit recovery code
+      const recoveryCode = Math.floor(
+        100000 + Math.random() * 900000
+      ).toString();
 
-    // Store recovery code in database
-    const updateQuery = `
+      // Set expiration time (15 minutes from now)
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+      // Store recovery code in database
+      const updateQuery = `
       UPDATE users 
       SET u_recovery_code = $1,
           u_recovery_code_expires = $2,
           u_modified_at = NOW()
       WHERE u_id = $3
     `;
-    await client.query(updateQuery, [recoveryCode, expiresAt, user.u_id]);
+      await client.query(updateQuery, [recoveryCode, expiresAt, user.u_id]);
 
-    // Send email with recovery code
-    const mailOptions = {
-      from: 'bloodsync.doh@gmail.com',
-      to: user.u_email,
-      subject: 'Password Reset Code - BloodSync',
-      html: `
+      // Send email with recovery code
+      const mailOptions = {
+        from: "bloodsync.doh@gmail.com",
+        to: user.u_email,
+        subject: "Password Reset Code - BloodSync",
+        html: `
         <!DOCTYPE html>
         <html>
         <head>
@@ -6275,67 +7674,75 @@ async sendRecoveryCode(email) {
           </div>
         </body>
         </html>
-      `
-    };
+      `,
+      };
 
-    await emailTransporter.sendMail(mailOptions);
+      await emailTransporter.sendMail(mailOptions);
 
-    await client.query("COMMIT");
+      await client.query("COMMIT");
 
-    return {
-      success: true,
-      message: 'Recovery code sent to your email'
-    };
-  } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("Error sending recovery code:", error);
-    throw error;
-  } finally {
-    client.release();
-  }
-},
+      return {
+        success: true,
+        message: "Recovery code sent to your email",
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error sending recovery code:", error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
 
-// Reset password with recovery code
-async resetPassword(email, recoveryCode, newPassword) {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
+  // Reset password with recovery code
+  async resetPassword(email, recoveryCode, newPassword) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
 
-    // Verify recovery code
-    const verifyQuery = `
+      // Verify recovery code
+      const verifyQuery = `
       SELECT u_id, u_full_name, u_recovery_code, u_recovery_code_expires
       FROM users
       WHERE LOWER(TRIM(u_email)) = $1 AND u_status = 'verified'
     `;
-    const result = await client.query(verifyQuery, [email.trim().toLowerCase()]);
+      const result = await client.query(verifyQuery, [
+        email.trim().toLowerCase(),
+      ]);
 
-    if (result.rows.length === 0) {
-      throw new Error("Invalid email or account not verified");
-    }
+      if (result.rows.length === 0) {
+        throw new Error("Invalid email or account not verified");
+      }
 
-    const user = result.rows[0];
+      const user = result.rows[0];
 
-    // Check if recovery code matches
-    if (user.u_recovery_code !== recoveryCode) {
-      throw new Error("Invalid recovery code");
-    }
+      // Check if recovery code matches
+      if (user.u_recovery_code !== recoveryCode) {
+        throw new Error("Invalid recovery code");
+      }
 
-    // Check if recovery code has expired
-    if (new Date() > new Date(user.u_recovery_code_expires)) {
-      throw new Error("Recovery code has expired. Please request a new one.");
-    }
+      // Check if recovery code has expired
+      if (new Date() > new Date(user.u_recovery_code_expires)) {
+        throw new Error("Recovery code has expired. Please request a new one.");
+      }
 
-    // Validate password strength
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-    if (!passwordRegex.test(newPassword)) {
-      throw new Error("Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character");
-    }
+      // Validate password strength
+      const passwordRegex =
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+      if (!passwordRegex.test(newPassword)) {
+        throw new Error(
+          "Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character"
+        );
+      }
 
-    // Hash new password
-    const hashedPassword = crypto.createHash('sha256').update(newPassword).digest('hex');
+      // Hash new password
+      const hashedPassword = crypto
+        .createHash("sha256")
+        .update(newPassword)
+        .digest("hex");
 
-    // Update password and clear recovery code
-    const updateQuery = `
+      // Update password and clear recovery code
+      const updateQuery = `
       UPDATE users
       SET u_password = $1,
           u_recovery_code = NULL,
@@ -6343,21 +7750,21 @@ async resetPassword(email, recoveryCode, newPassword) {
           u_modified_at = NOW()
       WHERE u_id = $2
     `;
-    await client.query(updateQuery, [hashedPassword, user.u_id]);
+      await client.query(updateQuery, [hashedPassword, user.u_id]);
 
-    // Log the password reset activity
-    await this.logUserActivity(
-      user.u_id,
-      'PASSWORD_RESET',
-      `User ${user.u_full_name} reset their password via recovery code`
-    );
+      // Log the password reset activity
+      await this.logUserActivity(
+        user.u_id,
+        "PASSWORD_RESET",
+        `User ${user.u_full_name} reset their password via recovery code`
+      );
 
-    // Send confirmation email
-    const mailOptions = {
-      from: 'bloodsync.doh@gmail.com',
-      to: email,
-      subject: 'Password Successfully Reset - BloodSync',
-      html: `
+      // Send confirmation email
+      const mailOptions = {
+        from: "bloodsync.doh@gmail.com",
+        to: email,
+        subject: "Password Successfully Reset - BloodSync",
+        html: `
         <!DOCTYPE html>
         <html>
         <head>
@@ -6390,28 +7797,344 @@ async resetPassword(email, recoveryCode, newPassword) {
           </div>
         </body>
         </html>
-      `
-    };
+      `,
+      };
 
-    await emailTransporter.sendMail(mailOptions);
+      await emailTransporter.sendMail(mailOptions);
 
-    await client.query("COMMIT");
+      await client.query("COMMIT");
 
-    return {
-      success: true,
-      message: 'Password reset successfully'
-    };
+      return {
+        success: true,
+        message: "Password reset successfully",
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error resetting password:", error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  //======================PARTNERSHIP EVENTS========================
+  async createPartnershipRequest(requestData) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const query = `
+      INSERT INTO partnership_requests (
+        organization_name, organization_barangay, contact_name, contact_email, contact_phone, 
+        event_date, event_time, event_address, appointment_id,
+        status, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NOW(), NOW())
+      RETURNING *
+    `;
+
+      const values = [
+        requestData.organizationName,
+        requestData.organizationBarangay || "N/A",
+        requestData.contactName,
+        requestData.contactEmail,
+        requestData.contactPhone,
+        requestData.eventDate,
+        requestData.eventTime,
+        requestData.eventAddress,
+        requestData.appointmentId,
+      ];
+
+      const result = await client.query(query, values);
+
+      // Optional: Create a notification for the RBC Admin
+      try {
+        const notifQuery = `
+        INSERT INTO notifications (
+          notification_type, title, description,
+          related_entity_type, related_entity_id, link_to,
+          status, priority, is_read, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+      `;
+        await client.query(notifQuery, [
+          "partnership_request",
+          "New Partnership Request",
+          `${requestData.organizationName} requested a blood drive on ${requestData.eventDate}`,
+          "partnership_requests",
+          result.rows[0].id,
+          "mail",
+          "unread",
+          "high",
+          false,
+        ]);
+      } catch (notifError) {
+        console.error(
+          "Failed to create notification (non-critical):",
+          notifError
+        );
+      }
+
+      await client.query("COMMIT");
+      return result.rows[0];
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("[DB] Error creating partnership request:", error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  // Get all partnership requests
+  async getAllPartnershipRequests(status = null) {
+    try {
+      let query = `
+      SELECT * FROM partnership_requests
+    `;
+
+      const params = [];
+      if (status) {
+        query += ` WHERE status = $1`;
+        params.push(status);
+      }
+
+      query += ` ORDER BY created_at DESC`;
+
+      const result = await pool.query(query, params);
+      return result.rows;
+    } catch (error) {
+      console.error("[DB] Error getting partnership requests:", error);
+      throw error;
+    }
+  },
+
+  // Get partnership request by ID
+  async getPartnershipRequestById(requestId) {
+    try {
+      const result = await pool.query(
+        `
+      SELECT * FROM partnership_requests WHERE id = $1
+    `,
+        [requestId]
+      );
+
+      return result.rows[0];
+    } catch (error) {
+      console.error("[DB] Error getting partnership request:", error);
+      throw error;
+    }
+  },
+
+  // Update partnership request status
+  async updatePartnershipRequestStatus(requestId, status, approvedBy = null) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const updateQuery = `
+      UPDATE partnership_requests
+      SET status = $1, approved_by = $2, approved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3
+      RETURNING *
+    `;
+
+      const result = await client.query(updateQuery, [
+        status,
+        approvedBy,
+        requestId,
+      ]);
+      await client.query("COMMIT");
+      return result.rows[0];
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("[DB] Error updating partnership request status:", error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  // Get pending partnership requests count
+  async getPendingPartnershipRequestsCount() {
+    try {
+      const result = await pool.query(`
+      SELECT COUNT(*) as count FROM partnership_requests WHERE status = 'pending'
+    `);
+
+      return parseInt(result.rows[0].count, 10);
+    } catch (error) {
+      console.error(
+        "[DB] Error getting pending partnership requests count:",
+        error
+      );
+      throw error;
+    }
+  },
+
+  // Delete partnership request
+  async deletePartnershipRequest(requestId) {
+    try {
+      const result = await pool.query(
+        `
+      DELETE FROM partnership_requests WHERE id = $1 RETURNING *
+    `,
+        [requestId]
+      );
+
+      if (result.rows.length === 0) {
+        throw new Error("Partnership request not found");
+      }
+
+      console.log("[DB] Partnership request deleted:", requestId);
+      return result.rows[0];
+    } catch (error) {
+      console.error("[DB] Error deleting partnership request:", error);
+      throw error;
+    }
+  },
+
+  // ========== RECENT ACTIVITY METHODS ==========
+
+  // Modified recordActivity function with better error logging
+async recordActivity(userId, userName, actionType, actionDescription, entityType, entityId = null, details = null) {
+  try {
+    console.log('Recording activity:', {
+      userId,
+      userName,
+      actionType,
+      actionDescription,
+      entityType,
+      entityId,
+      details
+    });
+
+    const query = `
+      INSERT INTO recent_activity (
+        ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+        ra_entity_type, ra_entity_id, ra_details, ra_created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      RETURNING ra_id, ra_user_id, ra_user_name, ra_action_type, ra_action_description
+    `;
+    
+    const values = [
+      userId,
+      userName,
+      actionType,
+      actionDescription,
+      entityType,
+      entityId ? String(entityId) : null,
+      details ? JSON.stringify(details) : null
+    ];
+    
+    const result = await pool.query(query, values);
+    console.log('Activity recorded successfully:', result.rows[0]);
+    return result.rows[0];
   } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("Error resetting password:", error);
-    throw error;
-  } finally {
-    client.release();
+    console.error("Error recording activity:", error);
+    console.error("Error details:", {
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+      detail: error.detail
+    });
+    
+    // Check for specific database errors
+    if (error.code === '23502') { // not_null_violation
+      console.error('Null constraint violation - check required fields');
+    } else if (error.code === '23505') { // unique_violation
+      console.error('Unique constraint violation');
+    } else if (error.code === '42703') { // undefined_column
+      console.error('Undefined column - check table structure');
+    }
+    
+    return null;
   }
 },
-
-
   
+  async getAllActivities(limit = 100, offset = 0) {
+    try {
+      const query = `
+        SELECT 
+          ra_id as id,
+          ra_user_id as user_id,
+          ra_user_name as user_name,
+          ra_action_type as action_type,
+          ra_action_description as action_description,
+          ra_entity_type as entity_type,
+          ra_entity_id as entity_id,
+          ra_details as details,
+          ra_created_at as created_at
+        FROM recent_activity
+        ORDER BY ra_created_at DESC
+        LIMIT $1 OFFSET $2
+      `;
+      const result = await pool.query(query, [limit, offset]);
+      console.log(`Fetched ${result.rows.length} activities`);
+      return result.rows;
+    } catch (error) {
+      console.error("Error fetching all activities:", error);
+      throw error;
+    }
+  },
+  
+  async getUserActivities(userId, limit = 100, offset = 0) {
+    try {
+      const query = `
+        SELECT 
+          ra_id as id,
+          ra_user_id as user_id,
+          ra_user_name as user_name,
+          ra_action_type as action_type,
+          ra_action_description as action_description,
+          ra_entity_type as entity_type,
+          ra_entity_id as entity_id,
+          ra_details as details,
+          ra_created_at as created_at
+        FROM recent_activity
+        WHERE ra_user_id = $1
+        ORDER BY ra_created_at DESC
+        LIMIT $2 OFFSET $3
+      `;
+      const result = await pool.query(query, [userId, limit, offset]);
+      console.log(`Fetched ${result.rows.length} activities for user ${userId}`);
+      return result.rows;
+    } catch (error) {
+      console.error("Error fetching user activities:", error);
+      throw error;
+    }
+  },
+  
+  async searchActivities(searchTerm, limit = 100) {
+    try {
+      const query = `
+        SELECT 
+          ra_id as id,
+          ra_user_id as user_id,
+          ra_user_name as user_name,
+          ra_action_type as action_type,
+          ra_action_description as action_description,
+          ra_entity_type as entity_type,
+          ra_entity_id as entity_id,
+          ra_details as details,
+          ra_created_at as created_at
+        FROM recent_activity
+        WHERE 
+          ra_user_name ILIKE $1 OR
+          ra_action_type ILIKE $1 OR
+          ra_action_description ILIKE $1 OR
+          ra_entity_type ILIKE $1 OR
+          ra_entity_id ILIKE $1
+        ORDER BY ra_created_at DESC
+        LIMIT $2
+      `;
+      const result = await pool.query(query, [`%${searchTerm}%`, limit]);
+      console.log(`Search found ${result.rows.length} activities`);
+      return result.rows;
+    } catch (error) {
+      console.error("Error searching activities:", error);
+      throw error;
+    }
+  },
+//==================NOTIFICATION DOH========================]
+
 };
 
 module.exports = dbService;

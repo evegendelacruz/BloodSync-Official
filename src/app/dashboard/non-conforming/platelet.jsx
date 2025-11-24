@@ -28,6 +28,7 @@ const PlateletNC = () => {
   const [validationErrors, setValidationErrors] = useState({});
   const [editValidationErrors, setEditValidationErrors] = useState({});
   const [discardValidationErrors, setDiscardValidationErrors] = useState({});
+  const [currentUser, setCurrentUser] = useState(null);
   const [discardItems, setDiscardItems] = useState([
     {
       id: 1,
@@ -88,6 +89,44 @@ const PlateletNC = () => {
   const sortDropdownRef = useRef(null);
   const filterDropdownRef = useRef(null);
   const searchTimeoutsRef = useRef({});
+
+  const getCurrentUser = () => {
+    try {
+      const userStr = localStorage.getItem('currentUser');
+      return userStr ? JSON.parse(userStr) : null;
+    } catch (error) {
+      console.error('Error getting current user:', error);
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        if (window.electronAPI && window.electronAPI.getCurrentUser) {
+          const user = await window.electronAPI.getCurrentUser();
+          console.log('✓ Current user loaded:', user); 
+          setCurrentUser(user);
+        } else {
+
+          const storedUser = getCurrentUser();
+          if (storedUser) {
+            console.log('✓ User loaded from localStorage:', storedUser);
+            setCurrentUser(storedUser);
+          }
+        }
+      } catch (err) {
+        console.error("Error loading user data:", err);
+        // Fallback: try to get from localStorage
+        const storedUser = getCurrentUser();
+        if (storedUser) {
+          console.log('✓ User loaded from localStorage (fallback):', storedUser);
+          setCurrentUser(storedUser);
+        }
+      }
+    };
+    loadUserData();
+  }, []);
 
   useEffect(() => {
     if (window.electronAPI) {
@@ -571,19 +610,13 @@ const PlateletNC = () => {
   const confirmDiscard = async () => {
     // Validate all fields
     const errors = {};
-    if (
-      !discardFormData.responsiblePersonnel ||
-      discardFormData.responsiblePersonnel.trim() === ""
-    ) {
+    if (!discardFormData.responsiblePersonnel || discardFormData.responsiblePersonnel.trim() === "") {
       errors.responsiblePersonnel = "Responsible personnel is required";
     }
     if (!discardFormData.reasonForDiscarding) {
       errors.reasonForDiscarding = "Reason for discarding is required";
     }
-    if (
-      !discardFormData.authorizedBy ||
-      discardFormData.authorizedBy.trim() === ""
-    ) {
+    if (!discardFormData.authorizedBy || discardFormData.authorizedBy.trim() === "") {
       errors.authorizedBy = "Authorized by is required";
     }
     if (!discardFormData.dateOfDiscard) {
@@ -595,28 +628,26 @@ const PlateletNC = () => {
     if (!discardFormData.methodOfDisposal) {
       errors.methodOfDisposal = "Method of disposal is required";
     }
-
+  
     if (Object.keys(errors).length > 0) {
       setDiscardValidationErrors(errors);
       return;
     }
-
+  
     try {
       setSaving(true);
       if (!window.electronAPI) {
         setDiscardValidationErrors({ api: "Electron API not available" });
         return;
       }
-
-      const validItems = discardItems.filter(
-        (item) => item.serialId && item.found
-      );
+  
+      const validItems = discardItems.filter((item) => item.serialId && item.found);
       if (validItems.length === 0) {
         setDiscardValidationErrors({ items: "No valid items to discard" });
         setSaving(false);
         return;
       }
-
+  
       const discardData = {
         serialIds: validItems.map((item) => item.serialId),
         responsiblePersonnel: discardFormData.responsiblePersonnel,
@@ -627,9 +658,13 @@ const PlateletNC = () => {
         methodOfDisposal: discardFormData.methodOfDisposal,
         remarks: discardFormData.remarks,
       };
-
-      const result =
-        await window.electronAPI.discardPlateletNonConformingStock(discardData);
+  
+      // FIXED: Pass currentUser as second parameter
+      const result = await window.electronAPI.discardPlateletNonConformingStock(
+        discardData,
+        currentUser  // ← ADDED THIS
+      );
+  
       if (result.success) {
         setShowDiscardDetailsModal(false);
         setShowDiscardModal(false);
@@ -722,11 +757,11 @@ const PlateletNC = () => {
 
   const handleSaveAllStock = async (e) => {
     e.preventDefault();
-
+  
     // Validate all items
     const errors = {};
     let hasInvalidItems = false;
-
+  
     nonConformingItems.forEach((item, index) => {
       if (!item.serialId || item.serialId.trim() === "") {
         errors[`${index}-serialId`] = "Serial ID is required";
@@ -736,24 +771,24 @@ const PlateletNC = () => {
         hasInvalidItems = true;
       }
     });
-
+  
     if (hasInvalidItems || Object.keys(errors).length > 0) {
       setValidationErrors(errors);
       setError("Please ensure all items have valid serial IDs");
       return;
     }
-
+  
     try {
       setSaving(true);
       if (!window.electronAPI) {
         setValidationErrors({ api: "Electron API not available" });
         return;
       }
-
+  
       const validItems = nonConformingItems.filter(
         (item) => item.serialId && item.found
       );
-
+  
       if (validItems.length === 0) {
         setValidationErrors({
           items: "Please add at least one valid item with a found serial ID",
@@ -761,12 +796,15 @@ const PlateletNC = () => {
         setSaving(false);
         return;
       }
-
+  
       const serialIds = validItems.map((item) => item.serialId);
-
-      const result =
-        await window.electronAPI.transferPlateletToNonConforming(serialIds);
-
+  
+      // FIXED: Pass currentUser as second parameter
+      const result = await window.electronAPI.transferPlateletToNonConforming(
+        serialIds,
+        currentUser  // ← ADDED THIS
+      );
+  
       if (result.success) {
         setShowAddModal(false);
         setValidationErrors({});
@@ -787,7 +825,7 @@ const PlateletNC = () => {
         ]);
         await loadNonConformingData();
         setError(null);
-
+  
         setSuccessMessage({
           title: "Non-Conforming Records Added!",
           description: `${result.transferredCount} platelet unit(s) have been transferred to non-conforming inventory.`,
@@ -796,13 +834,11 @@ const PlateletNC = () => {
       }
     } catch (err) {
       console.error("Error transferring platelet to non-conforming:", err);
-
+  
       let errorMessage = err.message;
-
+  
       if (errorMessage.includes("already exists")) {
-        const serialIdMatch = errorMessage.match(
-          /Serial ID (\S+) already exists/
-        );
+        const serialIdMatch = errorMessage.match(/Serial ID (\S+) already exists/);
         if (serialIdMatch) {
           const duplicateSerialId = serialIdMatch[1];
           const duplicateErrors = {};
@@ -851,7 +887,7 @@ const PlateletNC = () => {
 
   const handleSaveEdit = async (e) => {
     e.preventDefault();
-
+  
     // Validate all fields
     const errors = {};
     if (!editingItem.serial_id || editingItem.serial_id.trim() === "") {
@@ -860,19 +896,19 @@ const PlateletNC = () => {
     if (!editingItem.collection) {
       errors.collection = "Collection date is required";
     }
-
+  
     if (Object.keys(errors).length > 0) {
       setEditValidationErrors(errors);
       return;
     }
-
+  
     try {
       setSaving(true);
       if (!window.electronAPI) {
         setEditValidationErrors({ api: "Electron API not available" });
         return;
       }
-
+  
       const ncData = {
         serial_id: editingItem.serial_id,
         type: editingItem.type,
@@ -884,33 +920,33 @@ const PlateletNC = () => {
         category: editingItem.category,
         source: editingItem.source,
       };
-
+  
+      // FIXED: Pass currentUser as third parameter
       await window.electronAPI.updatePlateletNonConforming(
         editingItem.id,
-        ncData
+        ncData,
+        currentUser  // ← ADDED THIS
       );
+      
       setShowEditModal(false);
       setEditingItem(null);
       setEditValidationErrors({});
       await loadNonConformingData();
       clearAllSelection();
       setError(null);
-
+  
       setSuccessMessage({
         title: "Non-Conforming Record Updated!",
-        description:
-          "The platelet non-conforming record has been successfully updated.",
+        description: "The platelet non-conforming record has been successfully updated.",
       });
       setShowSuccessModal(true);
     } catch (err) {
       console.error("Error updating platelet non-conforming record:", err);
-
+  
       let errorMessage = err.message;
-
+  
       if (errorMessage.includes("already exists")) {
-        const serialIdMatch = errorMessage.match(
-          /Serial ID (\S+) already exists/
-        );
+        const serialIdMatch = errorMessage.match(/Serial ID (\S+) already exists/);
         if (serialIdMatch) {
           const duplicateSerialId = serialIdMatch[1];
           setEditValidationErrors({
@@ -994,17 +1030,19 @@ const PlateletNC = () => {
         setError("Electron API not available");
         return;
       }
-
+  
       const selectedIds = bloodData
         .filter((item) => item.selected)
         .map((item) => item.id);
-
-      await window.electronAPI.deletePlateletNonConforming(selectedIds);
+  
+      // FIXED: Pass currentUser as second parameter
+      await window.electronAPI.deletePlateletNonConforming(selectedIds, currentUser);
+  
       setShowDeleteConfirmModal(false);
       await loadNonConformingData();
       clearAllSelection();
       setError(null);
-
+  
       setSuccessMessage({
         title: "Records Deleted Successfully!",
         description: `${selectedIds.length} platelet non-conforming record(s) have been deleted.`,
