@@ -11,6 +11,7 @@ import SignUpOrg from "./organization/signup";
 import ForgotPasswordOrg from "./organization/forgot_password";
 import DonorRecordOrg from "./organization/dashboard/donor_record";
 import VerifyUser from "./verify_user";
+import VerifyOrg from "./organization/verify_org";
 
 const App = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -64,6 +65,7 @@ const App = () => {
       <Route path="dashboard" element={<Dashboard />} />
       <Route path="login-org" element={<LoginOrg />} />
       <Route path="signup-org" element={<SignUpOrg />} />
+      <Route path="verify-org" element={<VerifyOrg />} />
       <Route path="verify-user" element={<VerifyUser />} />
       <Route path="forgot-password-org" element={<ForgotPasswordOrg />} />
       <Route path="donor-record-org" element={<DonorRecordOrg />} />

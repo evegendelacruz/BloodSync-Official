@@ -142,6 +142,24 @@ const DonorRecord = () => {
     "Tuburan",
     "Tumpagon",
   ];
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    // Get user from storage
+    const getUserData = () => {
+      try {
+        const userData = localStorage.getItem('currentUser') || sessionStorage.getItem('currentUser');
+        if (userData) {
+          setCurrentUser(JSON.parse(userData));
+        }
+      } catch (error) {
+        console.error('Error getting user data:', error);
+      }
+    };
+    
+    getUserData();
+    loadDonorData();
+  }, []);
 
   const filteredBarangays = barangaySearch
     ? barangays.filter((b) =>
@@ -313,7 +331,11 @@ const DonorRecord = () => {
         .map((item) => item.id);
       if (selectedIds.length === 0) return;
 
-      await window.electronAPI.deleteDonorRecords(selectedIds);
+      await window.electronAPI.deleteDonorRecords(selectedIds, {
+        id: currentUser.id,
+        fullName: currentUser.fullName
+      });
+
       setShowConfirmDeleteModal(false);
       await loadDonorData();
       clearAllSelection();
@@ -473,8 +495,13 @@ const DonorRecord = () => {
   
       await window.electronAPI.updateDonorRecord(
         editingDonor.id,
-        donorUpdateData
+        donorUpdateData,
+        {
+          id: currentUser.id,
+          fullName: currentUser.fullName
+        }
       );
+
       setShowEditModal(false);
       setEditingDonor(null);
       setEditValidationErrors({});
@@ -560,7 +587,10 @@ const DonorRecord = () => {
   
       console.log("Validation passed, saving donor:", formData);
   
-      await window.electronAPI.addDonorRecord(formData);
+      await window.electronAPI.addDonorRecord(formData, {
+        id: currentUser.id,       
+        fullName: currentUser.fullName
+      });
   
       setFormData({
         donorId: "",
@@ -1109,7 +1139,7 @@ const DonorRecord = () => {
               </th>
               <th
                 style={{
-                  padding: "12px 16px",
+                  padding: "12px 12px",
                   textAlign: "left",
                   fontSize: "10px",
                   fontWeight: "500",
@@ -1123,7 +1153,7 @@ const DonorRecord = () => {
               </th>
               <th
                 style={{
-                  padding: "12px 16px",
+                  padding: "12px 12px",
                   textAlign: "left",
                   fontSize: "10px",
                   fontWeight: "500",
@@ -1137,7 +1167,7 @@ const DonorRecord = () => {
               </th>
               <th
                 style={{
-                  padding: "12px 16px",
+                  padding: "12px 12px",
                   textAlign: "left",
                   fontSize: "10px",
                   fontWeight: "500",
@@ -1151,7 +1181,7 @@ const DonorRecord = () => {
               </th>
               <th
                 style={{
-                  padding: "12px 16px",
+                  padding: "12px 12px",
                   textAlign: "left",
                   fontSize: "10px",
                   fontWeight: "500",
@@ -1165,7 +1195,7 @@ const DonorRecord = () => {
               </th>
               <th
                 style={{
-                  padding: "12px 16px",
+                  padding: "12px 12px",
                   textAlign: "left",
                   fontSize: "10px",
                   fontWeight: "500",
@@ -1179,7 +1209,7 @@ const DonorRecord = () => {
               </th>
               <th
                 style={{
-                  padding: "12px 16px",
+                  padding: "12px 12px",
                   textAlign: "left",
                   fontSize: "10px",
                   fontWeight: "500",
@@ -1193,7 +1223,7 @@ const DonorRecord = () => {
               </th>
               <th
                 style={{
-                  padding: "12px 16px",
+                  padding: "12px 12px",
                   textAlign: "left",
                   fontSize: "10px",
                   fontWeight: "500",
@@ -1207,7 +1237,7 @@ const DonorRecord = () => {
               </th>
               <th
                 style={{
-                  padding: "12px 16px",
+                  padding: "12px 12px",
                   textAlign: "left",
                   fontSize: "10px",
                   fontWeight: "500",
@@ -1249,7 +1279,7 @@ const DonorRecord = () => {
               </th>
               <th
                 style={{
-                  padding: "12px 16px",
+                  padding: "12px 12px",
                   textAlign: "left",
                   fontSize: "10px",
                   fontWeight: "500",
@@ -1263,7 +1293,7 @@ const DonorRecord = () => {
               </th>
               <th
                 style={{
-                  padding: "12px 16px",
+                  padding: "12px 12px",
                   textAlign: "left",
                   fontSize: "10px",
                   fontWeight: "500",
@@ -1277,7 +1307,7 @@ const DonorRecord = () => {
               </th>
               <th
                 style={{
-                  padding: "12px 16px",
+                  padding: "12px 12px",
                   textAlign: "left",
                   fontSize: "10px",
                   fontWeight: "500",

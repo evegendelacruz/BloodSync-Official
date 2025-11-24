@@ -24,13 +24,33 @@ const ReleasedBlood = () => {
   const [filterConfig, setFilterConfig] = useState({ field: "", value: "" });
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
-
+  const [currentUser, setCurrentUser] = useState(null);
   const sortDropdownRef = useRef(null);
   const filterDropdownRef = useRef(null);
 
+  // FIXED: Load current user on component mount
   useEffect(() => {
-    loadReleasedBloodData();
+    const initializeComponent = async () => {
+      await loadCurrentUser();
+      await loadReleasedBloodData();
+    };
+    initializeComponent();
   }, []);
+
+  const loadCurrentUser = async () => {
+    try {
+      const userStr = localStorage.getItem('currentUser');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        console.log('Loaded current user for activity tracking:', user);
+        setCurrentUser(user);
+      } else {
+        console.warn('No current user found in localStorage');
+      }
+    } catch (error) {
+      console.error('Error loading current user:', error);
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -288,6 +308,12 @@ const ReleasedBlood = () => {
         return;
       }
 
+      // FIXED: Ensure we have current user data
+      if (!currentUser) {
+        console.warn('No current user available, reloading...');
+        await loadCurrentUser();
+      }
+
       const stockData = {
         serial_id: editingItem.serial_id,
         type: editingItem.type,
@@ -299,22 +325,32 @@ const ReleasedBlood = () => {
         status: editingItem.status,
       };
 
-      // Update released blood directly without restoring
-      // Use the correct API function names based on your backend
+        // FIXED: Pass userData with proper structure
+      const userData = currentUser ? {
+        id: currentUser.id,
+        fullName: currentUser.fullName
+      } : null;
+
+
+      console.log('Updating with userData:', userData);
+
       if (editingItem.category === "Red Blood Cell") {
         await window.electronAPI.updateReleasedBloodStock(
           editingItem.id,
-          stockData
+          stockData,
+          userData
         );
       } else if (editingItem.category === "Plasma") {
         await window.electronAPI.updateReleasedPlasmaStock(
           editingItem.id,
-          stockData
+          stockData,
+          userData
         );
       } else if (editingItem.category === "Platelet") {
         await window.electronAPI.updateReleasedPlateletStock(
           editingItem.id,
-          stockData
+          stockData,
+          userData
         );
       }
 
@@ -346,6 +382,12 @@ const ReleasedBlood = () => {
         return;
       }
 
+      // FIXED: Ensure we have current user data
+      if (!currentUser) {
+        console.warn('No current user available, reloading...');
+        await loadCurrentUser();
+      }
+
       const selectedIds = bloodData
         .filter((item) => item.selected)
         .map((item) => ({ id: item.id, category: item.category }));
@@ -365,20 +407,31 @@ const ReleasedBlood = () => {
         }
       });
 
+      // FIXED: Pass userData with proper structure
+      const userData = currentUser ? {
+        id: currentUser.id,
+        fullName: currentUser.fullName
+      } : null;
+
+      console.log('Deleting with userData:', userData);
+
       // Delete from each category
       if (itemsByCategory["Red Blood Cell"].length > 0) {
         await window.electronAPI.deleteReleasedBloodStock(
-          itemsByCategory["Red Blood Cell"]
+          itemsByCategory["Red Blood Cell"],
+          userData
         );
       }
       if (itemsByCategory["Plasma"].length > 0) {
         await window.electronAPI.deleteReleasedPlasmaStock(
-          itemsByCategory["Plasma"]
+          itemsByCategory["Plasma"],
+          userData
         );
       }
       if (itemsByCategory["Platelet"].length > 0) {
         await window.electronAPI.deleteReleasedPlateletStock(
-          itemsByCategory["Platelet"]
+          itemsByCategory["Platelet"],
+          userData
         );
       }
 
