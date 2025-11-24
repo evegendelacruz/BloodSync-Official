@@ -35,8 +35,33 @@ const Login = () => {
       console.log("Login - Result received:", result);
   
       if (result && result.success) {
-        // Store user data in localStorage
-        localStorage.setItem("user", JSON.stringify(result.user));
+        // Store user data in localStorage with BOTH naming conventions for compatibility
+        const userInfo = {
+          id: result.user.id,
+          u_id: result.user.id,
+          fullName: result.user.fullName || result.user.full_name,
+          u_full_name: result.user.fullName || result.user.full_name,
+          full_name: result.user.fullName || result.user.full_name,
+          role: result.user.role,
+          u_role: result.user.role,
+          email: result.user.email,
+          u_email: result.user.email,
+          dohId: result.user.dohId,
+          u_doh_id: result.user.dohId
+        };
+        
+        // Store with key 'currentUser' for consistency across the app
+        localStorage.setItem("currentUser", JSON.stringify(userInfo));
+        
+        // Also keep the 'user' key for backward compatibility
+        localStorage.setItem("user", JSON.stringify(userInfo));
+        
+        console.log("Login - User stored in localStorage:", {
+          id: userInfo.id,
+          fullName: userInfo.fullName,
+          role: userInfo.role,
+          email: userInfo.email
+        });
         
         console.log("Login - Success! Navigating to dashboard...");
         

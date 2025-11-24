@@ -84,9 +84,20 @@ const PlasmaNC = () => {
   const [validationErrors, setValidationErrors] = useState({});
   const [editValidationErrors, setEditValidationErrors] = useState({});
   const [discardValidationErrors, setDiscardValidationErrors] = useState({});
+  const [currentUser, setCurrentUser] = useState(null);
   const sortDropdownRef = useRef(null);
   const filterDropdownRef = useRef(null);
   const searchTimeoutsRef = useRef({});
+
+   const getCurrentUser = () => {
+    try {
+      const userStr = localStorage.getItem('currentUser');
+      return userStr ? JSON.parse(userStr) : null;
+    } catch (error) {
+      console.error('Error getting current user:', error);
+      return null;
+    }
+  };
 
   useEffect(() => {
     if (window.electronAPI) {
@@ -605,6 +616,10 @@ const PlasmaNC = () => {
         return;
       }
 
+        // Get current user data
+      const userStr = localStorage.getItem('currentUser');
+      const currentUser = userStr ? JSON.parse(userStr) : null;
+
       const validItems = discardItems.filter(
         (item) => item.serialId && item.found
       );
@@ -625,8 +640,11 @@ const PlasmaNC = () => {
         remarks: discardFormData.remarks,
       };
 
-      const result =
-        await window.electronAPI.discardPlasmaNonConformingStock(discardData);
+      const result = await window.electronAPI.discardPlasmaNonConformingStock(
+        discardData,
+        currentUser  
+      );
+
       if (result.success) {
         setShowDiscardDetailsModal(false);
         setShowDiscardModal(false);
@@ -747,6 +765,9 @@ const PlasmaNC = () => {
         return;
       }
 
+      const userStr = localStorage.getItem('currentUser');
+      const currentUser = userStr ? JSON.parse(userStr) : null;
+
       const validItems = nonConformingItems.filter(
         (item) => item.serialId && item.found
       );
@@ -761,8 +782,10 @@ const PlasmaNC = () => {
 
       const serialIds = validItems.map((item) => item.serialId);
 
-      const result =
-        await window.electronAPI.transferPlasmaToNonConforming(serialIds);
+      const result = await window.electronAPI.transferPlasmaToNonConforming(
+        serialIds,
+        currentUser
+      );
 
       if (result.success) {
         setShowAddModal(false);
@@ -870,6 +893,9 @@ const PlasmaNC = () => {
         return;
       }
 
+      const userStr = localStorage.getItem('currentUser');
+      const currentUser = userStr ? JSON.parse(userStr) : null;
+
       const ncData = {
         serial_id: editingItem.serial_id,
         type: editingItem.type,
@@ -884,8 +910,10 @@ const PlasmaNC = () => {
 
       await window.electronAPI.updatePlasmaNonConforming(
         editingItem.id,
-        ncData
+        ncData,
+        currentUser
       );
+
       setShowEditModal(false);
       setEditingItem(null);
       setEditValidationErrors({});
@@ -989,17 +1017,20 @@ const PlasmaNC = () => {
         setError("Electron API not available");
         return;
       }
-
+  
+      const userStr = localStorage.getItem('currentUser');
+      const currentUser = userStr ? JSON.parse(userStr) : null;
+  
       const selectedIds = bloodData
         .filter((item) => item.selected)
         .map((item) => item.id);
-
-      await window.electronAPI.deletePlasmaNonConforming(selectedIds);
+  
+      await window.electronAPI.deletePlasmaNonConforming(selectedIds, currentUser);
       setShowDeleteConfirmModal(false);
       await loadNonConformingData();
       clearAllSelection();
       setError(null);
-
+  
       setSuccessMessage({
         title: "Records Deleted Successfully!",
         description: `${selectedIds.length} plasma non-conforming record(s) have been deleted.`,
