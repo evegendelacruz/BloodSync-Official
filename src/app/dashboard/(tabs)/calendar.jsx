@@ -112,83 +112,85 @@ const CalendarPage = () => {
     setShowCancelModal(false);
   };
 
-  const handleConfirmCancel = async () => {
-    if (!cancelReason.trim()) {
-      alert('Please provide a reason for cancellation.');
-      return;
-    }
+ const handleConfirmCancel = async () => {
+  if (!cancelReason.trim()) {
+    alert('Please provide a reason for cancellation.');
+    return;
+  }
 
-    if (!eventToCancel) return;
+  if (!eventToCancel) return;
 
-    setIsCancelling(true);
+  setIsCancelling(true);
 
-    try {
-      const user = JSON.parse(localStorage.getItem('currentUser'));
-      const userName = user?.fullName || 'RBC Admin';
+  try {
+    const user = JSON.parse(localStorage.getItem('currentUser'));
+    const userName = user?.fullName || 'RBC Admin';
 
-      // Always use appointment_id for backend calls
-      const apptId = eventToCancel.appointmentId || eventToCancel.id;
+    // Extract the correct ID
+    const apptId = eventToCancel.appointmentId || eventToCancel.id;
+    
+    console.log('Cancelling appointment with ID:', apptId);
+    console.log('Event to cancel:', eventToCancel);
 
-      // 1. Cancel the appointment in the org database
-      await window.electronAPI.cancelAppointmentWithReason(
-        apptId,
-        cancelReason,
-        userName
-      );
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      // Check if it's a partnership request (ID starts with "partnership-")
+      if (typeof apptId === 'string' && apptId.startsWith('partnership-')) {
+        // Extract the numeric ID from "partnership-123" format
+        const partnershipId = parseInt(apptId.replace('partnership-', ''));
+        
+        // Update partnership request status to cancelled
+        await window.electronAPI.updatePartnershipStatus(
+          partnershipId,
+          'cancelled',
+          cancelReason.trim()
+        );
+      } else {
+        // For regular appointments, get the full appointment data first
+        const allAppointments = await window.electronAPI.getAllAppointments();
+        const appointmentToUpdate = allAppointments.find(apt => apt.appointment_id === apptId);
+        
+        if (!appointmentToUpdate) {
+          throw new Error('Appointment not found');
+        }
 
-      // 2. Get appointment details to notify the correct organization
-      const appointmentDetails = await window.electronAPI.getAppointmentById(apptId);
-
-      if (appointmentDetails) {
-        // Build message body identical to Partnership Request Declined
-        const subject = 'Appointment Cancelled – Blood Drive Partnership Request';
-        const bodyLines = [
-          'Dear Partner,',
-          '',
-          'We regret to inform you that your partnership appointment has been CANCELLED by the Regional Blood Center.',
-          '',
-          'Reason for Cancellation:',
-          cancelReason,
-          '',
-          'Best regards,',
-          'Regional Blood Center Team'
-        ];
-        const body = bodyLines.join('\n');
-
-        // 3. Send a notification to the organization's database
-        await window.electronAPI.createOrgNotification({
-          notificationId: `APPT-CANCELLED-${Date.now()}`,
-          type: 'event_update',
+        // Update appointment with all required fields
+        await window.electronAPI.updateAppointment(apptId, {
+          title: appointmentToUpdate.title,
+          date: appointmentToUpdate.date,
+          time: appointmentToUpdate.time,
+          type: appointmentToUpdate.type,
+          notes: appointmentToUpdate.notes || '',
           status: 'cancelled',
-          title: 'Appointment Cancelled by Regional Blood Center',
-          message: body,
-          declineReason: cancelReason,
-          requestorName: userName,
-          requestorOrganization: 'Regional Blood Center',
-          appointmentId: apptId,
-          contactEmail: appointmentDetails.contactInfo?.email || 'admin@regionalbloodcenter.org',
+          contactInfo: appointmentToUpdate.contactInfo,
+          cancellation_reason: cancelReason.trim(),
+          cancelled_by: userName,
+          cancelled_at: new Date().toISOString()
         });
       }
 
-      // 4. Reload all appointments
-      await loadAppointments();
-
       handleCloseCancelModal();
 
-      // Show success modal (Plasma NC style)
+      // Show success modal
       setSuccessMessage({
         title: 'APPOINTMENT CANCELLED',
         description: 'The appointment has been cancelled successfully.'
       });
       setShowSuccessModal(true);
 
-    } catch (error) {
-      console.error('Error confirming cancellation:', error);
-      alert(`Failed to cancel appointment: ${error.message}`);
-    } finally {
-      setIsCancelling(false);
+      // Reload appointments after success
+      await loadAppointments();
+
+    } else {
+      throw new Error('Electron API not available');
     }
-  };
+
+  } catch (error) {
+    console.error('Error confirming cancellation:', error);
+    alert(`Failed to cancel appointment: ${error.message}`);
+  } finally {
+    setIsCancelling(false);
+  }
+};
   // --- END OF NEW FUNCTIONS ---
   //END CANCELLATION METHODS
 
@@ -214,23 +216,22 @@ const CalendarPage = () => {
   };
 
   const events = appointments
-    .filter(apt => apt.status === 'approved' || apt.status === 'confirmed' || apt.status === 'cancelled' || apt.status === 'declined' || apt.status === 'scheduled')
-    .map(apt => ({
-      id: apt.appointment_id, // ensure event id matches appointment_id used by backend
-      appointmentId: apt.appointment_id,
-      title: apt.title || `Blood Drive Partnership - ${apt.contactInfo?.lastName || 'Unknown'}`,
-      date: apt.date,
-      time: formatTime(apt.time),
-      location: apt.contactInfo?.address || 'Location TBD',
-      type: 'blood-drive',
-      participants: 0,
-      status: getEventStatus(apt.date, apt.status),
-      contactName: apt.contactInfo?.lastName || 'Unknown',
-      contactType: apt.contactInfo?.type || 'unknown',
-      contactInfo: apt.contactInfo || {},
-      cancelReason: apt.cancellation_reason || apt.cancelReason || null // <-- ADD THIS LINE
-    }));
-
+  .filter(apt => apt.status === 'approved' || apt.status === 'confirmed' || apt.status === 'cancelled' || apt.status === 'declined' || apt.status === 'scheduled')
+  .map(apt => ({
+    id: apt.appointment_id, // ✓ Use appointment_id consistently
+    appointmentId: apt.appointment_id, // ✓ Add this for clarity
+    title: apt.title || `Blood Drive Partnership - ${apt.contactInfo?.lastName || 'Unknown'}`,
+    date: apt.date,
+    time: formatTime(apt.time),
+    location: apt.contactInfo?.address || 'Location TBD',
+    type: 'blood-drive',
+    participants: 0,
+    status: getEventStatus(apt.date, apt.status),
+    contactName: apt.contactInfo?.lastName || 'Unknown',
+    contactType: apt.contactInfo?.type || 'unknown',
+    contactInfo: apt.contactInfo || {},
+    cancelReason: apt.cancellation_reason || apt.cancelReason || null
+  }));
   // Filter events based on search and filters
   const filteredEvents = events.filter(event => {
     // Search filter
@@ -777,7 +778,7 @@ const CalendarPage = () => {
                   </div>
                 )}
                               {/* --- CANCELL BUTTON --- */}
-              {selectedEvent.status === 'upcoming' && (
+              {(selectedEvent.status === 'upcoming' || selectedEvent.status === 'scheduled' || selectedEvent.status === 'pending' || selectedEvent.status === 'declined') && (
                 <button
                   className="btn-cancel-appointment"
                   onClick={() => handleCancelClick(selectedEvent)}
@@ -792,6 +793,12 @@ const CalendarPage = () => {
               
 
               {/* Show cancel reason if event is cancelled or declined */}
+              {(selectedEvent.status === 'cancelled') && (
+              <div className="modal-notes-section">
+                <h4>Notes</h4>
+                <p>This Event is Cancelled, Check Mail for More Information.</p>
+              </div>
+              )}
               {(selectedEvent.status === 'cancelled' || selectedEvent.status === 'declined') && selectedEvent.cancelReason && (
                 <div className="cancel-reason-display">
                   <div className="cancel-reason-header">
