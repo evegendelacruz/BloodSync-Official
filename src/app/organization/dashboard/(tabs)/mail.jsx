@@ -1,21 +1,37 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Mail, Search, Star, Trash2, Filter, ArrowUpDown, Calendar, CheckCircle, XCircle, Clock, Phone, X } from 'lucide-react';
-import DeleteConfirmationModal from '../../../../components/DeleteConfirmationModal';
-import Loader from '../../../../components/Loader';
+import React, { useState, useRef, useEffect } from "react";
+import {
+  Mail,
+  Search,
+  Star,
+  Trash2,
+  Filter,
+  ArrowUpDown,
+  Calendar,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Phone,
+  X,
+} from "lucide-react";
+import DeleteConfirmationModal from "../../../../components/DeleteConfirmationModal";
+import Loader from "../../../../components/Loader";
 
 const MailOrg = () => {
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
-  const [sortBy, setSortBy] = useState('newest');
+  const [sortBy, setSortBy] = useState("newest");
   const [selectedMail, setSelectedMail] = useState(null);
   const [mails, setMails] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [mailToDelete, setMailToDelete] = useState(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [successMessage, setSuccessMessage] = useState({ title: '', description: '' });
+  const [successMessage, setSuccessMessage] = useState({
+    title: "",
+    description: "",
+  });
   const [isDeleting, setIsDeleting] = useState(false);
 
   const filterDropdownRef = useRef(null);
@@ -24,10 +40,10 @@ const MailOrg = () => {
   // Load mails on component mount
   useEffect(() => {
     loadMails();
-    
+
     // Refresh every 30 seconds
     const interval = setInterval(loadMails, 30000);
-    
+
     return () => clearInterval(interval);
   }, []);
 
@@ -35,30 +51,30 @@ const MailOrg = () => {
     try {
       setIsLoading(true);
 
-      if (typeof window !== 'undefined' && window.electronAPI) {
+      if (typeof window !== "undefined" && window.electronAPI) {
         // Load mails from mail table
-        console.log('[MAIL_ORG] Loading mails...');
+        console.log("[MAIL_ORG] Loading mails...");
         const mailData = await window.electronAPI.getAllMails();
-        console.log('[MAIL_ORG] Loaded mails:', mailData);
+        console.log("[MAIL_ORG] Loaded mails:", mailData);
 
         // Transform mail data into display format
-        const transformedMails = mailData.map(mail => {
-          const avatar = 'RBC'; // Regional Blood Center
+        const transformedMails = mailData.map((mail) => {
+          const avatar = "RBC"; // Regional Blood Center
 
           return {
             id: mail.id,
             mailId: mail.mail_id,
-            from: mail.from_name || 'Regional Blood Center',
-            fromEmail: mail.from_email || 'admin@regionalbloodcenter.org',
+            from: mail.from_name || "Regional Blood Center",
+            fromEmail: mail.from_email || "admin@regionalbloodcenter.org",
             avatar: avatar,
-            avatarColor: '#165C3C',
+            avatarColor: "#165C3C",
             subject: mail.subject,
             preview: mail.preview,
             body: mail.body,
             timestamp: new Date(mail.created_at),
             read: mail.read || false,
             starred: mail.starred || false,
-            category: mail.category || 'inbox',
+            category: mail.category || "inbox",
             attachments: [],
             appointmentId: mail.appointment_id,
             status: mail.status,
@@ -73,16 +89,20 @@ const MailOrg = () => {
                 email: mail.contact_email,
                 phone: mail.contact_phone,
                 address: mail.event_address,
-                type: mail.organization_type || 'organization'
-              }
-            }
+                type: mail.organization_type || "organization",
+              },
+            },
           };
         });
 
         try {
-          const prevIds = new Set(mails.map(m => m.id || m.mailId));
-          const newArrivals = transformedMails.some(m => !prevIds.has(m.id || m.mailId));
-          if (newArrivals) { new Audio('/assets/message.mp3').play(); }
+          const prevIds = new Set(mails.map((m) => m.id || m.mailId));
+          const newArrivals = transformedMails.some(
+            (m) => !prevIds.has(m.id || m.mailId)
+          );
+          if (newArrivals) {
+            new Audio("/assets/message.mp3").play();
+          }
         } catch (_) {}
         setMails(transformedMails);
       } else {
@@ -90,60 +110,65 @@ const MailOrg = () => {
         setMails([
           {
             id: 1,
-            from: 'Regional Blood Center',
-            fromEmail: 'admin@regionalbloodcenter.org',
-            avatar: 'RBC',
-            avatarColor: '#165C3C',
-            subject: 'Partnership Request Approved - Blood Drive at Community Center',
-            preview: 'Your partnership request has been approved by the Regional Blood Center...',
-            body: 'Dear Partner,\n\nWe are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center.\n\nNext Steps:\n- Our team will contact you shortly to coordinate the blood drive details.\n- Please prepare the necessary documentation and venue arrangements.\n- Check your calendar for the scheduled appointment.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team',
+            from: "Regional Blood Center",
+            fromEmail: "admin@regionalbloodcenter.org",
+            avatar: "RBC",
+            avatarColor: "#165C3C",
+            subject:
+              "Partnership Request Approved - Blood Drive at Community Center",
+            preview:
+              "Your partnership request has been approved by the Regional Blood Center...",
+            body: "Dear Partner,\n\nWe are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center.\n\nNext Steps:\n- Our team will contact you shortly to coordinate the blood drive details.\n- Please prepare the necessary documentation and venue arrangements.\n- Check your calendar for the scheduled appointment.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team",
             timestamp: new Date(Date.now() - 2 * 60 * 60000),
             read: false,
             starred: false,
-            category: 'inbox',
+            category: "inbox",
             attachments: [],
-            status: 'approved',
-            appointmentId: 'APT001'
+            status: "approved",
+            appointmentId: "APT001",
           },
           {
             id: 2,
-            from: 'Regional Blood Center',
-            fromEmail: 'admin@regionalbloodcenter.org',
-            avatar: 'RBC',
-            avatarColor: '#165C3C',
-            subject: 'Partnership Request Declined - Blood Drive at School',
-            preview: 'Your partnership request has been declined by the Regional Blood Center...',
-            body: 'Dear Partner,\n\nWe regret to inform you that your partnership request has been DECLINED by the Regional Blood Center.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team',
+            from: "Regional Blood Center",
+            fromEmail: "admin@regionalbloodcenter.org",
+            avatar: "RBC",
+            avatarColor: "#165C3C",
+            subject: "Partnership Request Declined - Blood Drive at School",
+            preview:
+              "Your partnership request has been declined by the Regional Blood Center...",
+            body: "Dear Partner,\n\nWe regret to inform you that your partnership request has been DECLINED by the Regional Blood Center.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team",
             timestamp: new Date(Date.now() - 1 * 24 * 60 * 60000),
             read: true,
             starred: false,
-            category: 'inbox',
+            category: "inbox",
             attachments: [],
-            status: 'declined',
-            declineReason: 'The proposed venue does not meet our safety and accessibility standards. Additionally, the requested date conflicts with another scheduled event in the area.',
-            appointmentId: 'APT002'
+            status: "declined",
+            declineReason:
+              "The proposed venue does not meet our safety and accessibility standards. Additionally, the requested date conflicts with another scheduled event in the area.",
+            appointmentId: "APT002",
           },
           {
             id: 3,
-            from: 'Regional Blood Center',
-            fromEmail: 'admin@regionalbloodcenter.org',
-            avatar: 'RBC',
-            avatarColor: '#165C3C',
-            subject: 'Partnership Request Under Review - Company Blood Drive',
-            preview: 'Your partnership request is under review by the Regional Blood Center...',
-            body: 'Dear Partner,\n\nYour partnership request is currently UNDER REVIEW by the Regional Blood Center. We will notify you once a decision has been made.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team',
+            from: "Regional Blood Center",
+            fromEmail: "admin@regionalbloodcenter.org",
+            avatar: "RBC",
+            avatarColor: "#165C3C",
+            subject: "Partnership Request Under Review - Company Blood Drive",
+            preview:
+              "Your partnership request is under review by the Regional Blood Center...",
+            body: "Dear Partner,\n\nYour partnership request is currently UNDER REVIEW by the Regional Blood Center. We will notify you once a decision has been made.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team",
             timestamp: new Date(Date.now() - 30 * 60000),
             read: false,
             starred: true,
-            category: 'inbox',
+            category: "inbox",
             attachments: [],
-            status: 'pending',
-            appointmentId: 'APT003'
-          }
+            status: "pending",
+            appointmentId: "APT003",
+          },
         ]);
       }
     } catch (error) {
-      console.error('Error loading mails:', error);
+      console.error("Error loading mails:", error);
     } finally {
       setIsLoading(false);
     }
@@ -151,11 +176,11 @@ const MailOrg = () => {
 
   const getSubjectByStatus = (status, title) => {
     switch (status) {
-      case 'approved':
+      case "approved":
         return `Partnership Request Approved - ${title}`;
-      case 'declined':
+      case "declined":
         return `Partnership Request Declined - ${title}`;
-      case 'pending':
+      case "pending":
         return `Partnership Request Under Review - ${title}`;
       default:
         return `Partnership Request Update - ${title}`;
@@ -165,11 +190,11 @@ const MailOrg = () => {
   const getPreviewByStatus = (status, message) => {
     const preview = message.substring(0, 100);
     switch (status) {
-      case 'approved':
+      case "approved":
         return `Your partnership request has been approved. ${preview}...`;
-      case 'declined':
+      case "declined":
         return `Your partnership request has been declined. ${preview}...`;
-      case 'pending':
+      case "pending":
         return `Your partnership request is under review. ${preview}...`;
       default:
         return `${preview}...`;
@@ -178,67 +203,79 @@ const MailOrg = () => {
 
   const buildEmailBody = (notification) => {
     const statusMessage = {
-      approved: 'We are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center.',
-      declined: 'We regret to inform you that your partnership request has been DECLINED by the Regional Blood Center.',
-      pending: 'Your partnership request is currently UNDER REVIEW by the Regional Blood Center. We will notify you once a decision has been made.'
+      approved:
+        "We are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center.",
+      declined:
+        "We regret to inform you that your partnership request has been DECLINED by the Regional Blood Center.",
+      pending:
+        "Your partnership request is currently UNDER REVIEW by the Regional Blood Center. We will notify you once a decision has been made.",
     };
 
-    const formattedDate = notification.timestamp.toLocaleString('en-US', {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
+    const formattedDate = notification.timestamp.toLocaleString("en-US", {
+      weekday: "short",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
     });
 
     const lines = [
       `<strong>${notification.title}</strong>`,
       `(${formattedDate})`,
-      '',
-      'Dear Partner,',
-      '',
-      statusMessage[notification.status] || 'This is an update regarding your partnership request.',
-      '',
+      "",
+      "Dear Partner,",
+      "",
+      statusMessage[notification.status] ||
+        "This is an update regarding your partnership request.",
+      "",
 
-      ''
+      "",
     ];
 
-
-
-    if (notification.status === 'approved') {
-      lines.push('Next Steps:');
-      lines.push('- Our team will contact you shortly to coordinate the blood drive details.');
-      lines.push('- Please Prepare the necessary documentation and venue arrangements.');
-      lines.push('- Check your calendar for the scheduled appointment.');
-      lines.push('');
+    if (notification.status === "approved") {
+      lines.push("Next Steps:");
+      lines.push(
+        "- Our team will contact you shortly to coordinate the blood drive details."
+      );
+      lines.push(
+        "- Please Prepare the necessary documentation and venue arrangements."
+      );
+      lines.push("- Check your calendar for the scheduled appointment.");
+      lines.push("");
     }
 
+    lines.push(
+      "If you have any questions, please contact us at admin@regionalbloodcenter.org"
+    );
+    lines.push("");
+    lines.push("Best regards,");
+    lines.push("Regional Blood Center Team");
 
-
-    lines.push('If you have any questions, please contact us at admin@regionalbloodcenter.org');
-    lines.push('');
-    lines.push('Best regards,');
-    lines.push('Regional Blood Center Team');
-
-    return lines.join('\n');
+    return lines.join("\n");
   };
 
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target)) {
+      if (
+        filterDropdownRef.current &&
+        !filterDropdownRef.current.contains(event.target)
+      ) {
         setIsFilterDropdownOpen(false);
       }
-      if (sortDropdownRef.current && !sortDropdownRef.current.contains(event.target)) {
+      if (
+        sortDropdownRef.current &&
+        !sortDropdownRef.current.contains(event.target)
+      ) {
         setIsSortDropdownOpen(false);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
 
@@ -246,39 +283,40 @@ const MailOrg = () => {
     let filtered = mails;
 
     // Apply filter
-    if (activeFilter !== 'all') {
-      if (activeFilter === 'unread') {
-        filtered = filtered.filter(m => !m.read);
-      } else if (activeFilter === 'starred') {
-        filtered = filtered.filter(m => m.starred);
-      } else if (activeFilter === 'approved') {
-        filtered = filtered.filter(m => m.status === 'approved');
-      } else if (activeFilter === 'declined') {
-        filtered = filtered.filter(m => m.status === 'declined');
-      } else if (activeFilter === 'pending') {
-        filtered = filtered.filter(m => m.status === 'pending');
+    if (activeFilter !== "all") {
+      if (activeFilter === "unread") {
+        filtered = filtered.filter((m) => !m.read);
+      } else if (activeFilter === "starred") {
+        filtered = filtered.filter((m) => m.starred);
+      } else if (activeFilter === "approved") {
+        filtered = filtered.filter((m) => m.status === "approved");
+      } else if (activeFilter === "declined") {
+        filtered = filtered.filter((m) => m.status === "declined");
+      } else if (activeFilter === "pending") {
+        filtered = filtered.filter((m) => m.status === "pending");
       } else {
-        filtered = filtered.filter(m => m.category === activeFilter);
+        filtered = filtered.filter((m) => m.category === activeFilter);
       }
     }
 
     // Apply search
     if (searchQuery) {
-      filtered = filtered.filter(m => 
-        m.from.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.body.toLowerCase().includes(searchQuery.toLowerCase())
+      filtered = filtered.filter(
+        (m) =>
+          m.from.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          m.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          m.body.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
     // Apply sorting
     const sorted = [...filtered].sort((a, b) => {
       switch (sortBy) {
-        case 'newest':
+        case "newest":
           return new Date(b.timestamp) - new Date(a.timestamp);
-        case 'oldest':
+        case "oldest":
           return new Date(a.timestamp) - new Date(b.timestamp);
-        case 'unread':
+        case "unread":
           if (a.read !== b.read) {
             return a.read ? 1 : -1;
           }
@@ -298,10 +336,10 @@ const MailOrg = () => {
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
 
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
-    if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
-    if (days < 7) return `${days} day${days !== 1 ? 's' : ''} ago`;
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`;
+    if (hours < 24) return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
+    if (days < 7) return `${days} day${days !== 1 ? "s" : ""} ago`;
     return timestamp.toLocaleDateString();
   };
 
@@ -312,11 +350,11 @@ const MailOrg = () => {
     if (!mail.read) {
       try {
         await window.electronAPI.markMailAsRead(mail.id);
-        setMails(prev => prev.map(m =>
-          m.id === mail.id ? { ...m, read: true } : m
-        ));
+        setMails((prev) =>
+          prev.map((m) => (m.id === mail.id ? { ...m, read: true } : m))
+        );
       } catch (error) {
-        console.error('Error marking mail as read:', error);
+        console.error("Error marking mail as read:", error);
       }
     }
   };
@@ -325,11 +363,11 @@ const MailOrg = () => {
     e.stopPropagation();
     try {
       await window.electronAPI.toggleMailStar(mailId);
-      setMails(prev => prev.map(m =>
-        m.id === mailId ? { ...m, starred: !m.starred } : m
-      ));
+      setMails((prev) =>
+        prev.map((m) => (m.id === mailId ? { ...m, starred: !m.starred } : m))
+      );
     } catch (error) {
-      console.error('Error toggling star:', error);
+      console.error("Error toggling star:", error);
     }
   };
 
@@ -344,11 +382,11 @@ const MailOrg = () => {
     setIsDeleting(true);
 
     try {
-      if (typeof window !== 'undefined' && window.electronAPI && mailToDelete) {
+      if (typeof window !== "undefined" && window.electronAPI && mailToDelete) {
         await window.electronAPI.deleteMail(mailToDelete);
 
         // Update local state
-        setMails(prev => prev.filter(m => m.id !== mailToDelete));
+        setMails((prev) => prev.filter((m) => m.id !== mailToDelete));
 
         // Close detail view if the deleted mail was selected
         if (selectedMail && selectedMail.id === mailToDelete) {
@@ -356,14 +394,14 @@ const MailOrg = () => {
         }
 
         // Wait 1 second before showing success modal
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
         setIsDeleting(false);
 
         // Show success modal
         setSuccessMessage({
-          title: 'Deleted Successfully!',
-          description: '1 message(s) have been deleted.'
+          title: "Deleted Successfully!",
+          description: "1 message(s) have been deleted.",
         });
         setShowSuccessModal(true);
 
@@ -371,9 +409,9 @@ const MailOrg = () => {
         await loadMails();
       }
     } catch (error) {
-      console.error('Error deleting mail:', error);
+      console.error("Error deleting mail:", error);
       setIsDeleting(false);
-      alert('Failed to delete message. Please try again.');
+      alert("Failed to delete message. Please try again.");
     } finally {
       setMailToDelete(null);
     }
@@ -381,11 +419,11 @@ const MailOrg = () => {
 
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'approved':
+      case "approved":
         return <CheckCircle size={16} color="#10b981" />;
-      case 'declined':
+      case "declined":
         return <XCircle size={16} color="#ef4444" />;
-      case 'pending':
+      case "pending":
         return <Clock size={16} color="#f59e0b" />;
       default:
         return <Mail size={16} color="#6b7280" />;
@@ -395,26 +433,30 @@ const MailOrg = () => {
   const getCounts = () => {
     return {
       all: mails.length,
-      unread: mails.filter(m => !m.read).length,
-      starred: mails.filter(m => m.starred).length,
-      approved: mails.filter(m => m.status === 'approved').length,
-      declined: mails.filter(m => m.status === 'declined').length,
-      pending: mails.filter(m => m.status === 'pending').length,
-      inbox: mails.filter(m => m.category === 'inbox').length
+      unread: mails.filter((m) => !m.read).length,
+      starred: mails.filter((m) => m.starred).length,
+      approved: mails.filter((m) => m.status === "approved").length,
+      declined: mails.filter((m) => m.status === "declined").length,
+      pending: mails.filter((m) => m.status === "pending").length,
+      inbox: mails.filter((m) => m.category === "inbox").length,
     };
   };
 
   const getSortLabel = (sortKey) => {
     switch (sortKey) {
-      case 'newest': return 'Latest';
-      case 'oldest': return 'Oldest';
-      case 'unread': return 'Unread';
-      default: return 'Latest';
+      case "newest":
+        return "Latest";
+      case "oldest":
+        return "Oldest";
+      case "unread":
+        return "Unread";
+      default:
+        return "Latest";
     }
   };
 
   const getFilterLabel = (filter) => {
-    if (filter === 'all') return 'All';
+    if (filter === "all") return "All";
     return filter.charAt(0).toUpperCase() + filter.slice(1);
   };
 
@@ -433,9 +475,9 @@ const MailOrg = () => {
             padding: 24px;
             background-color: #f9fafb;
             min-height: 100vh;
-            font-family: 'Barlow', sans-serif;
+            font-family: "Barlow", sans-serif;
           }
-          
+
           .loading-state {
             display: flex;
             flex-direction: column;
@@ -444,24 +486,26 @@ const MailOrg = () => {
             min-height: 400px;
             gap: 16px;
           }
-          
+
           .loading-spinner {
             width: 40px;
             height: 40px;
             border: 4px solid #e5e7eb;
-            border-top-color: #165C3C;
+            border-top-color: #165c3c;
             border-radius: 50%;
             animation: spin 1s linear infinite;
           }
-          
+
           @keyframes spin {
-            to { transform: rotate(360deg); }
+            to {
+              transform: rotate(360deg);
+            }
           }
-          
+
           .loading-state p {
             color: #6b7280;
             font-size: 14px;
-            font-family: 'Barlow', sans-serif;
+            font-family: "Barlow", sans-serif;
           }
         `}</style>
       </div>
@@ -493,7 +537,7 @@ const MailOrg = () => {
         <div className="right-controls">
           {/* Filter Dropdown */}
           <div className="filter-dropdown-container" ref={filterDropdownRef}>
-            <button 
+            <button
               className="filter-dropdown-button"
               onClick={() => {
                 setIsFilterDropdownOpen(!isFilterDropdownOpen);
@@ -508,7 +552,7 @@ const MailOrg = () => {
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
-                className={`dropdown-arrow ${isFilterDropdownOpen ? 'rotated' : ''}`}
+                className={`dropdown-arrow ${isFilterDropdownOpen ? "rotated" : ""}`}
               >
                 <path
                   strokeLinecap="round"
@@ -522,39 +566,57 @@ const MailOrg = () => {
               <div className="filter-dropdown-menu">
                 <div className="dropdown-section">
                   <h4 className="dropdown-section-title">Filter by Status</h4>
-                  <button 
-                    className={`dropdown-item ${activeFilter === 'all' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('all'); setIsFilterDropdownOpen(false); }}
+                  <button
+                    className={`dropdown-item ${activeFilter === "all" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("all");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     All ({counts.all})
                   </button>
-                  <button 
-                    className={`dropdown-item ${activeFilter === 'approved' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('approved'); setIsFilterDropdownOpen(false); }}
+                  <button
+                    className={`dropdown-item ${activeFilter === "approved" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("approved");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Approved ({counts.approved})
                   </button>
-                  <button 
-                    className={`dropdown-item ${activeFilter === 'declined' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('declined'); setIsFilterDropdownOpen(false); }}
+                  <button
+                    className={`dropdown-item ${activeFilter === "declined" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("declined");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Declined ({counts.declined})
                   </button>
-                  <button 
-                    className={`dropdown-item ${activeFilter === 'pending' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('pending'); setIsFilterDropdownOpen(false); }}
+                  <button
+                    className={`dropdown-item ${activeFilter === "pending" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("pending");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Pending ({counts.pending})
                   </button>
-                  <button 
-                    className={`dropdown-item ${activeFilter === 'unread' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('unread'); setIsFilterDropdownOpen(false); }}
+                  <button
+                    className={`dropdown-item ${activeFilter === "unread" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("unread");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Unread ({counts.unread})
                   </button>
-                  <button 
-                    className={`dropdown-item ${activeFilter === 'starred' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('starred'); setIsFilterDropdownOpen(false); }}
+                  <button
+                    className={`dropdown-item ${activeFilter === "starred" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("starred");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Starred ({counts.starred})
                   </button>
@@ -565,7 +627,7 @@ const MailOrg = () => {
 
           {/* Sort Dropdown */}
           <div className="sort-dropdown-container" ref={sortDropdownRef}>
-            <button 
+            <button
               className="sort-dropdown-button"
               onClick={() => {
                 setIsSortDropdownOpen(!isSortDropdownOpen);
@@ -580,7 +642,7 @@ const MailOrg = () => {
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
-                className={`dropdown-arrow ${isSortDropdownOpen ? 'rotated' : ''}`}
+                className={`dropdown-arrow ${isSortDropdownOpen ? "rotated" : ""}`}
               >
                 <path
                   strokeLinecap="round"
@@ -594,21 +656,30 @@ const MailOrg = () => {
               <div className="sort-dropdown-menu">
                 <div className="dropdown-section">
                   <h4 className="dropdown-section-title">Sort Options</h4>
-                  <button 
-                    className={`dropdown-item ${sortBy === 'newest' ? 'active' : ''}`}
-                    onClick={() => { setSortBy('newest'); setIsSortDropdownOpen(false); }}
+                  <button
+                    className={`dropdown-item ${sortBy === "newest" ? "active" : ""}`}
+                    onClick={() => {
+                      setSortBy("newest");
+                      setIsSortDropdownOpen(false);
+                    }}
                   >
                     Latest
                   </button>
-                  <button 
-                    className={`dropdown-item ${sortBy === 'oldest' ? 'active' : ''}`}
-                    onClick={() => { setSortBy('oldest'); setIsSortDropdownOpen(false); }}
+                  <button
+                    className={`dropdown-item ${sortBy === "oldest" ? "active" : ""}`}
+                    onClick={() => {
+                      setSortBy("oldest");
+                      setIsSortDropdownOpen(false);
+                    }}
                   >
                     Oldest
                   </button>
-                  <button 
-                    className={`dropdown-item ${sortBy === 'unread' ? 'active' : ''}`}
-                    onClick={() => { setSortBy('unread'); setIsSortDropdownOpen(false); }}
+                  <button
+                    className={`dropdown-item ${sortBy === "unread" ? "active" : ""}`}
+                    onClick={() => {
+                      setSortBy("unread");
+                      setIsSortDropdownOpen(false);
+                    }}
                   >
                     Unread First
                   </button>
@@ -618,13 +689,24 @@ const MailOrg = () => {
           </div>
 
           {/* Refresh Button */}
-          <button 
+          <button
             className="refresh-button"
             onClick={loadMails}
             title="Refresh messages"
           >
-            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            <svg
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
             </svg>
           </button>
         </div>
@@ -638,17 +720,21 @@ const MailOrg = () => {
             <div className="empty-state">
               <Mail size={48} />
               <h3>No messages found</h3>
-              <p>{searchQuery ? 'Try adjusting your search' : `No ${activeFilter === 'all' ? '' : activeFilter} messages available`}</p>
+              <p>
+                {searchQuery
+                  ? "Try adjusting your search"
+                  : `No ${activeFilter === "all" ? "" : activeFilter} messages available`}
+              </p>
             </div>
           ) : (
             <div className="mail-list">
-              {filteredMails.map(mail => (
-                <div 
-                  key={mail.id} 
-                  className={`mail-item ${!mail.read ? 'unread' : ''} ${selectedMail && selectedMail.id === mail.id ? 'selected' : ''}`}
+              {filteredMails.map((mail) => (
+                <div
+                  key={mail.id}
+                  className={`mail-item ${!mail.read ? "unread" : ""} ${selectedMail && selectedMail.id === mail.id ? "selected" : ""}`}
                   onClick={() => handleMailClick(mail)}
                 >
-                  <div 
+                  <div
                     className="mail-avatar"
                     style={{ backgroundColor: mail.avatarColor }}
                   >
@@ -660,7 +746,9 @@ const MailOrg = () => {
                       <span className="mail-from">{mail.from}</span>
                       <div className="mail-meta">
                         {getStatusIcon(mail.status)}
-                        <span className="mail-time">{getTimeAgo(mail.timestamp)}</span>
+                        <span className="mail-time">
+                          {getTimeAgo(mail.timestamp)}
+                        </span>
                       </div>
                     </div>
                     <div className="mail-subject">{mail.subject}</div>
@@ -669,11 +757,14 @@ const MailOrg = () => {
 
                   <div className="mail-actions">
                     <button
-                      className={`star-button ${mail.starred ? 'starred' : ''}`}
+                      className={`star-button ${mail.starred ? "starred" : ""}`}
                       onClick={(e) => handleToggleStar(mail.id, e)}
-                      title={mail.starred ? 'Unstar' : 'Star'}
+                      title={mail.starred ? "Unstar" : "Star"}
                     >
-                      <Star size={16} fill={mail.starred ? '#f59e0b' : 'none'} />
+                      <Star
+                        size={16}
+                        fill={mail.starred ? "#f59e0b" : "none"}
+                      />
                     </button>
                     <button
                       className="delete-button"
@@ -696,7 +787,7 @@ const MailOrg = () => {
           <div className="mail-detail">
             <div className="mail-detail-header">
               <div className="mail-detail-from">
-                <div 
+                <div
                   className="mail-detail-avatar"
                   style={{ backgroundColor: selectedMail.avatarColor }}
                 >
@@ -704,16 +795,21 @@ const MailOrg = () => {
                 </div>
                 <div>
                   <div className="mail-detail-name">{selectedMail.from}</div>
-                  <div className="mail-detail-email">{selectedMail.fromEmail}</div>
+                  <div className="mail-detail-email">
+                    {selectedMail.fromEmail}
+                  </div>
                 </div>
               </div>
               <div className="mail-detail-actions">
                 <button
-                  className={`action-btn ${selectedMail.starred ? 'starred' : ''}`}
+                  className={`action-btn ${selectedMail.starred ? "starred" : ""}`}
                   onClick={(e) => handleToggleStar(selectedMail.id, e)}
-                  title={selectedMail.starred ? 'Unstar' : 'Star'}
+                  title={selectedMail.starred ? "Unstar" : "Star"}
                 >
-                  <Star size={18} fill={selectedMail.starred ? '#f59e0b' : 'none'} />
+                  <Star
+                    size={18}
+                    fill={selectedMail.starred ? "#f59e0b" : "none"}
+                  />
                 </button>
                 <button
                   className="action-btn delete-btn"
@@ -727,13 +823,13 @@ const MailOrg = () => {
 
             <div className="mail-detail-subject">{selectedMail.subject}</div>
             <div className="mail-detail-meta">
-              {selectedMail.timestamp.toLocaleString('en-US', {
-                weekday: 'short',
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: 'numeric',
-                minute: '2-digit'
+              {selectedMail.timestamp.toLocaleString("en-US", {
+                weekday: "short",
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
               })}
             </div>
 
@@ -746,63 +842,91 @@ const MailOrg = () => {
             </div>
 
             <div className="mail-detail-body">
-              {selectedMail.body.split('\n').map((line, index) => (
-                <p key={index}>{line || '\u00A0'}</p>
+              {selectedMail.body.split("\n").map((line, index) => (
+                <p key={index}>{line || "\u00A0"}</p>
               ))}
             </div>
 
-              {/* --- ADD THIS NEW BLOCK (for Org inbox) --- */}
-            {selectedMail.requestInfo && (selectedMail.requestInfo.title || selectedMail.requestInfo.requestor) && (
-              <div className="request-details-box">
-                <h4 className="request-details-title">Request Details:</h4>
-                <div className="request-detail-item">
-                  <span className="request-detail-label">Title:</span>
-                  <span className="request-detail-value">{selectedMail.requestInfo.title}</span>
+            {/* --- ADD THIS NEW BLOCK (for Org inbox) --- */}
+            {selectedMail.requestInfo &&
+              (selectedMail.requestInfo.title ||
+                selectedMail.requestInfo.requestor) && (
+                <div className="request-details-box">
+                  <h4 className="request-details-title">Request Details:</h4>
+                  <div className="request-detail-item">
+                    <span className="request-detail-label">Title:</span>
+                    <span className="request-detail-value">
+                      {selectedMail.requestInfo.title}
+                    </span>
+                  </div>
+                  <div className="request-detail-item">
+                    <span className="request-detail-label">Requestor:</span>
+                    <span className="request-detail-value">
+                      {selectedMail.requestInfo.requestor} – (
+                      {selectedMail.requestInfo.organization})
+                    </span>
+                  </div>
+                  <div className="request-detail-item">
+                    <span className="request-detail-label">
+                      Date Submitted:
+                    </span>
+                    <span className="request-detail-value">
+                      {new Date(
+                        selectedMail.requestInfo.dateSubmitted
+                      ).toLocaleDateString("en-US", {
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                      })}
+                    </span>
+                  </div>
                 </div>
-                <div className="request-detail-item">
-                  <span className="request-detail-label">Requestor:</span>
-                  <span className="request-detail-value">{selectedMail.requestInfo.requestor} – ({selectedMail.requestInfo.organization})</span>
-                </div>
-                <div className="request-detail-item">
-                  <span className="request-detail-label">Date Submitted:</span>
-                  <span className="request-detail-value">
-                    {new Date(selectedMail.requestInfo.dateSubmitted).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit'
-                    })}
-                  </span>
-                </div>
-              </div>
-            )}
+              )}
             {/* --- END OF NEW BLOCK --- */}
 
             {/* --- DOH/RBC CONTACT INFORMATION SECTION --- */}
             <div className="request-details-box">
               <h4 className="request-details-title">
-                <Phone size={18} style={{ marginRight: '8px', verticalAlign: 'middle' }} />
+                <Phone
+                  size={18}
+                  style={{ marginRight: "8px", verticalAlign: "middle" }}
+                />
                 Regional Blood Center Contact Information:
               </h4>
               <div className="request-detail-item">
                 <span className="request-detail-label">Address:</span>
-                <span className="request-detail-value">J. V. Serina Street, Carmen, Cagayan de Oro City</span>
+                <span className="request-detail-value">
+                  J. V. Serina Street, Carmen, Cagayan de Oro City
+                </span>
               </div>
               <div className="request-detail-item">
                 <span className="request-detail-label">PABX:</span>
-                <span className="request-detail-value">(088) 858-7123 / (088) 858-4000 / (088) 855-0430 / (+63) 917-148-3298</span>
+                <span className="request-detail-value">
+                  (088) 858-7123 / (088) 858-4000 / (088) 855-0430 / (+63)
+                  917-148-3298
+                </span>
               </div>
               <div className="request-detail-item">
                 <span className="request-detail-label">Fax:</span>
-                <span className="request-detail-value">(+63) 088-8409 / (088) 858-7132 / (088) 858-2639 / (088)-160</span>
+                <span className="request-detail-value">
+                  (+63) 088-8409 / (088) 858-7132 / (088) 858-2639 / (088)-160
+                </span>
               </div>
               <div className="request-detail-item">
                 <span className="request-detail-label">Email:</span>
-                <span className="request-detail-value">pacd@ro10.doh.gov.ph</span>
+                <span className="request-detail-value">
+                  pacd@ro10.doh.gov.ph
+                </span>
               </div>
               <div className="request-detail-item">
                 <span className="request-detail-label">Website:</span>
                 <span className="request-detail-value">
-                  <a href="http://www.ro10.doh.gov.ph" target="_blank" rel="noopener noreferrer" style={{ color: '#165C3C', textDecoration: 'underline' }}>
+                  <a
+                    href="http://www.ro10.doh.gov.ph"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "#165C3C", textDecoration: "underline" }}
+                  >
                     http://www.ro10.doh.gov.ph
                   </a>
                 </span>
@@ -811,22 +935,27 @@ const MailOrg = () => {
             {/* --- END DOH/RBC CONTACT INFORMATION SECTION --- */}
 
             {/* Decline Reason Display */}
-            {selectedMail.status === 'declined' && selectedMail.declineReason && (
-              <div className="decline-reason-display">
-                <div className="decline-reason-header">
-                  <XCircle size={20} color="#ef4444" />
-                  <strong>Reason for Decline</strong>
+            {selectedMail.status === "declined" &&
+              selectedMail.declineReason && (
+                <div className="decline-reason-display">
+                  <div className="decline-reason-header">
+                    <XCircle size={20} color="#ef4444" />
+                    <strong>Reason for Decline</strong>
+                  </div>
+                  <p className="decline-reason-text">
+                    {selectedMail.declineReason}
+                  </p>
                 </div>
-                <p className="decline-reason-text">{selectedMail.declineReason}</p>
-              </div>
-            )}
+              )}
 
             {/* Appointment Info */}
             {selectedMail.appointmentId && (
               <div className="mail-appointment-info">
                 <div className="appointment-badge">
                   <Calendar size={16} />
-                  <span>Related Appointment ID: {selectedMail.appointmentId}</span>
+                  <span>
+                    Related Appointment ID: {selectedMail.appointmentId}
+                  </span>
                 </div>
               </div>
             )}
@@ -853,9 +982,18 @@ const MailOrg = () => {
       {isDeleting && <Loader />}
 
       {showSuccessModal && (
-        <div className="success-modal-overlay" onClick={() => setShowSuccessModal(false)}>
-          <div className="success-modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="success-modal-close" onClick={() => setShowSuccessModal(false)}>
+        <div
+          className="success-modal-overlay"
+          onClick={() => setShowSuccessModal(false)}
+        >
+          <div
+            className="success-modal-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="success-modal-close"
+              onClick={() => setShowSuccessModal(false)}
+            >
               <X size={20} color="#9ca3af" />
             </button>
             <div className="success-modal-icon">
@@ -870,7 +1008,9 @@ const MailOrg = () => {
               </div>
             </div>
             <h3 className="success-modal-title">{successMessage.title}</h3>
-            <p className="success-modal-description">{successMessage.description}</p>
+            <p className="success-modal-description">
+              {successMessage.description}
+            </p>
             <button
               className="success-modal-button"
               onClick={() => setShowSuccessModal(false)}
@@ -883,15 +1023,15 @@ const MailOrg = () => {
 
       <style jsx>{`
         @font-face {
-          font-family: 'Barlow';
-          src: url('./src/assets/fonts/Barlow-Regular.ttf') format('truetype');
+          font-family: "Barlow";
+          src: url("./src/assets/fonts/Barlow-Regular.ttf") format("truetype");
           font-weight: 400;
           font-style: normal;
         }
 
         @font-face {
-          font-family: 'Barlow';
-          src: url('./src/assets/fonts/Barlow-Bold.ttf') format('truetype');
+          font-family: "Barlow";
+          src: url("./src/assets/fonts/Barlow-Bold.ttf") format("truetype");
           font-weight: 700;
           font-style: normal;
         }
@@ -900,7 +1040,7 @@ const MailOrg = () => {
           padding: 24px;
           background-color: #f9fafb;
           min-height: 100vh;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
           border-radius: 8px;
         }
 
@@ -911,16 +1051,16 @@ const MailOrg = () => {
         .mail-title {
           font-size: 24px;
           font-weight: 700;
-          color: #165C3C;
+          color: #165c3c;
           margin: 0 0 4px 0;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .mail-subtitle {
           color: #6b7280;
           font-size: 14px;
           margin: 0;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .controls-bar {
@@ -964,7 +1104,7 @@ const MailOrg = () => {
           border-radius: 6px;
           cursor: pointer;
           font-size: 14px;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
           font-weight: 500;
           transition: all 0.2s;
           min-width: 160px;
@@ -1042,7 +1182,7 @@ const MailOrg = () => {
           letter-spacing: 0.05em;
           margin: 0 0 8px 0;
           padding: 0 16px;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .dropdown-item {
@@ -1051,7 +1191,7 @@ const MailOrg = () => {
           text-align: left;
           padding: 8px 16px;
           font-size: 14px;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
           font-weight: 400;
           color: #374151;
           background: none;
@@ -1065,7 +1205,7 @@ const MailOrg = () => {
         }
 
         .dropdown-item.active {
-          background-color: #165C3C;
+          background-color: #165c3c;
           color: white;
         }
 
@@ -1084,12 +1224,12 @@ const MailOrg = () => {
           border-radius: 6px;
           width: 300px;
           font-size: 14px;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
           outline: none;
         }
 
         .search-input:focus {
-          border-color: #165C3C;
+          border-color: #165c3c;
           box-shadow: 0 0 0 2px rgba(22, 92, 60, 0.1);
         }
 
@@ -1172,7 +1312,7 @@ const MailOrg = () => {
           font-weight: 700;
           font-size: 11px;
           flex-shrink: 0;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .mail-item-content {
@@ -1191,7 +1331,7 @@ const MailOrg = () => {
           font-size: 14px;
           font-weight: 600;
           color: #111827;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .mail-meta {
@@ -1204,7 +1344,7 @@ const MailOrg = () => {
           font-size: 12px;
           color: #6b7280;
           white-space: nowrap;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .mail-subject {
@@ -1215,7 +1355,7 @@ const MailOrg = () => {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .mail-preview {
@@ -1224,7 +1364,7 @@ const MailOrg = () => {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .mail-actions {
@@ -1322,20 +1462,20 @@ const MailOrg = () => {
           font-weight: 700;
           font-size: 14px;
           flex-shrink: 0;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .mail-detail-name {
           font-size: 16px;
           font-weight: 600;
           color: #111827;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .mail-detail-email {
           font-size: 14px;
           color: #6b7280;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .mail-detail-actions {
@@ -1374,14 +1514,14 @@ const MailOrg = () => {
           font-weight: 700;
           color: #111827;
           margin-bottom: 8px;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .mail-detail-meta {
           font-size: 13px;
           color: #6b7280;
           margin-bottom: 16px;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .status-badge-container {
@@ -1396,7 +1536,7 @@ const MailOrg = () => {
           border-radius: 6px;
           font-size: 14px;
           font-weight: 600;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .status-approved {
@@ -1421,7 +1561,7 @@ const MailOrg = () => {
           font-size: 14px;
           color: #374151;
           line-height: 1.7;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .mail-detail-body p {
@@ -1443,7 +1583,7 @@ const MailOrg = () => {
           font-weight: 600;
           color: #111827;
           margin: 0 0 16px 0;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .request-detail-item {
@@ -1451,7 +1591,7 @@ const MailOrg = () => {
           grid-template-columns: 120px 1fr;
           gap: 8px;
           font-size: 14px;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
           margin-bottom: 10px;
         }
 
@@ -1489,7 +1629,7 @@ const MailOrg = () => {
           font-size: 16px;
           font-weight: 600;
           color: #991b1b;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .decline-reason-text {
@@ -1497,7 +1637,7 @@ const MailOrg = () => {
           color: #7f1d1d;
           margin: 0;
           line-height: 1.6;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
           white-space: pre-wrap;
         }
 
@@ -1513,11 +1653,11 @@ const MailOrg = () => {
           gap: 8px;
           padding: 8px 12px;
           background-color: #e8f5e8;
-          color: #165C3C;
+          color: #165c3c;
           border-radius: 6px;
           font-size: 13px;
           font-weight: 500;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .mail-detail-empty {
@@ -1532,7 +1672,7 @@ const MailOrg = () => {
         .mail-detail-empty p {
           margin-top: 16px;
           font-size: 14px;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .empty-state {
@@ -1554,13 +1694,13 @@ const MailOrg = () => {
           font-weight: 600;
           margin: 16px 0 8px 0;
           color: #374151;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .empty-state p {
           font-size: 14px;
           margin: 0;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         @media (max-width: 1024px) {
@@ -1706,14 +1846,14 @@ const MailOrg = () => {
           font-weight: 700;
           color: #1f7a54;
           margin: 0 0 12px 0;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
         }
 
         .success-modal-description {
           font-size: 15px;
           color: #6b7280;
           margin: 0 0 28px 0;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
           line-height: 1.5;
         }
 
@@ -1726,7 +1866,7 @@ const MailOrg = () => {
           font-size: 16px;
           font-weight: 700;
           cursor: pointer;
-          font-family: 'Barlow', sans-serif;
+          font-family: "Barlow", sans-serif;
           transition: all 0.2s;
           text-transform: uppercase;
           letter-spacing: 0.5px;

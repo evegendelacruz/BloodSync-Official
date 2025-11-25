@@ -1,13 +1,27 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Search, Filter, RefreshCw, CheckCircle, XCircle, Clock, Calendar, Trash2, MoreVertical, Mail, Users, X } from 'lucide-react';
-import DeleteConfirmationModal from '../../../../components/DeleteConfirmationModal';
-import Loader from '../../../../components/Loader';
+import React, { useState, useEffect, useRef } from "react";
+import {
+  Bell,
+  Search,
+  Filter,
+  RefreshCw,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Calendar,
+  Trash2,
+  MoreVertical,
+  Mail,
+  Users,
+  X,
+} from "lucide-react";
+import DeleteConfirmationModal from "../../../../components/DeleteConfirmationModal";
+import Loader from "../../../../components/Loader";
 
 const NotificationOrg = () => {
   const [notifications, setNotifications] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all");
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [activeNotificationMenu, setActiveNotificationMenu] = useState(null);
   const [selectedNotification, setSelectedNotification] = useState(null);
@@ -15,7 +29,10 @@ const NotificationOrg = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [notificationToDelete, setNotificationToDelete] = useState(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [successMessage, setSuccessMessage] = useState({ title: '', description: '' });
+  const [successMessage, setSuccessMessage] = useState({
+    title: "",
+    description: "",
+  });
   const [isDeleting, setIsDeleting] = useState(false);
 
   const filterDropdownRef = useRef(null);
@@ -23,75 +40,100 @@ const NotificationOrg = () => {
 
   useEffect(() => {
     loadNotifications();
-    
+
     let lastUnread = 0;
     const interval = setInterval(async () => {
       try {
-        if (typeof window !== 'undefined' && window.electronAPI) {
+        if (typeof window !== "undefined" && window.electronAPI) {
           const count = await window.electronAPI.getUnreadNotificationCount();
-          if (typeof count === 'number' && count > lastUnread) {
+          if (typeof count === "number" && count > lastUnread) {
             lastUnread = count;
             await loadNotifications();
-          } else if (typeof count === 'number') {
+          } else if (typeof count === "number") {
             lastUnread = count;
           }
         }
       } catch (_) {}
     }, 10000);
-    
+
     return () => clearInterval(interval);
   }, []);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target)) {
+      if (
+        filterDropdownRef.current &&
+        !filterDropdownRef.current.contains(event.target)
+      ) {
         setIsFilterDropdownOpen(false);
       }
-      if (notificationMenuRef.current && !notificationMenuRef.current.contains(event.target)) {
+      if (
+        notificationMenuRef.current &&
+        !notificationMenuRef.current.contains(event.target)
+      ) {
         setActiveNotificationMenu(null);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
 
+
+
+  
   const loadNotifications = async () => {
     try {
       if (!isRefreshing) {
         setIsLoading(true);
       }
-      
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        console.log('[NotificationOrg] Loading notifications from database...');
-        
+
+      if (typeof window !== "undefined" && window.electronAPI) {
+        console.log("[NotificationOrg] Loading notifications from database...");
+
         // Load notifications from notifications_org table
-        const notificationsData = await window.electronAPI.getAllNotificationsOrg();
-        
-        console.log('[NotificationOrg] Received notifications:', notificationsData);
-        console.log('[NotificationOrg] Number of notifications:', notificationsData?.length || 0);
-        
+        const notificationsData =
+          await window.electronAPI.getAllNotificationsOrg();
+
+        console.log(
+          "[NotificationOrg] Received notifications:",
+          notificationsData
+        );
+        console.log(
+          "[NotificationOrg] Number of notifications:",
+          notificationsData?.length || 0
+        );
+
         if (!notificationsData || notificationsData.length === 0) {
-          console.log('[NotificationOrg] No notifications found in database');
+          console.log("[NotificationOrg] No notifications found in database");
           setNotifications([]);
           return;
         }
+
+
         
-        const readLocalIds = JSON.parse(localStorage.getItem('orgPageReadNotificationIds') || '[]');
-        const transformedNotifications = notificationsData.map(n => ({
+        const readLocalIds = JSON.parse(
+          localStorage.getItem("orgPageReadNotificationIds") || "[]"
+        );
+        const transformedNotifications = notificationsData.map((n) => ({
           id: n.id,
           notificationId: n.notification_id,
-          type: n.notification_type || n.type || 'notification',
-          status: n.status || 'info',
+          type: n.notification_type || n.type || "notification",
+          status: n.status || "info",
           priority: n.priority,
           title: n.title,
           message: n.message || n.description,
-          requestor: n.requestor || 'System',
+          requestor: n.requestor || "System",
           timestamp: new Date(n.updated_at || n.created_at),
-          read: (n.read || n.is_read || false) || readLocalIds.includes(n.notification_id) || readLocalIds.includes(n.id),
+          read:
+            n.read ||
+            n.is_read ||
+            false ||
+            readLocalIds.includes(n.notification_id) ||
+            readLocalIds.includes(n.id),
           appointmentId: n.appointment_id,
           eventDate: n.event_date,
           eventTime: n.event_time,
@@ -101,10 +143,10 @@ const NotificationOrg = () => {
             email: n.contact_email,
             phone: n.contact_phone,
             address: n.event_location || n.contact_address,
-            type: n.contact_type
-          }
+            type: n.contact_type,
+          },
         }));
-        
+
         // Sort by unread first, then by timestamp
         const allNotifications = transformedNotifications.sort((a, b) => {
           if (a.read !== b.read) {
@@ -112,15 +154,20 @@ const NotificationOrg = () => {
           }
           return new Date(b.timestamp) - new Date(a.timestamp);
         });
-        
-        console.log('[NotificationOrg] Transformed notifications:', allNotifications);
+
+        console.log(
+          "[NotificationOrg] Transformed notifications:",
+          allNotifications
+        );
         setNotifications(allNotifications);
       } else {
-        console.log('[NotificationOrg] electronAPI not available, using sample data');
+        console.log(
+          "[NotificationOrg] electronAPI not available, using sample data"
+        );
         // ... existing sample data code ...
       }
     } catch (error) {
-      console.error('Error loading notifications:', error);
+      console.error("Error loading notifications:", error);
       setNotifications([]);
     } finally {
       setIsLoading(false);
@@ -135,32 +182,49 @@ const NotificationOrg = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'approved': return { bg: '#ecfdf5', border: '#10b981', text: '#059669' };
-      case 'declined': return { bg: '#fee2e2', border: '#ef4444', text: '#dc2626' };
-      case 'cancelled': return { bg: '#fee2e2', border: '#ef4444', text: '#dc2626' };
-      case 'pending': return { bg: '#fef3c7', border: '#f59e0b', text: '#d97706' };
-      case 'info': return { bg: '#dbeafe', border: '#3b82f6', text: '#2563eb' };
-      default: return { bg: '#f3f4f6', border: '#6b7280', text: '#4b5563' };
+      case "approved":
+        return { bg: "#ecfdf5", border: "#10b981", text: "#059669" };
+      case "declined":
+        return { bg: "#fee2e2", border: "#ef4444", text: "#dc2626" };
+      case "cancelled":
+        return { bg: "#fee2e2", border: "#ef4444", text: "#dc2626" };
+      case "pending":
+        return { bg: "#fef3c7", border: "#f59e0b", text: "#d97706" };
+      case "info":
+        return { bg: "#dbeafe", border: "#3b82f6", text: "#2563eb" };
+      default:
+        return { bg: "#f3f4f6", border: "#6b7280", text: "#4b5563" };
     }
   };
 
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'approved': return <CheckCircle size={20} />;
-      case 'declined': return <XCircle size={20} />;
-      case 'cancelled': return <XCircle size={20} />;
-      case 'pending': return <Clock size={20} />;
-      case 'info': return <Calendar size={20} />;
-      default: return <Bell size={20} />;
+      case "approved":
+        return <CheckCircle size={20} />;
+      case "declined":
+        return <XCircle size={20} />;
+      case "cancelled":
+        return <XCircle size={20} />;
+      case "pending":
+        return <Clock size={20} />;
+      case "info":
+        return <Calendar size={20} />;
+      default:
+        return <Bell size={20} />;
     }
   };
 
   const getTypeIcon = (type) => {
     switch (type) {
-      case 'partnership_response': return <Mail size={16} />;
-      case 'sync_response': return <Users size={16} />;
-      case 'upcoming_event': return <Calendar size={16} />;
-      default: return <Bell size={16} />;
+      case "partnership_response":
+        return <Mail size={16} />;
+      case "sync_response":
+        return <Users size={16} />;
+      case "upcoming_event":
+      case "event_finished":
+        return <Calendar size={16} />;
+      default:
+        return <Bell size={16} />;
     }
   };
 
@@ -171,7 +235,7 @@ const NotificationOrg = () => {
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
 
-    if (minutes < 1) return 'Just now';
+    if (minutes < 1) return "Just now";
     if (minutes < 60) return `${minutes}m ago`;
     if (hours < 24) return `${hours}h ago`;
     if (days < 7) return `${days}d ago`;
@@ -179,24 +243,26 @@ const NotificationOrg = () => {
   };
 
   const formatEventDateTime = (date, time) => {
-    if (!date || !time) return '';
-    const dateObj = new Date(date + 'T' + time);
-    return dateObj.toLocaleString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit'
+    if (!date || !time) return "";
+    const dateObj = new Date(date + "T" + time);
+    return dateObj.toLocaleString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
     });
   };
 
   const toggleNotificationReadStatus = async (notificationId) => {
-    const notification = notifications.find(n => n.id === notificationId);
+    const notification = notifications.find((n) => n.id === notificationId);
     if (!notification) return;
 
     // Optimistically update the UI
     const isReadNow = !notification.read;
-    setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, read: isReadNow } : n));
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notificationId ? { ...n, read: isReadNow } : n))
+    );
     setActiveNotificationMenu(null);
 
     try {
@@ -206,19 +272,23 @@ const NotificationOrg = () => {
       // Note: We don't have a backend function for "mark as unread", so we only call the API when marking as read.
       // The UI will still reflect the change temporarily.
     } catch (error) {
-      console.error('Error marking notification as read:', error);
+      console.error("Error marking notification as read:", error);
       // Revert UI on error
-      setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, read: !isReadNow } : n));
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === notificationId ? { ...n, read: !isReadNow } : n
+        )
+      );
     }
   };
 
   const markAllAsRead = async () => {
     // Optimistically update UI
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     try {
       await window.electronAPI.markAllOrgNotificationsAsRead();
     } catch (error) {
-      console.error('Error marking all notifications as read:', error);
+      console.error("Error marking all notifications as read:", error);
       // Optionally revert UI on error
       loadNotifications();
     }
@@ -236,31 +306,36 @@ const NotificationOrg = () => {
 
     try {
       // Update local state
-      setNotifications(prev => prev.filter(n => n.id !== notificationToDelete));
+      setNotifications((prev) =>
+        prev.filter((n) => n.id !== notificationToDelete)
+      );
 
       // Close detail view if the deleted notification was selected
-      if (selectedNotification && selectedNotification.id === notificationToDelete) {
+      if (
+        selectedNotification &&
+        selectedNotification.id === notificationToDelete
+      ) {
         setSelectedNotification(null);
       }
 
       // Wait 1 second before showing success modal
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       setIsDeleting(false);
 
       // Show success modal
       setSuccessMessage({
-        title: 'Deleted Successfully!',
-        description: '1 notification(s) have been deleted.'
+        title: "Deleted Successfully!",
+        description: "1 notification(s) have been deleted.",
       });
       setShowSuccessModal(true);
 
       // Reload notifications to ensure consistency
       await loadNotifications();
     } catch (error) {
-      console.error('Error deleting notification:', error);
+      console.error("Error deleting notification:", error);
       setIsDeleting(false);
-      alert('Failed to delete notification. Please try again.');
+      alert("Failed to delete notification. Please try again.");
     } finally {
       setNotificationToDelete(null);
     }
@@ -268,7 +343,7 @@ const NotificationOrg = () => {
 
   const handleNotificationClick = (notification) => {
     setSelectedNotification(notification);
-    
+
     // Mark as read
     if (!notification.read) {
       toggleNotificationReadStatus(notification.id);
@@ -279,26 +354,29 @@ const NotificationOrg = () => {
     let filtered = notifications;
 
     // Apply filter
-    if (activeFilter !== 'all') {
-      if (activeFilter === 'unread') {
-        filtered = filtered.filter(n => !n.read);
-      } else if (activeFilter === 'partnership_response') {
-        filtered = filtered.filter(n => n.type === 'partnership_response');
-      } else if (activeFilter === 'sync_response') {
-        filtered = filtered.filter(n => n.type === 'sync_response');
-      } else if (activeFilter === 'upcoming_event') {
-        filtered = filtered.filter(n => n.type === 'upcoming_event');
+    if (activeFilter !== "all") {
+      if (activeFilter === "unread") {
+        filtered = filtered.filter((n) => !n.read);
+      } else if (activeFilter === "partnership_response") {
+        filtered = filtered.filter((n) => n.type === "partnership_response");
+      } else if (activeFilter === "sync_response") {
+        filtered = filtered.filter((n) => n.type === "sync_response");
+      } else if (activeFilter === "upcoming_event") {
+        filtered = filtered.filter(
+          (n) => n.type === "upcoming_event" || n.type === "event_finished"
+        );
       } else {
-        filtered = filtered.filter(n => n.status === activeFilter);
+        filtered = filtered.filter((n) => n.status === activeFilter);
       }
     }
 
     // Apply search
     if (searchQuery) {
-      filtered = filtered.filter(n =>
-        n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        n.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        n.requestor.toLowerCase().includes(searchQuery.toLowerCase())
+      filtered = filtered.filter(
+        (n) =>
+          n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          n.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          n.requestor.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
@@ -308,28 +386,33 @@ const NotificationOrg = () => {
   const getCounts = () => {
     return {
       all: notifications.length,
-      unread: notifications.filter(n => !n.read).length,
-      approved: notifications.filter(n => n.status === 'approved').length,
-      declined: notifications.filter(n => n.status === 'declined').length,
-      cancelled: notifications.filter(n => n.status === 'cancelled').length,
-      pending: notifications.filter(n => n.status === 'pending').length,
-      partnership_response: notifications.filter(n => n.type === 'partnership_response').length,
-      sync_response: notifications.filter(n => n.type === 'sync_response').length,
-      upcoming_event: notifications.filter(n => n.type === 'upcoming_event').length
+      unread: notifications.filter((n) => !n.read).length,
+      approved: notifications.filter((n) => n.status === "approved").length,
+      declined: notifications.filter((n) => n.status === "declined").length,
+      cancelled: notifications.filter((n) => n.status === "cancelled").length,
+      pending: notifications.filter((n) => n.status === "pending").length,
+      partnership_response: notifications.filter(
+        (n) => n.type === "partnership_response"
+      ).length,
+      sync_response: notifications.filter((n) => n.type === "sync_response")
+        .length,
+      upcoming_event: notifications.filter(
+        (n) => n.type === "upcoming_event" || n.type === "event_finished"
+      ).length,
     };
   };
 
   const getFilterLabel = (filter) => {
     const labels = {
-      all: 'All',
-      unread: 'Unread',
-      approved: 'Approved',
-      declined: 'Declined',
-      cancelled: 'Cancelled',
-      pending: 'Pending',
-      partnership_response: 'Partnership Responses',
-      sync_response: 'Sync Responses',
-      upcoming_event: 'Events'
+      all: "All",
+      unread: "Unread",
+      approved: "Approved",
+      declined: "Declined",
+      cancelled: "Cancelled",
+      pending: "Pending",
+      partnership_response: "Partnership Responses",
+      sync_response: "Sync Responses",
+      upcoming_event: "Events",
     };
     return labels[filter] || filter;
   };
@@ -349,9 +432,15 @@ const NotificationOrg = () => {
             padding: 24px;
             background-color: #f9fafb;
             min-height: 100vh;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family:
+              "Inter",
+              -apple-system,
+              BlinkMacSystemFont,
+              "Segoe UI",
+              Roboto,
+              sans-serif;
           }
-          
+
           .loading-state {
             display: flex;
             flex-direction: column;
@@ -360,24 +449,32 @@ const NotificationOrg = () => {
             min-height: 400px;
             gap: 16px;
           }
-          
+
           .loading-spinner {
             width: 40px;
             height: 40px;
             border: 4px solid #e5e7eb;
-            border-top-color: #165C3C;
+            border-top-color: #165c3c;
             border-radius: 50%;
             animation: spin 1s linear infinite;
           }
-          
+
           @keyframes spin {
-            to { transform: rotate(360deg); }
+            to {
+              transform: rotate(360deg);
+            }
           }
-          
+
           .loading-state p {
             color: #6b7280;
             font-size: 14px;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family:
+              "Inter",
+              -apple-system,
+              BlinkMacSystemFont,
+              "Segoe UI",
+              Roboto,
+              sans-serif;
           }
         `}</style>
       </div>
@@ -389,13 +486,15 @@ const NotificationOrg = () => {
       {/* Header */}
       <div className="notification-header">
         <h1 className="notification-title">Notifications</h1>
-        <p className="notification-subtitle">Stay updated with partnership responses and event reminders</p>
+        <p className="notification-subtitle">
+          Stay updated with partnership responses and event reminders
+        </p>
       </div>
 
       {/* Stats Cards */}
       <div className="stats-grid">
         <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: '#dbeafe' }}>
+          <div className="stat-icon" style={{ backgroundColor: "#dbeafe" }}>
             <Bell size={20} color="#2563eb" />
           </div>
           <div className="stat-info">
@@ -404,7 +503,7 @@ const NotificationOrg = () => {
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: '#fef3c7' }}>
+          <div className="stat-icon" style={{ backgroundColor: "#fef3c7" }}>
             <Mail size={20} color="#d97706" />
           </div>
           <div className="stat-info">
@@ -413,7 +512,7 @@ const NotificationOrg = () => {
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: '#ecfdf5' }}>
+          <div className="stat-icon" style={{ backgroundColor: "#ecfdf5" }}>
             <CheckCircle size={20} color="#059669" />
           </div>
           <div className="stat-info">
@@ -422,7 +521,7 @@ const NotificationOrg = () => {
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: '#dbeafe' }}>
+          <div className="stat-icon" style={{ backgroundColor: "#dbeafe" }}>
             <Calendar size={20} color="#2563eb" />
           </div>
           <div className="stat-info">
@@ -462,9 +561,14 @@ const NotificationOrg = () => {
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
-                className={`dropdown-arrow ${isFilterDropdownOpen ? 'rotated' : ''}`}
+                className={`dropdown-arrow ${isFilterDropdownOpen ? "rotated" : ""}`}
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m19 9-7 7-7-7" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="m19 9-7 7-7-7"
+                />
               </svg>
             </button>
             {isFilterDropdownOpen && (
@@ -472,38 +576,56 @@ const NotificationOrg = () => {
                 <div className="dropdown-section">
                   <h4 className="dropdown-section-title">By Status</h4>
                   <button
-                    className={`dropdown-item ${activeFilter === 'all' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('all'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "all" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("all");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     All ({counts.all})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'unread' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('unread'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "unread" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("unread");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Unread ({counts.unread})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'approved' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('approved'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "approved" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("approved");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Approved ({counts.approved})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'declined' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('declined'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "declined" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("declined");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Declined ({counts.declined})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'pending' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('pending'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "pending" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("pending");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Pending ({counts.pending})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'cancelled' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('cancelled'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "cancelled" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("cancelled");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Cancelled ({counts.cancelled})
                   </button>
@@ -512,20 +634,29 @@ const NotificationOrg = () => {
                 <div className="dropdown-section">
                   <h4 className="dropdown-section-title">By Type</h4>
                   <button
-                    className={`dropdown-item ${activeFilter === 'partnership_response' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('partnership_response'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "partnership_response" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("partnership_response");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Partnership Responses ({counts.partnership_response})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'sync_response' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('sync_response'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "sync_response" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("sync_response");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Sync Responses ({counts.sync_response})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'upcoming_event' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('upcoming_event'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "upcoming_event" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("upcoming_event");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Upcoming Events ({counts.upcoming_event})
                   </button>
@@ -544,7 +675,7 @@ const NotificationOrg = () => {
 
           {/* Refresh Button */}
           <button
-            className={`refresh-button ${isRefreshing ? 'refreshing' : ''}`}
+            className={`refresh-button ${isRefreshing ? "refreshing" : ""}`}
             onClick={handleRefresh}
             disabled={isRefreshing}
             title="Refresh notifications"
@@ -562,21 +693,28 @@ const NotificationOrg = () => {
             <div className="empty-state">
               <Bell size={48} />
               <h3>No notifications found</h3>
-              <p>{searchQuery ? 'Try adjusting your search' : `No ${activeFilter === 'all' ? '' : activeFilter} notifications available`}</p>
+              <p>
+                {searchQuery
+                  ? "Try adjusting your search"
+                  : `No ${activeFilter === "all" ? "" : activeFilter} notifications available`}
+              </p>
             </div>
           ) : (
             <div className="notifications-list">
-              {filteredNotifications.map(notification => {
+              {filteredNotifications.map((notification) => {
                 const colors = getStatusColor(notification.status);
                 return (
                   <div
                     key={notification.id}
-                    className={`notification-item ${!notification.read ? 'unread' : ''} ${selectedNotification && selectedNotification.id === notification.id ? 'selected' : ''}`}
+                    className={`notification-item ${!notification.read ? "unread" : ""} ${selectedNotification && selectedNotification.id === notification.id ? "selected" : ""}`}
                     onClick={() => handleNotificationClick(notification)}
                   >
                     <div
                       className="notification-icon"
-                      style={{ backgroundColor: colors.bg, borderColor: colors.border }}
+                      style={{
+                        backgroundColor: colors.bg,
+                        borderColor: colors.border,
+                      }}
                     >
                       <div style={{ color: colors.text }}>
                         {getStatusIcon(notification.status)}
@@ -588,20 +726,30 @@ const NotificationOrg = () => {
                         <div className="notification-type-badge">
                           {getTypeIcon(notification.type)}
                           <span>
-                            {notification.type === 'partnership_response' ? 'Partnership Response' :
-                             notification.type === 'sync_response' ? 'Sync Response' :
-                             notification.type === 'upcoming_event' ? 'Event' : 'Notification'}
+                            {notification.type === "partnership_response"
+                              ? "Partnership Response"
+                              : notification.type === "sync_response"
+                                ? "Sync Response"
+                                : notification.type === "upcoming_event"
+                                  ? "Event"
+                                  : "Notification"}
                           </span>
                         </div>
-                        <span className="notification-time">{getTimeAgo(notification.timestamp)}</span>
+                        <span className="notification-time">
+                          {getTimeAgo(notification.timestamp)}
+                        </span>
                       </div>
-                      <div className="notification-title">{notification.title}</div>
-                        <div className="notification-preview">
-                          {(notification.message || '').length > 100 
-                            ? `${notification.message.substring(0, 100)}...` 
-                            : (notification.message || '')}
-                        </div>
-                      <div className="notification-requestor">From: {notification.requestor}</div>
+                      <div className="notification-title">
+                        {notification.title}
+                      </div>
+                      <div className="notification-preview">
+                        {(notification.message || "").length > 100
+                          ? `${notification.message.substring(0, 100)}...`
+                          : notification.message || ""}
+                      </div>
+                      <div className="notification-requestor">
+                        From: {notification.requestor}
+                      </div>
                     </div>
 
                     <div className="notification-actions">
@@ -610,14 +758,19 @@ const NotificationOrg = () => {
                         onClick={(e) => {
                           e.stopPropagation();
                           setActiveNotificationMenu(
-                            activeNotificationMenu === notification.id ? null : notification.id
+                            activeNotificationMenu === notification.id
+                              ? null
+                              : notification.id
                           );
                         }}
                       >
                         <MoreVertical size={16} />
                       </button>
                       {activeNotificationMenu === notification.id && (
-                        <div className="notification-menu" ref={notificationMenuRef}>
+                        <div
+                          className="notification-menu"
+                          ref={notificationMenuRef}
+                        >
                           <button
                             className="notification-menu-item"
                             onClick={(e) => {
@@ -625,7 +778,7 @@ const NotificationOrg = () => {
                               toggleNotificationReadStatus(notification.id);
                             }}
                           >
-                            Mark as {notification.read ? 'Unread' : 'Read'}
+                            Mark as {notification.read ? "Unread" : "Read"}
                           </button>
                           <button
                             className="notification-menu-item delete"
@@ -655,21 +808,37 @@ const NotificationOrg = () => {
               <div
                 className="notification-detail-icon"
                 style={{
-                  backgroundColor: getStatusColor(selectedNotification.status).bg,
-                  borderColor: getStatusColor(selectedNotification.status).border
+                  backgroundColor: getStatusColor(selectedNotification.status)
+                    .bg,
+                  borderColor: getStatusColor(selectedNotification.status)
+                    .border,
                 }}
               >
-                <div style={{ color: getStatusColor(selectedNotification.status).text }}>
+                <div
+                  style={{
+                    color: getStatusColor(selectedNotification.status).text,
+                  }}
+                >
                   {getStatusIcon(selectedNotification.status)}
                 </div>
               </div>
               <div className="notification-detail-actions">
                 <button
                   className="action-btn"
-                  onClick={() => toggleNotificationReadStatus(selectedNotification.id)}
-                  title={selectedNotification.read ? 'Mark as unread' : 'Mark as read'}
+                  onClick={() =>
+                    toggleNotificationReadStatus(selectedNotification.id)
+                  }
+                  title={
+                    selectedNotification.read
+                      ? "Mark as unread"
+                      : "Mark as read"
+                  }
                 >
-                  {selectedNotification.read ? <Mail size={18} /> : <CheckCircle size={18} />}
+                  {selectedNotification.read ? (
+                    <Mail size={18} />
+                  ) : (
+                    <CheckCircle size={18} />
+                  )}
                 </button>
                 <button
                   className="action-btn delete-btn"
@@ -681,29 +850,35 @@ const NotificationOrg = () => {
               </div>
             </div>
 
-            <div className="notification-detail-title">{selectedNotification.title}</div>
+            <div className="notification-detail-title">
+              {selectedNotification.title}
+            </div>
             <div className="notification-detail-meta">
               <div className="meta-item">
                 <span className="meta-label">From:</span>
-                <span className="meta-value">{selectedNotification.requestor}</span>
+                <span className="meta-value">
+                  {selectedNotification.requestor}
+                </span>
               </div>
               <div className="meta-item">
                 <span className="meta-label">Time:</span>
                 <span className="meta-value">
-                  {selectedNotification.timestamp.toLocaleString('en-US', {
-                    weekday: 'short',
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit'
+                  {selectedNotification.timestamp.toLocaleString("en-US", {
+                    weekday: "short",
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
                   })}
                 </span>
               </div>
               {selectedNotification.appointmentId && (
                 <div className="meta-item">
                   <span className="meta-label">Appointment ID:</span>
-                  <span className="meta-value">{selectedNotification.appointmentId}</span>
+                  <span className="meta-value">
+                    {selectedNotification.appointmentId}
+                  </span>
                 </div>
               )}
             </div>
@@ -713,9 +888,11 @@ const NotificationOrg = () => {
               <div
                 className="status-badge"
                 style={{
-                  backgroundColor: getStatusColor(selectedNotification.status).bg,
+                  backgroundColor: getStatusColor(selectedNotification.status)
+                    .bg,
                   color: getStatusColor(selectedNotification.status).text,
-                  borderColor: getStatusColor(selectedNotification.status).border
+                  borderColor: getStatusColor(selectedNotification.status)
+                    .border,
                 }}
               >
                 {getStatusIcon(selectedNotification.status)}
@@ -729,67 +906,100 @@ const NotificationOrg = () => {
             </div>
 
             {/* Event Details for Upcoming Events */}
-            {selectedNotification.type === 'upcoming_event' && selectedNotification.eventDate && (
-              <div className="event-details-card">
-                <h4 className="event-details-title">Event Details</h4>
-                <div className="event-details-grid">
-                  <div className="event-detail-item">
-                    <Calendar size={16} />
-                    <span>{formatEventDateTime(selectedNotification.eventDate, selectedNotification.eventTime)}</span>
-                  </div>
-                  {selectedNotification.contactInfo?.address && (
+            {selectedNotification.type === "upcoming_event" &&
+              selectedNotification.eventDate && (
+                <div className="event-details-card">
+                  <h4 className="event-details-title">Event Details</h4>
+                  <div className="event-details-grid">
                     <div className="event-detail-item">
-                      <Users size={16} />
-                      <span>{selectedNotification.contactInfo.address}</span>
+                      <Calendar size={16} />
+                      <span>
+                        {formatEventDateTime(
+                          selectedNotification.eventDate,
+                          selectedNotification.eventTime
+                        )}
+                      </span>
                     </div>
-                  )}
+                    {selectedNotification.contactInfo?.address && (
+                      <div className="event-detail-item">
+                        <Users size={16} />
+                        <span>{selectedNotification.contactInfo.address}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {/* Reason Display for Declined/Cancelled */}
-            {(selectedNotification.status === 'declined' || selectedNotification.status === 'cancelled') && selectedNotification.declineReason && (
-              <div className="decline-reason-display">
-                <div className="decline-reason-header">
-                  <XCircle size={20} color="#ef4444" />
-                  <strong>{selectedNotification.status === 'cancelled' ? 'Cancellation Reason' : 'Reason for Decline'}</strong>
+            {(selectedNotification.status === "declined" ||
+              selectedNotification.status === "cancelled") &&
+              selectedNotification.declineReason && (
+                <div className="decline-reason-display">
+                  <div className="decline-reason-header">
+                    <XCircle size={20} color="#ef4444" />
+                    <strong>
+                      {selectedNotification.status === "cancelled"
+                        ? "Cancellation Reason"
+                        : "Reason for Decline"}
+                    </strong>
+                  </div>
+                  <p className="decline-reason-text">
+                    {selectedNotification.declineReason}
+                  </p>
                 </div>
-                <p className="decline-reason-text">{selectedNotification.declineReason}</p>
-              </div>
-            )}
+              )}
 
             {/* Contact Information for Events */}
-            {selectedNotification.type === 'upcoming_event' && selectedNotification.contactInfo && (selectedNotification.contactInfo.email || selectedNotification.contactInfo.phone) && (
-              <div className="contact-info-card">
-                <h4 className="contact-info-title">Contact Information</h4>
-                <div className="contact-info-grid">
-                  {selectedNotification.contactInfo.email && (
-                    <div className="contact-info-item">
-                      <Mail size={16} />
-                      <span>{selectedNotification.contactInfo.email}</span>
-                    </div>
-                  )}
-                  {selectedNotification.contactInfo.phone && (
-                    <div className="contact-info-item">
-                      <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                      </svg>
-                      <span>{selectedNotification.contactInfo.phone}</span>
-                    </div>
-                  )}
+            {selectedNotification.type === "upcoming_event" &&
+              selectedNotification.contactInfo &&
+              (selectedNotification.contactInfo.email ||
+                selectedNotification.contactInfo.phone) && (
+                <div className="contact-info-card">
+                  <h4 className="contact-info-title">Contact Information</h4>
+                  <div className="contact-info-grid">
+                    {selectedNotification.contactInfo.email && (
+                      <div className="contact-info-item">
+                        <Mail size={16} />
+                        <span>{selectedNotification.contactInfo.email}</span>
+                      </div>
+                    )}
+                    {selectedNotification.contactInfo.phone && (
+                      <div className="contact-info-item">
+                        <svg
+                          width="16"
+                          height="16"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                          />
+                        </svg>
+                        <span>{selectedNotification.contactInfo.phone}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {/* Regional Blood Center Contact Information (for Partnership/Sync Responses, Cancelled, Finished Events, and Upcoming Tomorrow) */}
-            {(selectedNotification.type === 'partnership_response' ||
-              selectedNotification.type === 'sync_response' ||
-              selectedNotification.status === 'cancelled' ||
-              selectedNotification.title === 'Your Upcoming Blood Drive Partnership Event happening Tomorrow' ||
-              selectedNotification.title === 'Blood Drive Partnership event now Finished') && (
+            {(selectedNotification.type === "partnership_response" ||
+              selectedNotification.type === "sync_response" ||
+              selectedNotification.status === "cancelled" ||
+              selectedNotification.title ===
+                "Your Upcoming Blood Drive Partnership Event happening Tomorrow" ||
+              selectedNotification.title ===
+                "Blood Drive Partnership event now Completed") && (
               <div className="contact-info-card rbc-contact">
                 <h4 className="contact-info-title">
-                  <Users size={18} style={{ marginRight: '8px', verticalAlign: 'middle' }} />
+                  <Users
+                    size={18}
+                    style={{ marginRight: "8px", verticalAlign: "middle" }}
+                  />
                   Regional Blood Center Contact Information
                 </h4>
                 <div className="contact-info-grid">
@@ -798,17 +1008,47 @@ const NotificationOrg = () => {
                     <span>admin@regionalbloodcenter.org</span>
                   </div>
                   <div className="contact-info-item">
-                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                    <svg
+                      width="16"
+                      height="16"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                      />
                     </svg>
                     <span>+63 (85) 225-1234</span>
                   </div>
                   <div className="contact-info-item">
-                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <svg
+                      width="16"
+                      height="16"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
                     </svg>
-                    <span>J.V Serina St., Carmen, Cagayan de Oro City, Misamis Oriental.</span>
+                    <span>
+                      J.V Serina St., Carmen, Cagayan de Oro City, Misamis
+                      Oriental.
+                    </span>
                   </div>
                 </div>
               </div>
@@ -834,9 +1074,18 @@ const NotificationOrg = () => {
       {isDeleting && <Loader />}
 
       {showSuccessModal && (
-        <div className="success-modal-overlay" onClick={() => setShowSuccessModal(false)}>
-          <div className="success-modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="success-modal-close" onClick={() => setShowSuccessModal(false)}>
+        <div
+          className="success-modal-overlay"
+          onClick={() => setShowSuccessModal(false)}
+        >
+          <div
+            className="success-modal-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="success-modal-close"
+              onClick={() => setShowSuccessModal(false)}
+            >
               <X size={20} color="#9ca3af" />
             </button>
             <div className="success-modal-icon">
@@ -851,7 +1100,9 @@ const NotificationOrg = () => {
               </div>
             </div>
             <h3 className="success-modal-title">{successMessage.title}</h3>
-            <p className="success-modal-description">{successMessage.description}</p>
+            <p className="success-modal-description">
+              {successMessage.description}
+            </p>
             <button
               className="success-modal-button"
               onClick={() => setShowSuccessModal(false)}
@@ -867,8 +1118,13 @@ const NotificationOrg = () => {
           padding: 24px;
           background-color: #f9fafb;
           min-height: 100vh;
-          border-radius: 8px;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .notification-header {
@@ -878,16 +1134,28 @@ const NotificationOrg = () => {
         .notification-title {
           font-size: 24px;
           font-weight: 700;
-          color: #165C3C;
+          color: #165c3c;
           margin: 0 0 4px 0;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .notification-subtitle {
           color: #6b7280;
           font-size: 14px;
           margin: 0;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .stats-grid {
@@ -906,7 +1174,9 @@ const NotificationOrg = () => {
           gap: 16px;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
           border: 1px solid #e5e7eb;
-          transition: transform 0.2s, box-shadow 0.2s;
+          transition:
+            transform 0.2s,
+            box-shadow 0.2s;
         }
 
         .stat-card:hover {
@@ -933,14 +1203,26 @@ const NotificationOrg = () => {
           color: #6b7280;
           font-weight: 500;
           margin-bottom: 4px;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .stat-value {
           font-size: 28px;
           font-weight: 700;
           color: #111827;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .controls-bar {
@@ -982,12 +1264,18 @@ const NotificationOrg = () => {
           border-radius: 6px;
           width: 300px;
           font-size: 14px;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
           outline: none;
         }
 
         .search-input:focus {
-          border-color: #165C3C;
+          border-color: #165c3c;
           box-shadow: 0 0 0 2px rgba(22, 92, 60, 0.1);
         }
 
@@ -1012,7 +1300,13 @@ const NotificationOrg = () => {
           border-radius: 6px;
           cursor: pointer;
           font-size: 14px;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
           font-weight: 500;
           transition: all 0.2s;
           min-width: 160px;
@@ -1070,7 +1364,13 @@ const NotificationOrg = () => {
           letter-spacing: 0.05em;
           margin: 0 0 8px 0;
           padding: 0 16px;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .dropdown-item {
@@ -1079,7 +1379,13 @@ const NotificationOrg = () => {
           text-align: left;
           padding: 8px 16px;
           font-size: 14px;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
           font-weight: 400;
           color: #374151;
           background: none;
@@ -1093,7 +1399,7 @@ const NotificationOrg = () => {
         }
 
         .dropdown-item.active {
-          background-color: #165C3C;
+          background-color: #165c3c;
           color: white;
         }
 
@@ -1108,13 +1414,19 @@ const NotificationOrg = () => {
           align-items: center;
           gap: 8px;
           padding: 8px 16px;
-          background-color: #165C3C;
+          background-color: #165c3c;
           color: white;
           border: none;
           border-radius: 6px;
           cursor: pointer;
           font-size: 14px;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
           font-weight: 500;
           transition: all 0.2s;
         }
@@ -1237,14 +1549,26 @@ const NotificationOrg = () => {
           font-size: 12px;
           color: #6b7280;
           font-weight: 500;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .notification-time {
           font-size: 12px;
           color: #6b7280;
           white-space: nowrap;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .notification-title {
@@ -1252,7 +1576,13 @@ const NotificationOrg = () => {
           font-weight: 600;
           color: #111827;
           margin-bottom: 4px;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
           line-height: 1.4;
         }
 
@@ -1260,7 +1590,13 @@ const NotificationOrg = () => {
           font-size: 13px;
           color: #6b7280;
           margin-bottom: 4px;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
           line-height: 1.5;
         }
 
@@ -1268,7 +1604,13 @@ const NotificationOrg = () => {
           font-size: 12px;
           color: #374151;
           font-weight: 500;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .notification-actions {
@@ -1316,7 +1658,13 @@ const NotificationOrg = () => {
           text-align: left;
           padding: 8px 16px;
           font-size: 14px;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
           font-weight: 400;
           color: #374151;
           background: none;
@@ -1418,7 +1766,13 @@ const NotificationOrg = () => {
           font-weight: 700;
           color: #111827;
           margin-bottom: 16px;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
           line-height: 1.4;
         }
 
@@ -1433,7 +1787,13 @@ const NotificationOrg = () => {
           display: flex;
           gap: 8px;
           font-size: 14px;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .meta-label {
@@ -1457,7 +1817,13 @@ const NotificationOrg = () => {
           border-radius: 6px;
           font-size: 14px;
           font-weight: 600;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
           border: 1px solid;
         }
 
@@ -1465,7 +1831,13 @@ const NotificationOrg = () => {
           font-size: 15px;
           color: #374151;
           line-height: 1.7;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
           margin-bottom: 20px;
           white-space: pre-wrap;
         }
@@ -1483,7 +1855,13 @@ const NotificationOrg = () => {
           font-weight: 600;
           color: #111827;
           margin: 0 0 16px 0;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .event-details-grid {
@@ -1498,7 +1876,13 @@ const NotificationOrg = () => {
           gap: 10px;
           font-size: 14px;
           color: #374151;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .event-detail-item svg {
@@ -1525,7 +1909,13 @@ const NotificationOrg = () => {
           font-size: 16px;
           font-weight: 600;
           color: #991b1b;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .decline-reason-text {
@@ -1533,7 +1923,13 @@ const NotificationOrg = () => {
           color: #7f1d1d;
           margin: 0;
           line-height: 1.6;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
           white-space: pre-wrap;
         }
 
@@ -1559,7 +1955,13 @@ const NotificationOrg = () => {
           font-weight: 600;
           color: #111827;
           margin: 0 0 16px 0;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .contact-info-grid {
@@ -1574,7 +1976,13 @@ const NotificationOrg = () => {
           gap: 10px;
           font-size: 14px;
           color: #374151;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .contact-info-item svg {
@@ -1594,7 +2002,13 @@ const NotificationOrg = () => {
         .notification-detail-empty p {
           margin-top: 16px;
           font-size: 14px;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .empty-state {
@@ -1616,13 +2030,25 @@ const NotificationOrg = () => {
           font-weight: 600;
           margin: 16px 0 8px 0;
           color: #374151;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         .empty-state p {
           font-size: 14px;
           margin: 0;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-family:
+            "Inter",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
         }
 
         @media (max-width: 1024px) {
@@ -1774,14 +2200,14 @@ const NotificationOrg = () => {
           font-weight: 700;
           color: #1f7a54;
           margin: 0 0 12px 0;
-          font-family: 'Inter', sans-serif;
+          font-family: "Inter", sans-serif;
         }
 
         .success-modal-description {
           font-size: 15px;
           color: #6b7280;
           margin: 0 0 28px 0;
-          font-family: 'Inter', sans-serif;
+          font-family: "Inter", sans-serif;
           line-height: 1.5;
         }
 
@@ -1794,7 +2220,7 @@ const NotificationOrg = () => {
           font-size: 16px;
           font-weight: 700;
           cursor: pointer;
-          font-family: 'Inter', sans-serif;
+          font-family: "Inter", sans-serif;
           transition: all 0.2s;
           text-transform: uppercase;
           letter-spacing: 0.5px;

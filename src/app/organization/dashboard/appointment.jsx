@@ -1,68 +1,98 @@
-import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, ArrowRight, ArrowLeft, Calendar, CalendarCheck } from 'lucide-react';
-import Loader from '../../../components/Loader';
-import DeleteConfirmationModal from '../../../components/DeleteConfirmationModal';
+import React, { useState, useEffect } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  X,
+  ArrowRight,
+  ArrowLeft,
+  Calendar,
+  CalendarCheck,
+} from "lucide-react";
+import Loader from "../../../components/Loader";
 
 // New Appointment Form Component
-const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = null, appointments = [] }) => {
+const NewAppointmentForm = ({
+  isOpen,
+  onClose,
+  onSubmit,
+  editingAppointment = null,
+  appointments = [],
+  currentUser = null, // Add this prop
+}) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedType, setSelectedType] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
   const [dateTimeModalDate, setDateTimeModalDate] = useState(new Date());
   const [contactInfo, setContactInfo] = useState({
-    lastName: '',
-    email: '',
-    phone: '',
-    address: '',
-    message: ''
+    lastName: "",
+    email: "",
+    phone: "",
+    address: "",
+    message: "",
   });
   const [showThankYou, setShowThankYou] = useState(false);
-  const [currentAppointment, setCurrentAppointment] = useState(editingAppointment);
+  const [currentAppointment, setCurrentAppointment] =
+    useState(editingAppointment);
   const [isLoading, setIsLoading] = useState(false); // <-- ADD THIS LINE
 
   // Compute occupiedDates from appointments prop
-  const occupiedDates = React.useMemo(() => new Set(appointments.map(apt => apt.date)), [appointments]);
+  const occupiedDates = React.useMemo(
+    () => new Set(appointments.map((apt) => apt.date)),
+    [appointments]
+  );
 
   const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
   ];
 
   const timeSlots = [
-    { time: '8:00', display: '8:00 AM' },
-    { time: '9:00', display: '9:00 AM' },
-    { time: '10:00', display: '10:00 AM' },
-    { time: '11:00', display: '11:00 AM' },
+    { time: "8:00", display: "8:00 AM" },
+    { time: "9:00", display: "9:00 AM" },
+    { time: "10:00", display: "10:00 AM" },
+    { time: "11:00", display: "11:00 AM" },
   ];
 
+
   const getDateTimeCalendarDays = () => {
-    const year = dateTimeModalDate.getFullYear();
-    const month = dateTimeModalDate.getMonth();
-    const firstDay = new Date(year, month, 1);
+  const year = dateTimeModalDate.getFullYear();
+  const month = dateTimeModalDate.getMonth();
+  const firstDay = new Date(year, month, 1);
 
-    const startDate = new Date(firstDay);
-    const dayOfWeek = firstDay.getDay();
-    const mondayOffset = dayOfWeek === 0 ? -6 : -(dayOfWeek - 1);
-    startDate.setDate(startDate.getDate() + mondayOffset);
+  const startDate = new Date(firstDay);
+  const dayOfWeek = firstDay.getDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : -(dayOfWeek - 1);
+  startDate.setDate(startDate.getDate() + mondayOffset);
 
-    const days = [];
-    const currentDate = new Date(startDate);
-    
-    for (let i = 0; i < 42; i++) {
-      const dayDateStr = formatDate(currentDate); // <-- Add this line to format the date
-      days.push({
-        day: currentDate.getDate(),
-        date: new Date(currentDate),
-        isCurrentMonth: currentDate.getMonth() === month,
-        isToday: isToday(currentDate),
-        isOccupied: occupiedDates.has(dayDateStr) // <-- ADD THIS LINE
-      });
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-    
-    return days;
-  };
+  const days = [];
+  const currentDate = new Date(startDate);
+
+  for (let i = 0; i < 42; i++) {
+    const dayDateStr = formatDate(currentDate);
+    days.push({
+      day: currentDate.getDate(),
+      date: new Date(currentDate),
+      isCurrentMonth: currentDate.getMonth() === month,
+      isToday: isToday(currentDate),
+      isOccupied: occupiedDates.has(dayDateStr),
+    });
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  return days;
+};
 
   const isToday = (date) => {
     const today = new Date();
@@ -71,18 +101,18 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
 
   const formatDate = (date) => {
     const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   };
 
   const formatTime = (time) => {
-    if (!time) return '';
-    const [hours, minutes] = time.split(':');
+    if (!time) return "";
+    const [hours, minutes] = time.split(":");
     const hour24 = parseInt(hours);
     const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
-    const ampm = hour24 >= 12 ? 'PM' : 'AM';
-    return `${hour12}:${minutes || '00'} ${ampm}`;
+    const ampm = hour24 >= 12 ? "PM" : "AM";
+    return `${hour12}:${minutes || "00"} ${ampm}`;
   };
 
   const resetForm = () => {
@@ -91,11 +121,11 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
     setSelectedDate(null);
     setSelectedTime(null);
     setContactInfo({
-      lastName: '',
-      email: '',
-      phone: '',
-      address: '',
-      message: ''
+      lastName: "",
+      email: "",
+      phone: "",
+      address: "",
+      message: "",
     });
     setShowThankYou(false);
     setCurrentAppointment(null);
@@ -108,7 +138,7 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
 
   const proceedToStep2 = () => {
     if (!selectedType) {
-      alert('Please select either Barangay or Organization');
+      alert("Please select either Barangay or Organization");
       return;
     }
     setCurrentStep(2);
@@ -116,102 +146,224 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
 
   const proceedToStep3 = () => {
     if (!selectedDate || !selectedTime) {
-      alert('Please select both date and time');
+      alert("Please select both date and time");
       return;
     }
     // --- ADD THIS CHECK ---
     if (occupiedDates.has(formatDate(selectedDate))) {
-      alert('This date is already scheduled for an event. Please choose another date.');
+      alert(
+        "This date is already scheduled for an event. Please choose another date."
+      );
       return;
     }
     // --- END ---
     setCurrentStep(3);
   };
 
+  console.log("=== DEBUG LOCALSTORAGE ===");
+  console.log("All localStorage keys:", Object.keys(localStorage));
+  console.log("currentOrgUser:", localStorage.getItem("currentOrgUser"));
+  console.log("=== END DEBUG ===");
+
   const handleContactSubmit = async () => {
     const { lastName, email, phone, address } = contactInfo;
 
-    // 1. Validation
     if (!lastName || !email || !phone || !address) {
-      alert('Please fill in all required fields');
+      alert("Please fill in all required fields");
       return;
     }
 
-    // 2. Turn Loader ON
     setIsLoading(true);
 
-    const appointmentData = {
-      id: currentAppointment ? (currentAppointment.appointment_id || currentAppointment.id) : Date.now(),
-      title: `Blood Drive Partnership - ${lastName}`,
-      date: formatDate(selectedDate),
-      time: selectedTime,
-      type: 'blood-donation',
-      notes: 'Schedule pending approval. Please await confirmation.',
-      status: 'pending',
-      contactInfo: {
-        ...contactInfo,
-        type: selectedType
-      }
-    };
+    try {
+      // Get user ID from localStorage
+      const getUserId = () => {
+        try {
+          const possibleKeys = [
+            "currentOrgUser",
+            "currentUser",
+            "user",
+            "orgUser",
+          ];
 
-    const isEditing = !!currentAppointment;
+          for (const key of possibleKeys) {
+            const userData = localStorage.getItem(key);
+            if (userData) {
+              try {
+                const parsed = JSON.parse(userData);
+                const userId =
+                  parsed.id || parsed.u_id || parsed.userId || parsed.user_id;
 
-    if (typeof window !== 'undefined' && window.electronAPI) {
-      try {
-        const user = JSON.parse(localStorage.getItem('currentOrgUser'));
-        const currentUser = user?.fullName || 'Unknown User';
+                if (userId && typeof userId === "number") {
+                  console.log(`Found valid user ID in ${key}:`, userId);
+                  return userId;
+                }
+              } catch (parseError) {
+                console.warn(`Failed to parse ${key}:`, parseError);
+                continue;
+              }
+            }
+          }
 
+          console.warn("No valid user found in localStorage");
+          return null;
+        } catch (error) {
+          console.error("Error getting user ID:", error);
+          return null;
+        }
+      };
+
+      const userId = getUserId();
+      console.log("Using user ID for appointment:", userId);
+
+      const appointmentData = {
+        id: currentAppointment
+          ? currentAppointment.appointment_id || currentAppointment.id
+          : Date.now(),
+        title: `Blood Drive Partnership - ${lastName}`,
+        date: formatDate(selectedDate),
+        time: selectedTime,
+        type: "blood-donation",
+        notes: "Schedule pending approval. Please await confirmation.",
+        status: "pending",
+        contactInfo: {
+          ...contactInfo,
+          type: selectedType,
+        },
+      };
+
+      const isEditing = !!currentAppointment;
+
+      if (typeof window !== "undefined" && window.electronAPI) {
         if (isEditing) {
-          // (Your edit logic would go here)
-          console.log('Editing appointment...');
-          // Don't forget to call await window.electronAPI.updateAppointment(...)
+          // Editing logic here...
+          setIsLoading(false);
         } else {
-          // 3. Create Local Appointment
-          const localAppointment = await window.electronAPI.addAppointment(appointmentData, currentUser);
-          console.log('Local appointment added successfully', localAppointment);
+          // Create appointment - pass numeric user ID (or null)
+          const localAppointment = await window.electronAPI.addAppointment(
+            appointmentData,
+            userId // Will be null if no valid user found
+          );
+          console.log("Local appointment added successfully", localAppointment);
 
-          // 4. Send Request to Main Server
+          // Get organization info for partnership request
+          const getOrgInfo = () => {
+            try {
+              const userData =
+                localStorage.getItem("currentOrgUser") ||
+                localStorage.getItem("currentUser");
+              if (userData) {
+                const parsed = JSON.parse(userData);
+                console.log("User data for partnership request:", parsed);
+
+                const orgName =
+                  parsed.fullName ||
+                  parsed.u_full_name ||
+                  parsed.organizationName ||
+                  parsed.u_organization_name ||
+                  "Unknown Organization";
+
+                const orgPhoto =
+                  parsed.profileImage ||
+                  parsed.u_profile_image ||
+                  parsed.profile_photo ||
+                  parsed.u_profile_photo ||
+                  null;
+
+                return { name: orgName, photo: orgPhoto };
+              }
+            } catch (error) {
+              console.error("Error getting organization info:", error);
+            }
+            return { name: "Unknown Organization", photo: null };
+          };
+
+          const orgInfo = getOrgInfo();
+
+          // Send Request to Main Server
           const requestData = {
             appointmentId: localAppointment.id,
-            organizationName: user.fullName || appointmentData.contactInfo.lastName || 'N/A',
-            organizationBarangay: user.barangay || 'N/A',
-            contactName: appointmentData.contactInfo.lastName || 'N/A',
-            contactEmail: appointmentData.contactInfo.email || '',
-            contactPhone: appointmentData.contactInfo.phone || '',
+            organizationName: orgInfo.name,
+            organizationBarangay: "N/A",
+            contactName: appointmentData.contactInfo.lastName || "N/A",
+            contactEmail: appointmentData.contactInfo.email || "",
+            contactPhone: appointmentData.contactInfo.phone || "",
             eventDate: appointmentData.date,
             eventTime: appointmentData.time,
-            eventAddress: appointmentData.contactInfo.address || ''
+            eventAddress: appointmentData.contactInfo.address || "",
+            profilePhoto: orgInfo.photo,
           };
-          const serverResult = await window.electronAPI.createPartnershipRequest(requestData);
-          
+
+          const serverResult =
+            await window.electronAPI.createPartnershipRequest(requestData);
+
           if (!serverResult || !serverResult.id) {
-            throw new Error('Failed to submit partnership request to main server.');
+            throw new Error(
+              "Failed to submit partnership request to main server."
+            );
           }
-          console.log('Partnership request submitted to main server successfully:', serverResult);
+          console.log(
+            "Partnership request submitted successfully:",
+            serverResult
+          );
+
+          // CRITICAL: Call onSubmit to update parent component's appointments list IMMEDIATELY
+          if (onSubmit) {
+            onSubmit({
+              id: appointmentData.id,
+              appointment_id: appointmentData.id,
+              title: appointmentData.title,
+              date: appointmentData.date,
+              time: appointmentData.time,
+              type: appointmentData.type,
+              notes: appointmentData.notes,
+              status: appointmentData.status,
+              contactInfo: appointmentData.contactInfo,
+            });
+          }
+
+          // STOP LOADING BEFORE showing thank you
+          setIsLoading(false);
+          
+          // Show thank you message
+          setTimeout(() => {
+            setShowThankYou(true);
+          }, 300);
+        }
+      } else {
+        console.warn("ElectronAPI not available. Simulating success.");
+        
+        // CRITICAL: Call onSubmit even in simulation mode
+        if (onSubmit) {
+          onSubmit({
+            id: appointmentData.id,
+            appointment_id: appointmentData.id,
+            title: appointmentData.title,
+            date: appointmentData.date,
+            time: appointmentData.time,
+            type: appointmentData.type,
+            notes: appointmentData.notes,
+            status: appointmentData.status,
+            contactInfo: appointmentData.contactInfo,
+          });
         }
 
-        // 5. SUCCESS: Turn loader off and show Thank You screen
+        // STOP LOADING BEFORE showing thank you
         setIsLoading(false);
-        setShowThankYou(true);
-
-        // We do NOT call onSubmit() here, because that closes the modal.
-        // The "Close" button on the Thank You screen will handle closing.
-
-      } catch (error) {
-        console.error('Error saving or submitting appointment:', error);
-        alert(`Failed to save appointment: ${error.message}. Please try again.`);
-        setIsLoading(false); // 6. Turn loader off on error
-        return;
+        
+        setTimeout(() => {
+          setShowThankYou(true);
+        }, 300);
       }
-    } else {
-      // Fallback for browser testing
-      console.warn('ElectronAPI not available. Simulating success.');
+    } catch (error) {
+      console.error("Error saving appointment:", error);
       setIsLoading(false);
-      setShowThankYou(true);
+      alert(
+        `Failed to save appointment: ${error.message}. Please try again.`
+      );
     }
-
-    // DO NOT call onSubmit() or setIsLoading(false) here anymore.
   };
+
 
   const selectDate = (date) => {
     setSelectedDate(date);
@@ -887,21 +1039,41 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
       </style>
 
       <div className="new-appointment-modal-overlay">
-        <div className={`new-appointment-modal ${showThankYou ? 'thank-you-modal' : ''}`}>
+        <div
+          className={`new-appointment-modal ${showThankYou ? "thank-you-modal" : ""}`}
+        >
           {!showThankYou && (
             <>
               <div className="new-appointment-modal-header">
                 <h3>
-                  {currentStep === 1 && (currentAppointment ? "Edit Blood Donation Drive" : "Schedule Your Blood Donation Drive")}
+                  {currentStep === 1 &&
+                    (currentAppointment
+                      ? "Edit Blood Donation Drive"
+                      : "Schedule Your Blood Donation Drive")}
                   {currentStep === 2 && "Choose date & Time"}
                   {currentStep === 3 && "Contact Information"}
                 </h3>
                 <div className="new-step-indicators">
-                  <span className={`new-step-number ${currentStep >= 1 ? 'active' : ''}`}>1</span>
-                  <span className={`new-step-number ${currentStep >= 2 ? 'active' : ''}`}>2</span>
-                  <span className={`new-step-number ${currentStep >= 3 ? 'active' : ''}`}>3</span>
+                  <span
+                    className={`new-step-number ${currentStep >= 1 ? "active" : ""}`}
+                  >
+                    1
+                  </span>
+                  <span
+                    className={`new-step-number ${currentStep >= 2 ? "active" : ""}`}
+                  >
+                    2
+                  </span>
+                  <span
+                    className={`new-step-number ${currentStep >= 3 ? "active" : ""}`}
+                  >
+                    3
+                  </span>
                 </div>
-                <button className="new-appointment-modal-close" onClick={handleClose}>
+                <button
+                  className="new-appointment-modal-close"
+                  onClick={handleClose}
+                >
                   <X size={18} />
                 </button>
               </div>
@@ -913,15 +1085,15 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
                       <h4>Which one are you?</h4>
                       <div className="new-selection-options">
                         <button
-                          className={`new-selection-btn ${selectedType === 'barangay' ? 'active' : ''}`}
-                          onClick={() => setSelectedType('barangay')}
+                          className={`new-selection-btn ${selectedType === "barangay" ? "active" : ""}`}
+                          onClick={() => setSelectedType("barangay")}
                         >
                           Barangay
                         </button>
                         <div className="new-selection-divider">OR</div>
                         <button
-                          className={`new-selection-btn ${selectedType === 'organization' ? 'active' : ''}`}
-                          onClick={() => setSelectedType('organization')}
+                          className={`new-selection-btn ${selectedType === "organization" ? "active" : ""}`}
+                          onClick={() => setSelectedType("organization")}
                         >
                           Organization
                         </button>
@@ -942,7 +1114,12 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
                           <Calendar size={32} color="white" />
                         </div>
                         <h5>Book a Partnership Appointment</h5>
-                        <p>Partner with us to make a difference! Schedule an appointment to collaborate with DOH and support our mission. Pick a date and time that works for your organization and help improve healthcare together!</p>
+                        <p>
+                          Partner with us to make a difference! Schedule an
+                          appointment to collaborate with DOH and support our
+                          mission. Pick a date and time that works for your
+                          organization and help improve healthcare together!
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -953,21 +1130,34 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
                     <div className="new-datetime-left">
                       <div className="calendar-section">
                         <div className="new-calendar-nav">
-                          <button 
+                          <button
                             className="new-calendar-nav-btn"
                             onClick={() => {
-                              setDateTimeModalDate(new Date(dateTimeModalDate.getFullYear(), dateTimeModalDate.getMonth() - 1, 1));
+                              setDateTimeModalDate(
+                                new Date(
+                                  dateTimeModalDate.getFullYear(),
+                                  dateTimeModalDate.getMonth() - 1,
+                                  1
+                                )
+                              );
                             }}
                           >
                             <ChevronLeft size={16} />
                           </button>
                           <h4 className="new-calendar-title">
-                            {monthNames[dateTimeModalDate.getMonth()]} {dateTimeModalDate.getFullYear()}
+                            {monthNames[dateTimeModalDate.getMonth()]}{" "}
+                            {dateTimeModalDate.getFullYear()}
                           </h4>
-                          <button 
+                          <button
                             className="new-calendar-nav-btn"
                             onClick={() => {
-                              setDateTimeModalDate(new Date(dateTimeModalDate.getFullYear(), dateTimeModalDate.getMonth() + 1, 1));
+                              setDateTimeModalDate(
+                                new Date(
+                                  dateTimeModalDate.getFullYear(),
+                                  dateTimeModalDate.getMonth() + 1,
+                                  1
+                                )
+                              );
                             }}
                           >
                             <ChevronRight size={16} />
@@ -975,58 +1165,72 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
                         </div>
                         <div className="new-mini-calendar">
                           <div className="new-calendar-weekdays">
-                            {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(day => (
-                              <div key={day} className="new-weekday">{day}</div>
-                            ))}
+                            {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map(
+                              (day) => (
+                                <div key={day} className="new-weekday">
+                                  {day}
+                                </div>
+                              )
+                            )}
                           </div>
                           <div className="new-calendar-days">
-                            {getDateTimeCalendarDays().map((dayObj, index) => {
-                              const isSelected = selectedDate && dayObj.date.toDateString() === selectedDate.toDateString();
-                              
-                              let dayClasses = ['new-mini-day'];
-                              
-                              if (!dayObj.isCurrentMonth) {
-                                dayClasses.push(dayObj.date < dateTimeModalDate ? 'prev-month' : 'next-month');
-                              }
-                              
-                              if (dayObj.isToday) {
-                                dayClasses.push('today');
-                              }
-                              
-                              if (isSelected) {
-                                dayClasses.push('selected');
-                              }
-                              
-                              // --- ADD THIS ---
-                              if (dayObj.isOccupied) {
-                                dayClasses.push('occupied');
-                              }
-                              // --- END ---
+                          {getDateTimeCalendarDays().map((dayObj, index) => {
+                            const isSelected =
+                              selectedDate &&
+                              dayObj.date.toDateString() === selectedDate.toDateString();
 
-                              return (
-                                <div
-                                  key={index}
-                                  className={dayClasses.join(' ')}
-                                  // --- UPDATE THIS ONCLICK ---
-                                  onClick={() => !dayObj.isOccupied && selectDate(dayObj.date)}
-                                >
-                                  {dayObj.day}
-                                </div>
-                              );
-                            })}
-                          </div>
+                            let dayClasses = ["new-mini-day"];
+
+                            // Remove the restriction that made other months unclickable
+                            if (!dayObj.isCurrentMonth) {
+                              dayClasses.push("other-month-clickable");
+                            }
+
+                            if (dayObj.isToday) {
+                              dayClasses.push("today");
+                            }
+
+                            if (isSelected) {
+                              dayClasses.push("selected");
+                            }
+
+                            if (dayObj.isOccupied) {
+                              dayClasses.push("occupied");
+                            }
+
+                            return (
+                              <div
+                                key={index}
+                                className={dayClasses.join(" ")}
+                                onClick={() => !dayObj.isOccupied && selectDate(dayObj.date)}
+                                style={{ cursor: dayObj.isOccupied ? "not-allowed" : "pointer" }}
+                              >
+                                {dayObj.day}
+                              </div>
+                            );
+                          })}
+                        </div>
                         </div>
                       </div>
                     </div>
                     <div className="new-datetime-right">
-                      <div style={{ display: 'flex', gap: '30px', alignItems: 'flex-start' }}>
-                        <div className="new-availability-section" style={{ flex: '0 0 auto' }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "30px",
+                          alignItems: "flex-start",
+                        }}
+                      >
+                        <div
+                          className="new-availability-section"
+                          style={{ flex: "0 0 auto" }}
+                        >
                           <h5>AVAILABILITY</h5>
                           <div className="new-time-slots">
                             {timeSlots.map((slot) => (
                               <div
                                 key={slot.time}
-                                className={`new-time-slot ${selectedTime === slot.time ? 'selected' : ''}`}
+                                className={`new-time-slot ${selectedTime === slot.time ? "selected" : ""}`}
                                 onClick={() => selectTimeSlot(slot.time)}
                               >
                                 <span>{slot.display}</span>
@@ -1034,15 +1238,28 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
                             ))}
                           </div>
                         </div>
-                        <div style={{ flex: '1', minWidth: '250px' }}>
+                        <div style={{ flex: "1", minWidth: "250px" }}>
                           <div className="new-partnership-card">
                             <div className="new-partnership-icon">
                               <Calendar size={32} color="white" />
                             </div>
                             <h5>Book a Partnership Appointment</h5>
-                            <p>Partner with us to make a difference! Schedule an appointment to collaborate with DOH and support our mission. Pick a date and time that works for your organization and help improve healthcare together!</p>
+                            <p>
+                              Partner with us to make a difference! Schedule an
+                              appointment to collaborate with DOH and support
+                              our mission. Pick a date and time that works for
+                              your organization and help improve healthcare
+                              together!
+                            </p>
                           </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              marginTop: "20px",
+                            }}
+                          >
                             <button
                               type="button"
                               className="new-btn-back"
@@ -1052,11 +1269,15 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
                             </button>
                             <button
                               className="new-next-btn"
-                              disabled={!selectedDate || !selectedTime || occupiedDates.has(formatDate(selectedDate))}
+                              disabled={
+                                !selectedDate ||
+                                !selectedTime ||
+                                occupiedDates.has(formatDate(selectedDate))
+                              }
                               onClick={proceedToStep3}
                             >
                               Next <ArrowRight size={16} />
-                            </button>container
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -1072,35 +1293,60 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
                           type="text"
                           placeholder="Contact Person's Full Name"
                           value={contactInfo.lastName}
-                          onChange={(e) => setContactInfo({...contactInfo, lastName: e.target.value})}
+                          onChange={(e) =>
+                            setContactInfo({
+                              ...contactInfo,
+                              lastName: e.target.value,
+                            })
+                          }
                           required
                         />
                         <input
                           type="email"
                           placeholder="Email Address"
                           value={contactInfo.email}
-                          onChange={(e) => setContactInfo({...contactInfo, email: e.target.value})}
+                          onChange={(e) =>
+                            setContactInfo({
+                              ...contactInfo,
+                              email: e.target.value,
+                            })
+                          }
                           required
                         />
                         <input
                           type="tel"
                           placeholder="Phone Number"
                           value={contactInfo.phone}
-                          onChange={(e) => setContactInfo({...contactInfo, phone: e.target.value})}
+                          onChange={(e) =>
+                            setContactInfo({
+                              ...contactInfo,
+                              phone: e.target.value,
+                            })
+                          }
                           required
                         />
                         <input
                           type="text"
                           placeholder="Address"
                           value={contactInfo.address}
-                          onChange={(e) => setContactInfo({...contactInfo, address: e.target.value})}
+                          onChange={(e) =>
+                            setContactInfo({
+                              ...contactInfo,
+                              address: e.target.value,
+                            })
+                          }
                           required
                         />
                         <input
                           type="text"
                           placeholder="Message (Optional)"
                           value={contactInfo.message}
-                          onChange={(e) => setContactInfo({...contactInfo, message: e.target.value})}
+                          onChange={(e) =>
+                            setContactInfo({
+                              ...contactInfo,
+                              message: e.target.value,
+                            })
+                          }
                         />
                         <div className="new-form-actions">
                           <button
@@ -1126,7 +1372,12 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
                           <Calendar size={32} color="white" />
                         </div>
                         <h5>Book a Partnership Appointment</h5>
-                        <p>Partner with us to make a difference! Schedule an appointment to collaborate with DOH and support our mission. Pick a date and time that works for your organization and help improve healthcare together!</p>
+                        <p>
+                          Partner with us to make a difference! Schedule an
+                          appointment to collaborate with DOH and support our
+                          mission. Pick a date and time that works for your
+                          organization and help improve healthcare together!
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -1137,17 +1388,20 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
 
           {showThankYou && (
             <div className="new-thank-you-content">
-              <div className="new-partnership-icon" style={{ margin: '0 auto 15px' }}>
+              <div
+                className="new-partnership-icon"
+                style={{ margin: "0 auto 15px" }}
+              >
                 <Calendar size={24} color="white" />
               </div>
               <h3>Thank You!</h3>
               <p>
-                {currentAppointment ? 'Your appointment has been successfully updated.' : 'Your appointment has been successfully scheduled.'} We look forward to assisting you.
+                {currentAppointment
+                  ? "Your appointment has been successfully updated."
+                  : "Your appointment has been successfully scheduled."}{" "}
+                We look forward to assisting you.
               </p>
-              <button
-                className="new-btn-close"
-                onClick={handleClose}
-              >
+              <button className="new-btn-close" onClick={handleClose}>
                 <X size={16} /> Close
               </button>
             </div>
@@ -1170,7 +1424,7 @@ const NewAppointmentForm = ({ isOpen, onClose, onSubmit, editingAppointment = nu
 const AppointmentOrg = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
-  const [viewMode, setViewMode] = useState('Month');
+  const [viewMode, setViewMode] = useState("Month");
   const [showNewAppointmentForm, setShowNewAppointmentForm] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [currentAppointment, setCurrentAppointment] = useState(null);
@@ -1181,18 +1435,54 @@ const AppointmentOrg = () => {
   const [editedAppointment, setEditedAppointment] = useState(null);
   const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [successMessage, setSuccessMessage] = useState({ title: '', description: '' });
+  const [successMessage, setSuccessMessage] = useState({
+    title: "",
+    description: "",
+  });
   const [deleting, setDeleting] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState("");
   const [hoverStates, setHoverStates] = useState({});
+  
+  const navigateMonth = (direction) => {
+  const newDate = new Date(currentDate);
+  newDate.setMonth(newDate.getMonth() + direction);
+  setCurrentDate(newDate);
+};
 
+  // Check user in localStorage
+  useEffect(() => {
+    const checkUser = () => {
+      const userData = localStorage.getItem("currentOrgUser");
+      if (!userData) {
+        console.warn("No user found in localStorage");
+      } else {
+        console.log("User found in localStorage:", JSON.parse(userData));
+      }
+    };
+
+    checkUser();
+  }, []);
   const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
   ];
 
-  const occupiedDates = React.useMemo(() => new Set(appointments.map(apt => apt.date)), [appointments]);
+  const occupiedDates = React.useMemo(
+    () => new Set(appointments.map((apt) => apt.date)),
+    [appointments]
+  );
 
-  const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
   const handleMouseEnter = (key) => {
     setHoverStates((prev) => ({ ...prev, [key]: true }));
@@ -1203,102 +1493,56 @@ const AppointmentOrg = () => {
   };
 
   useEffect(() => {
-    const initializePage = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const startTime = Date.now();
-        
-        await loadAppointments(); // Call the data-loading function
-        
-        // Ensure minimum 1 second loading time
-        const elapsedTime = Date.now() - startTime;
-        const remainingTime = Math.max(0, 1000 - elapsedTime);
-        await new Promise(resolve => setTimeout(resolve, remainingTime));
-
-      } catch (error) {
-        // loadAppointments will set its own error, but we log this just in case
-        console.error("Error during page initialization:", error);
-      } finally {
-        // This *always* runs, guaranteeing the loader will hide
-        setIsLoading(false);
-      }
-    };
-
-    initializePage();
-  }, []);
-
-  const loadAppointments = async () => {
+  const initializePage = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      
-      const startTime = Date.now(); // <-- ADD THIS
+      const startTime = Date.now();
 
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        const appointmentsData = await window.electronAPI.getAllAppointments();
-        setAppointments(appointmentsData);
-      } else {
-        console.warn('ElectronAPI not available - running in browser mode');
-        setAppointments([
-          {
-            id: 1,
-            title: 'Blood Drive Partnership - Barangay San Roque',
-            date: '2025-10-25',
-            time: '9:00',
-            type: 'blood-donation',
-            notes: 'Partnership meeting for community blood drive organization',
-            status: 'pending',
-            contactInfo: {
-              lastName: 'Santos',
-              email: 'santos@sanroque.gov.ph',
-              phone: '+63 912 345 6789',
-              address: 'Barangay San Roque, Cagayan de Oro',
-              message: 'Looking forward to partnering with your organization for community health.',
-              type: 'barangay'
-            }
-          },
-          {
-            id: 2,
-            title: 'Blood Drive Partnership - XYZ Organization',
-            date: '2025-10-28',
-            time: '14:00',
-            type: 'blood-donation',
-            notes: 'Partnership meeting for community blood drive organization',
-            status: 'approved',
-            contactInfo: {
-              lastName: 'Cruz',
-              email: 'cruz@xyzorg.org.ph',
-              phone: '+63 918 765 4321',
-              address: 'XYZ Organization Office, Cagayan de Oro',
-              message: 'Looking forward to collaborating on blood donation initiatives.',
-              type: 'organization'
-            }
-          },
-          {
-            id: 3,
-            title: 'Blood Drive Partnership - ABC Foundation',
-            date: '2025-10-30',
-            time: '10:00',
-            type: 'blood-donation',
-            notes: 'Partnership meeting for community blood drive organization',
-            status: 'declined',
-            contactInfo: {
-              lastName: 'Reyes',
-              email: 'reyes@abcfoundation.org',
-              phone: '+63 917 654 3210',
-              address: 'ABC Foundation, Davao City',
-              message: 'Interested in blood drive partnership.',
-              type: 'organization'
-            }
-          }
-        ]);
+      await loadAppointments(); // This will set isLoading to false
+
+      // Ensure minimum 1 second loading time
+      const elapsedTime = Date.now() - startTime;
+      const remainingTime = Math.max(0, 1000 - elapsedTime);
+      
+      if (remainingTime > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remainingTime));
       }
     } catch (error) {
-      console.error('Error loading appointments:', error);
-      setError('Failed to load appointments. Please try again.');
-    } 
+      console.error("Error during page initialization:", error);
+      setIsLoading(false); // Ensure loading stops on error
+    }
   };
+
+  initializePage();
+}, []);
+
+  const loadAppointments = async () => {
+  try {
+    if (typeof window !== "undefined" && window.electronAPI) {
+      const appointmentsData = await window.electronAPI.getAllAppointments();
+      
+      // Filter out cancelled appointments on the frontend as well
+      const activeAppointments = appointmentsData.filter(
+        (apt) => apt.status !== "cancelled"
+      );
+      
+      setAppointments(activeAppointments);
+      console.log("Loaded active appointments:", activeAppointments.length);
+      setIsLoading(false); // STOP LOADING AFTER APPOINTMENTS ARE SET
+    } else {
+      console.warn("ElectronAPI not available - running in browser mode");
+      setAppointments([]); // Empty array - no predefined data
+      setIsLoading(false); // STOP LOADING
+    }
+  } catch (error) {
+    console.error("Error loading appointments:", error);
+    setError("Failed to load appointments. Please try again.");
+    setIsLoading(false); // STOP LOADING EVEN ON ERROR
+  }
+};
+
+
 
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
@@ -1306,49 +1550,70 @@ const AppointmentOrg = () => {
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     const daysInMonth = lastDay.getDate();
-    
+
     const startingDay = (firstDay.getDay() + 6) % 7;
-    
+
     const days = [];
-    
+
     for (let i = 0; i < startingDay; i++) {
       days.push(null);
     }
-    
+
     for (let day = 1; day <= daysInMonth; day++) {
       days.push(day);
     }
-    
+
     return days;
   };
 
   const getAppointmentsForDate = (date) => {
-    const dateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    return appointments.filter(apt => apt.date === dateString);
+    const dateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    return appointments.filter((apt) => apt.date === dateString);
   };
 
   const formatDisplayDate = (dateString) => {
-    const date = new Date(dateString + 'T00:00:00');
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
+    const date = new Date(dateString + "T00:00:00");
+    return date.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
     });
   };
 
   const formatTime = (time) => {
-    const [hours, minutes] = time.split(':');
+    const [hours, minutes] = time.split(":");
     const hour24 = parseInt(hours);
     const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
-    const ampm = hour24 >= 12 ? 'PM' : 'AM';
+    const ampm = hour24 >= 12 ? "PM" : "AM";
     return `${hour12}:${minutes} ${ampm}`;
   };
 
-  const handleAddAppointment = (newAppointment) => {
-    setAppointments(prev => [...prev, newAppointment]);
-    loadAppointments();
+ const handleAddAppointment = (newAppointment) => {
+  console.log("New appointment received:", newAppointment);
+  
+  // Create properly formatted appointment object
+  const formattedAppointment = {
+    id: newAppointment.id || newAppointment.appointment_id,
+    appointment_id: newAppointment.appointment_id || newAppointment.id,
+    title: newAppointment.title,
+    date: newAppointment.date,
+    time: newAppointment.time,
+    type: newAppointment.type,
+    notes: newAppointment.notes,
+    status: newAppointment.status,
+    contactInfo: newAppointment.contactInfo,
   };
+
+  console.log("Formatted appointment:", formattedAppointment);
+  
+  // Add new appointment to state IMMEDIATELY for real-time update
+  setAppointments((prev) => {
+    const updated = [...prev, formattedAppointment];
+    console.log("Appointments updated:", updated.length);
+    return updated;
+  });
+};
 
   const handleAppointmentClick = (appointment) => {
     setCurrentAppointment(appointment);
@@ -1356,15 +1621,18 @@ const AppointmentOrg = () => {
       title: appointment.title,
       date: appointment.date,
       time: appointment.time,
-      contactInfo: { ...appointment.contactInfo }
+      contactInfo: { ...appointment.contactInfo },
     });
     setIsEditingAppointment(false);
     setShowDetailsModal(true);
   };
 
   const handleEditAppointment = () => {
-    if (currentAppointment.status !== 'pending' && currentAppointment.status !== 'scheduled') {
-      alert('Only pending and scheduled appointments can be edited.');
+    if (
+      currentAppointment.status !== "pending" &&
+      currentAppointment.status !== "scheduled"
+    ) {
+      alert("Only pending and scheduled appointments can be edited.");
       return;
     }
     setIsEditingAppointment(true);
@@ -1376,124 +1644,278 @@ const AppointmentOrg = () => {
       title: currentAppointment.title,
       date: currentAppointment.date,
       time: currentAppointment.time,
-      contactInfo: { ...currentAppointment.contactInfo }
+      contactInfo: { ...currentAppointment.contactInfo },
     });
   };
 
   const handleSaveEdit = async () => {
-    if (!editedAppointment.contactInfo.lastName ||
-        !editedAppointment.contactInfo.email ||
-        !editedAppointment.contactInfo.phone ||
-        !editedAppointment.contactInfo.address) {
-      alert('Please fill in all required fields');
+    if (
+      !editedAppointment.contactInfo.lastName ||
+      !editedAppointment.contactInfo.email ||
+      !editedAppointment.contactInfo.phone ||
+      !editedAppointment.contactInfo.address
+    ) {
+      alert("Please fill in all required fields");
       return;
     }
 
     try {
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        // --- FIX: Get current user from localStorage ---
-        const user = JSON.parse(localStorage.getItem('currentOrgUser'));
-        const currentUser = user?.fullName || 'Unknown User';
-        // --- END FIX ---
-        const appointmentId = currentAppointment.appointment_id || currentAppointment.id;
+      if (typeof window !== "undefined" && window.electronAPI) {
+        // Improved user detection
+        const getUserId = () => {
+          try {
+            const possibleKeys = [
+              "currentOrgUser",
+              "currentUser",
+              "user",
+              "orgUser",
+            ];
+
+            for (const key of possibleKeys) {
+              const userData = localStorage.getItem(key);
+              if (userData) {
+                try {
+                  const parsed = JSON.parse(userData);
+                  const userId =
+                    parsed.id || parsed.u_id || parsed.userId || parsed.user_id;
+
+                  if (userId && typeof userId === "number") {
+                    console.log(`Found valid user ID in ${key}:`, userId);
+                    return userId;
+                  }
+                } catch (parseError) {
+                  console.warn(`Failed to parse ${key}:`, parseError);
+                  continue;
+                }
+              }
+            }
+
+            console.warn("No valid user found in localStorage");
+            return null;
+          } catch (error) {
+            console.error("Error getting user ID:", error);
+            return null;
+          }
+        };
+
+        const currentUserId = getUserId();
+        if (!currentUserId) {
+          throw new Error("User not authenticated. Please log in again.");
+        }
+
+        const appointmentId =
+          currentAppointment.appointment_id || currentAppointment.id;
 
         // If editing a scheduled appointment, reset status to pending for re-approval
-        const newStatus = currentAppointment.status === 'scheduled' ? 'pending' : (currentAppointment.status || 'pending');
+        const newStatus =
+          currentAppointment.status === "scheduled"
+            ? "pending"
+            : currentAppointment.status || "pending";
 
         const updatedData = {
           title: `Blood Drive Partnership - ${editedAppointment.contactInfo.lastName}`,
           date: editedAppointment.date,
           time: editedAppointment.time,
-          type: 'blood-donation',
-          notes: 'Schedule pending approval. Please await confirmation.',
+          type: "blood-donation",
+          notes: "Schedule pending approval. Please await confirmation.",
           status: newStatus,
-          contactInfo: editedAppointment.contactInfo
+          contactInfo: editedAppointment.contactInfo,
         };
 
-        await window.electronAPI.updateAppointment(appointmentId, updatedData, currentUser);
+        await window.electronAPI.updateAppointment(
+          appointmentId,
+          updatedData,
+          currentUserId
+        );
 
-        setAppointments(prev => prev.map(apt =>
+        // CRITICAL: Update state IMMEDIATELY for real-time calendar update
+        const updatedAppointments = appointments.map((apt) =>
           (apt.appointment_id || apt.id) === appointmentId
-            ? { ...apt, ...updatedData, id: appointmentId }
+            ? { 
+                ...apt, 
+                ...updatedData, 
+                id: appointmentId,
+                appointment_id: appointmentId,
+                date: editedAppointment.date,
+                time: editedAppointment.time,
+              }
             : apt
-        ));
+        );
+        setAppointments(updatedAppointments);
 
-        setCurrentAppointment({ ...currentAppointment, ...updatedData });
+        setCurrentAppointment({ 
+          ...currentAppointment, 
+          ...updatedData,
+          date: editedAppointment.date,
+          time: editedAppointment.time,
+        });
         setIsEditingAppointment(false);
 
-        if (currentAppointment.status === 'scheduled') {
-          alert('Appointment updated successfully! Status reset to Pending - awaiting re-approval from Regional Blood Center.');
+        if (currentAppointment.status === "scheduled") {
+          alert(
+            "Appointment updated successfully! Status reset to Pending - awaiting re-approval from Regional Blood Center."
+          );
         } else {
-          alert('Appointment updated successfully!');
+          alert("Appointment updated successfully!");
         }
       }
     } catch (error) {
-      console.error('Error updating appointment:', error);
-      setError('Failed to update appointment. Please try again.');
+      console.error("Error updating appointment:", error);
+      setError("Failed to update appointment. Please try again.");
     }
   };
 
   const handleDeleteAppointment = (appointment) => {
     // Open delete confirmation modal
+    setCancellationReason(""); // Clear previous reason
     setDeleteModalOpen(true);
   };
 
   const handleConfirmDelete = async () => {
-    setDeleteModalOpen(false);
-    setDeleting(true);
+  // For declined/cancelled: No reason validation needed
+  if (
+    currentAppointment.status !== "declined" &&
+    currentAppointment.status !== "cancelled"
+  ) {
+    if (!cancellationReason || cancellationReason.trim() === "") {
+      alert("Please provide a reason for cancellation.");
+      return;
+    }
+  }
 
-    try {
-      const appointmentId = currentAppointment.appointment_id || currentAppointment.id;
-      console.log('Cancelling appointment with ID:', appointmentId);
+  setDeleteModalOpen(false);
+  setDeleting(true);
 
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        const user = JSON.parse(localStorage.getItem('currentOrgUser'));
-        const currentUser = user?.fullName || 'Unknown User';
+  try {
+    const appointmentId =
+      currentAppointment.appointment_id || currentAppointment.id;
+    console.log("Deleting appointment with ID:", appointmentId);
 
-        // Delete the appointment - this will automatically update the partnership request
-        await window.electronAPI.deleteAppointment(appointmentId, currentUser);
-        console.log('Appointment deleted from database');
+    if (typeof window !== "undefined" && window.electronAPI) {
+      // Get user ID
+      const getUserId = () => {
+        try {
+          const possibleKeys = [
+            "currentOrgUser",
+            "currentUser",
+            "user",
+            "orgUser",
+          ];
+
+          for (const key of possibleKeys) {
+            const userData = localStorage.getItem(key);
+            if (userData) {
+              try {
+                const parsed = JSON.parse(userData);
+                const userId =
+                  parsed.id || parsed.u_id || parsed.userId || parsed.user_id;
+
+                if (userId && typeof userId === "number") {
+                  console.log(`Found valid user ID in ${key}:`, userId);
+                  return { userId, parsed };
+                }
+              } catch (parseError) {
+                console.warn(`Failed to parse ${key}:`, parseError);
+                continue;
+              }
+            }
+          }
+
+          console.warn("No valid user found in localStorage");
+          return null;
+        } catch (error) {
+          console.error("Error getting user ID:", error);
+          return null;
+        }
+      };
+
+      const userInfo = getUserId();
+
+      if (!userInfo) {
+        throw new Error("User not authenticated. Please log in again.");
       }
 
-      // Ensure minimum 1 second loading time
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const { userId: currentUserId, parsed: currentUser } = userInfo;
 
-      // Remove from local state
-      setAppointments(prev => prev.filter(apt =>
-        (apt.appointment_id || apt.id) !== appointmentId
-      ));
+      // Delete the appointment (HARD DELETE)
+      const result = await window.electronAPI.deleteAppointment(
+        appointmentId,
+        currentUserId
+      );
+      console.log("Appointment deletion result:", result);
 
-      // Close the details modal
-      setShowDetailsModal(false);
+      if (!result || result.error) {
+        throw new Error(
+          result?.error || "Failed to delete appointment from database"
+        );
+      }
 
-      // Show success message
-      const isDeclined = currentAppointment.status === 'declined';
+      // Send notification to RBC ONLY for cancelled (not declined) appointments
+      if (currentAppointment.status === "cancelled") {
+        try {
+          const orgName =
+            currentUser.u_organization_name ||
+            currentUser.organizationName ||
+            "Organization";
+          const barangay = currentUser.u_barangay || currentUser.barangay;
+          const cancelledBy = barangay
+            ? `${orgName} - Barangay ${barangay}`
+            : orgName;
+          const userName =
+            currentUser.u_full_name || currentUser.fullName || "Organization User";
+
+          await window.electronAPI.createOrgNotification({
+            userId: currentUserId,
+            title: "Blood Drive Event Cancelled by " + cancelledBy,
+            message: `${userName} from ${cancelledBy} has cancelled the blood drive event "${currentAppointment.title}" scheduled for ${new Date(currentAppointment.date).toLocaleDateString()} at ${currentAppointment.time}.\n\nReason: ${cancellationReason}\n\nAppointment Details:\n- Title: ${currentAppointment.title}\n- Organization: ${cancelledBy}\n- Contact: ${currentAppointment.email || currentUser.u_email || currentUser.email}\n- Phone: ${currentAppointment.phone || currentUser.u_contact_number || ""}\n- Date: ${new Date(currentAppointment.date).toLocaleDateString()}\n- Time: ${currentAppointment.time}`,
+            type: "cancellation",
+            status: "cancellation",
+          });
+
+          console.log("Cancellation notification sent to RBC");
+        } catch (notifError) {
+          console.error("Error sending notification (non-critical):", notifError);
+        }
+      }
+    }
+
+    // Remove from local state immediately for real-time update
+    setAppointments((prev) =>
+      prev.filter((apt) => (apt.appointment_id || apt.id) !== appointmentId)
+    );
+
+    // Close the details modal first
+    setShowDetailsModal(false);
+
+    // Stop the deleting loader
+    setDeleting(false);
+
+    // Clear cancellation reason
+    setCancellationReason("");
+
+    // Wait a brief moment for modal close animation, then show success
+    setTimeout(() => {
       setSuccessMessage({
-        title: isDeclined ? 'Appointment Deleted!' : 'Appointment Cancelled!',
-        description: isDeclined
-          ? 'The declined appointment has been deleted successfully.'
-          : 'The appointment has been cancelled successfully.'
+        title:
+          currentAppointment?.status === "declined"
+            ? "Appointment Deleted"
+            : "Appointment Cancelled",
+        description:
+          currentAppointment?.status === "declined"
+            ? "Your appointment has been successfully deleted."
+            : "Your appointment has been successfully cancelled and the Regional Blood Center has been notified.",
       });
       setShowSuccessModal(true);
-
-      setCurrentAppointment(null);
-
-    } catch (error) {
-      console.error('Error cancelling appointment:', error);
-      setError('Failed to cancel appointment. Please try again.');
-      alert('Failed to cancel appointment. Please try again.');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const navigateMonth = (direction) => {
-    setCurrentDate(prev => {
-      const newDate = new Date(prev);
-      newDate.setMonth(prev.getMonth() + direction);
-      return newDate;
-    });
-  };
+    }, 200);
+  } catch (error) {
+    console.error("Error deleting appointment:", error);
+    setError(`Failed to delete appointment: ${error.message}`);
+    alert(
+      `Failed to delete appointment: ${error.message}. Please try again.`
+    );
+    setDeleting(false);
+  }
+};
 
   const isToday = (day) => {
     const today = new Date();
@@ -1506,31 +1928,44 @@ const AppointmentOrg = () => {
 
   const getDayAppointments = (day) => {
     if (!day) return [];
-    const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+    const date = new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth(),
+      day
+    );
     return getAppointmentsForDate(date);
   };
 
   const getStatusColor = (status, dateString) => {
     // Check if event is finished (in the past)
     if (dateString) {
-      const eventDate = new Date(dateString + 'T23:59:59'); // Set to end of day
+      const eventDate = new Date(dateString + "T23:59:59"); // Set to end of day
       const today = new Date();
       today.setHours(0, 0, 0, 0); // Set to start of today
 
       // If the event date is before today AND it was approved/scheduled
-      if (eventDate < today && (status === 'approved' || status === 'scheduled')) {
-        return '#10b981'; // Green (Finished)
+      if (
+        eventDate < today &&
+        (status === "approved" || status === "scheduled")
+      ) {
+        return "#10b981"; // Green (Finished)
       }
     }
 
     // Original status logic
     switch (status) {
-      case 'approved': return '#10b981'; // Green (Approved)
-      case 'pending': return '#f59e0b'; // Orange (Pending)
-      case 'cancelled': return '#ef4444'; // Red (Cancelled)
-      case 'declined': return '#ef4444'; // Red (Declined)
-      case 'scheduled': return '#3b82f6'; // Blue (Scheduled)
-      default: return '#6b7280'; // Gray
+      case "approved":
+        return "#10b981"; // Green (Approved)
+      case "pending":
+        return "#f59e0b"; // Orange (Pending)
+      case "cancelled":
+        return "#ef4444"; // Red (Cancelled)
+      case "declined":
+        return "#ef4444"; // Red (Declined)
+      case "scheduled":
+        return "#3b82f6"; // Blue (Scheduled)
+      default:
+        return "#6b7280"; // Gray
     }
   };
 
@@ -1538,13 +1973,16 @@ const AppointmentOrg = () => {
   const getDisplayStatus = (status, dateString) => {
     // Check if event is finished (in the past)
     if (dateString) {
-      const eventDate = new Date(dateString + 'T23:59:59');
+      const eventDate = new Date(dateString + "T23:59:59");
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       // If the event date is before today AND it was approved/scheduled
-      if (eventDate < today && (status === 'approved' || status === 'scheduled')) {
-        return 'Finished';
+      if (
+        eventDate < today &&
+        (status === "approved" || status === "scheduled")
+      ) {
+        return "Finished";
       }
     }
 
@@ -1556,120 +1994,123 @@ const AppointmentOrg = () => {
   const getNotesMessage = (status, dateString) => {
     // Check if event is finished (in the past)
     if (dateString) {
-      const eventDate = new Date(dateString + 'T23:59:59');
+      const eventDate = new Date(dateString + "T23:59:59");
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       // If the event date is before today AND it was approved/scheduled
-      if (eventDate < today && (status === 'approved' || status === 'scheduled')) {
-        return 'This Blood Drive Partnership Request is now Finished.';
+      if (
+        eventDate < today &&
+        (status === "approved" || status === "scheduled")
+      ) {
+        return "This Blood Drive Partnership Request is now Finished.";
       }
     }
 
     // Return notes based on status
     switch (status) {
-      case 'scheduled':
-      case 'approved':
-        return 'This Appointment is now Scheduled, please read the Mail for Instructions.';
-      case 'declined':
-        return 'This Appointment is Declined, please read the Mail for more Information.';
-      case 'pending':
-        return 'Schedule pending approval. Please await confirmation.';
+      case "scheduled":
+      case "approved":
+        return "This Appointment is now Scheduled, please read the Mail for Instructions.";
+      case "declined":
+        return "This Appointment is Declined, please read the Mail for more Information.";
+      case "pending":
+        return "Schedule pending approval. Please await confirmation.";
       default:
-        return 'Schedule pending approval. Please await confirmation.';
+        return "Schedule pending approval. Please await confirmation.";
     }
   };
 
   // Success Modal Styles
   const styles = {
     successModalOverlay: {
-      position: 'fixed',
+      position: "fixed",
       top: 0,
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
       zIndex: 3000,
-      padding: '10px'
+      padding: "10px",
     },
     successModal: {
-      backgroundColor: 'white',
-      borderRadius: '11px',
-      width: '30%',
-      maxWidth: '350px',
-      padding: '40px 30px 30px',
-      boxShadow: '0 20px 25px rgba(0, 0, 0, 0.25)',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      fontFamily: 'Barlow',
-      position: 'relative'
+      backgroundColor: "white",
+      borderRadius: "11px",
+      width: "30%",
+      maxWidth: "350px",
+      padding: "40px 30px 30px",
+      boxShadow: "0 20px 25px rgba(0, 0, 0, 0.25)",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      fontFamily: "Barlow",
+      position: "relative",
     },
     successCloseButton: {
-      position: 'absolute',
-      top: '16px',
-      right: '16px',
-      background: 'none',
-      border: 'none',
-      fontSize: '24px',
-      color: '#9ca3af',
-      cursor: 'pointer',
-      padding: '4px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      width: '32px',
-      height: '32px',
-      borderRadius: '4px',
-      transition: 'background-color 0.2s ease'
+      position: "absolute",
+      top: "16px",
+      right: "16px",
+      background: "none",
+      border: "none",
+      fontSize: "24px",
+      color: "#9ca3af",
+      cursor: "pointer",
+      padding: "4px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      width: "32px",
+      height: "32px",
+      borderRadius: "4px",
+      transition: "background-color 0.2s ease",
     },
     successCloseButtonHover: {
-      backgroundColor: '#f3f4f6'
+      backgroundColor: "#f3f4f6",
     },
     successIcon: {
-      width: '30px',
-      height: '30px',
-      backgroundColor: '#10b981',
-      borderRadius: '50%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center'
+      width: "30px",
+      height: "30px",
+      backgroundColor: "#10b981",
+      borderRadius: "50%",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
     },
     successTitle: {
-      fontSize: '20px',
-      fontWeight: 'bold',
-      color: '#165C3C',
-      textAlign: 'center',
-      fontFamily: 'Barlow'
+      fontSize: "20px",
+      fontWeight: "bold",
+      color: "#165C3C",
+      textAlign: "center",
+      fontFamily: "Barlow",
     },
     successDescription: {
-      fontSize: '13px',
-      color: '#6b7280',
-      textAlign: 'center',
-      lineHeight: '1.5',
-      fontFamily: 'Barlow',
-      marginTop: '-5px',
-      paddingLeft: '20px',
-      paddingRight: '20px'
+      fontSize: "13px",
+      color: "#6b7280",
+      textAlign: "center",
+      lineHeight: "1.5",
+      fontFamily: "Barlow",
+      marginTop: "-5px",
+      paddingLeft: "20px",
+      paddingRight: "20px",
     },
     successOkButton: {
-      padding: '12px 60px',
-      backgroundColor: '#FFC200',
-      color: 'black',
-      border: 'none',
-      borderRadius: '6px',
-      cursor: 'pointer',
-      fontSize: '16px',
-      fontWeight: '600',
-      fontFamily: 'Barlow',
-      transition: 'all 0.2s ease'
+      padding: "12px 60px",
+      backgroundColor: "#FFC200",
+      color: "black",
+      border: "none",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontSize: "16px",
+      fontWeight: "600",
+      fontFamily: "Barlow",
+      transition: "all 0.2s ease",
     },
     successOkButtonHover: {
-      backgroundColor: '#ffb300'
-    }
+      backgroundColor: "#ffb300",
+    },
   };
 
   // ADD THIS BLOCK
@@ -1696,50 +2137,56 @@ const AppointmentOrg = () => {
           }
         `}
       </style>
-      <div style={{ 
-        fontFamily: 'Barlow',
-        maxWidth: '1200px',
-        margin: '0 auto',
-        padding: '20px',
-        backgroundColor: '#f8f9fa',
-        borderRadius: '8px',
-      }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '30px',
-          padding: '0 10px'
-        }}>
-          <h1 style={{
-            color: '#165C3C',
-            fontSize: '24px',
-            fontWeight: '700',
-            fontFamily: 'Barlow',
-            margin: '0'
-          }}>
+      <div
+        style={{
+          fontFamily: "Barlow",
+          maxWidth: "1200px",
+          margin: "0 auto",
+          padding: "20px",
+          backgroundColor: "#f8f9fa",
+          borderRadius: "8px",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "30px",
+            padding: "0 10px",
+          }}
+        >
+          <h1
+            style={{
+              color: "#165C3C",
+              fontSize: "24px",
+              fontWeight: "700",
+              fontFamily: "Barlow",
+              margin: "0",
+            }}
+          >
             Appointment Calendar
           </h1>
-          
+
           <button
             onClick={() => setShowNewAppointmentForm(true)}
             style={{
-              background: '#ffcf35',
-              color: '#165c3c',
-              border: 'none',
-              padding: '12px 20px',
-              borderRadius: '8px',
-              fontSize: '16px',
-              fontWeight: '700',
-              fontFamily: 'Barlow',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              transition: 'background-color 0.2s'
+              background: "#ffcf35",
+              color: "#165c3c",
+              border: "none",
+              padding: "12px 20px",
+              borderRadius: "8px",
+              fontSize: "16px",
+              fontWeight: "700",
+              fontFamily: "Barlow",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              transition: "background-color 0.2s",
             }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = '#ffeb3b'}
-            onMouseLeave={(e) => e.target.style.backgroundColor = '#ffcf35'}
+            onMouseEnter={(e) => (e.target.style.backgroundColor = "#ffeb3b")}
+            onMouseLeave={(e) => (e.target.style.backgroundColor = "#ffcf35")}
           >
             <Plus size={18} />
             New Appointment
@@ -1747,29 +2194,31 @@ const AppointmentOrg = () => {
         </div>
 
         {error && (
-          <div style={{
-            backgroundColor: '#fee2e2',
-            border: '1px solid #fecaca',
-            color: '#dc2626',
-            padding: '12px 16px',
-            borderRadius: '6px',
-            marginBottom: '16px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            fontFamily: 'Barlow'
-          }}>
+          <div
+            style={{
+              backgroundColor: "#fee2e2",
+              border: "1px solid #fecaca",
+              color: "#dc2626",
+              padding: "12px 16px",
+              borderRadius: "6px",
+              marginBottom: "16px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              fontFamily: "Barlow",
+            }}
+          >
             <span>{error}</span>
-            <button 
+            <button
               onClick={() => setError(null)}
               style={{
-                background: 'none',
-                border: 'none',
-                color: '#dc2626',
-                fontSize: '18px',
-                cursor: 'pointer',
+                background: "none",
+                border: "none",
+                color: "#dc2626",
+                fontSize: "18px",
+                cursor: "pointer",
                 padding: 0,
-                marginLeft: '8px'
+                marginLeft: "8px",
               }}
             >
               ×
@@ -1777,109 +2226,125 @@ const AppointmentOrg = () => {
           </div>
         )}
 
-        <div style={{
-          width: '100%',
-          height: '1px',
-          backgroundColor: '#e0e0e0',
-          marginBottom: '30px'
-        }} />
+        <div
+          style={{
+            width: "100%",
+            height: "1px",
+            backgroundColor: "#e0e0e0",
+            marginBottom: "30px",
+          }}
+        />
 
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '20px',
-          padding: '0 10px'
-        }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "20px",
+            padding: "0 10px",
+          }}
+        >
           <button
             onClick={() => navigateMonth(-1)}
             style={{
-              background: 'none',
-              border: 'none',
-              color: '#2e7d32',
-              fontSize: '18px',
-              cursor: 'pointer',
-              padding: '8px',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'background-color 0.2s'
+              background: "none",
+              border: "none",
+              color: "#2e7d32",
+              fontSize: "18px",
+              cursor: "pointer",
+              padding: "8px",
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "background-color 0.2s",
             }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = '#f0f0f0'}
-            onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+            onMouseEnter={(e) => (e.target.style.backgroundColor = "#f0f0f0")}
+            onMouseLeave={(e) =>
+              (e.target.style.backgroundColor = "transparent")
+            }
           >
             <ChevronLeft size={20} />
           </button>
 
-          <h2 style={{
-            color: '#165C3C',
-            fontSize: '24px',
-            fontWeight: '700',
-            fontFamily: 'Barlow',
-            margin: '0'
-          }}>
+          <h2
+            style={{
+              color: "#165C3C",
+              fontSize: "24px",
+              fontWeight: "700",
+              fontFamily: "Barlow",
+              margin: "0",
+            }}
+          >
             {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
           </h2>
 
           <button
             onClick={() => navigateMonth(1)}
             style={{
-              background: 'none',
-              border: 'none',
-              color: '#2e7d32',
-              fontSize: '18px',
-              cursor: 'pointer',
-              padding: '8px',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'background-color 0.2s'
+              background: "none",
+              border: "none",
+              color: "#2e7d32",
+              fontSize: "18px",
+              cursor: "pointer",
+              padding: "8px",
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "background-color 0.2s",
             }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = '#f0f0f0'}
-            onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+            onMouseEnter={(e) => (e.target.style.backgroundColor = "#f0f0f0")}
+            onMouseLeave={(e) =>
+              (e.target.style.backgroundColor = "transparent")
+            }
           >
             <ChevronRight size={20} />
           </button>
         </div>
 
         {isLoading ? (
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '12px',
-            padding: '60px',
-            textAlign: 'center',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-            fontFamily: 'Barlow'
-          }}>
+          <div
+            style={{
+              backgroundColor: "white",
+              borderRadius: "12px",
+              padding: "60px",
+              textAlign: "center",
+              boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
+              fontFamily: "Barlow",
+            }}
+          >
             <p>Loading appointments...</p>
           </div>
         ) : (
           <>
-            <div style={{
-              backgroundColor: 'white',
-              borderRadius: '12px',
-              overflow: 'hidden',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
-            }}>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(7, 1fr)',
-                backgroundColor: '#f8f9fa',
-                borderBottom: '1px solid #e0e0e0'
-              }}>
-                {weekDays.map(day => (
+            <div
+              style={{
+                backgroundColor: "white",
+                borderRadius: "12px",
+                overflow: "hidden",
+                boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(7, 1fr)",
+                  backgroundColor: "#f8f9fa",
+                  borderBottom: "1px solid #e0e0e0",
+                }}
+              >
+                {weekDays.map((day) => (
                   <div
                     key={day}
                     style={{
-                      padding: '15px 10px',
-                      textAlign: 'center',
-                      fontWeight: '700',
-                      fontFamily: 'Barlow',
-                      color: '#666',
-                      fontSize: '14px',
-                      borderRight: '1px solid #e0e0e0'
+                      padding: "15px 10px",
+                      textAlign: "center",
+                      fontWeight: "700",
+                      fontFamily: "Barlow",
+                      color: "#666",
+                      fontSize: "14px",
+                      borderRight: "1px solid #e0e0e0",
                     }}
                   >
                     {day}
@@ -1887,11 +2352,13 @@ const AppointmentOrg = () => {
                 ))}
               </div>
 
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(7, 1fr)',
-                minHeight: '600px'
-              }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(7, 1fr)",
+                  minHeight: "600px",
+                }}
+              >
                 {getDaysInMonth(currentDate).map((day, index) => {
                   const dayAppointments = getDayAppointments(day);
                   const hasAppointments = dayAppointments.length > 0;
@@ -1901,13 +2368,14 @@ const AppointmentOrg = () => {
                     <div
                       key={index}
                       style={{
-                        minHeight: '100px',
-                        padding: '8px',
-                        borderRight: index % 7 !== 6 ? '1px solid #f0f0f0' : 'none',
-                        borderBottom: index < 35 ? '1px solid #f0f0f0' : 'none',
-                        backgroundColor: day ? 'white' : '#fafafa',
-                        position: 'relative',
-                        cursor: day && hasAppointments ? 'pointer' : 'default'
+                        minHeight: "100px",
+                        padding: "8px",
+                        borderRight:
+                          index % 7 !== 6 ? "1px solid #f0f0f0" : "none",
+                        borderBottom: index < 35 ? "1px solid #f0f0f0" : "none",
+                        backgroundColor: day ? "white" : "#fafafa",
+                        position: "relative",
+                        cursor: day && hasAppointments ? "pointer" : "default",
                       }}
                       onClick={() => {
                         if (day && hasAppointments) {
@@ -1917,47 +2385,60 @@ const AppointmentOrg = () => {
                     >
                       {day && (
                         <>
-                          <div style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            marginBottom: '5px'
-                          }}>
-                            <span style={{
-                              fontSize: '14px',
-                              fontWeight: todayClass ? '700' : '400',
-                              fontFamily: 'Barlow',
-                              color: todayClass ? '#2e7d32' : '#333',
-                              backgroundColor: todayClass ? '#e8f5e8' : 'transparent',
-                              padding: todayClass ? '4px 8px' : '0',
-                              borderRadius: todayClass ? '12px' : '0',
-                              position: 'relative',
-                              zIndex: 1
-                            }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              marginBottom: "5px",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: "14px",
+                                fontWeight: todayClass ? "700" : "400",
+                                fontFamily: "Barlow",
+                                color: todayClass ? "#2e7d32" : "#333",
+                                backgroundColor: todayClass
+                                  ? "#e8f5e8"
+                                  : "transparent",
+                                padding: todayClass ? "4px 8px" : "0",
+                                borderRadius: todayClass ? "12px" : "0",
+                                position: "relative",
+                                zIndex: 1,
+                              }}
+                            >
                               {day}
                             </span>
                           </div>
 
                           {hasAppointments && (
-                            <div style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              marginTop: '15px'
-                            }}>
-                              <div style={{
-                                width: '36px',
-                                height: '36px',
-                                borderRadius: '50%',
-                                backgroundColor: '#ffebee',
-                                border: `2px solid ${getStatusColor(dayAppointments[0].status, dayAppointments[0].date)}`,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
-                              }}>
-                                <CalendarCheck 
-                                  size={20} 
-                                  color={getStatusColor(dayAppointments[0].status, dayAppointments[0].date)}
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                marginTop: "15px",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: "36px",
+                                  height: "36px",
+                                  borderRadius: "50%",
+                                  backgroundColor: "#ffebee",
+                                  border: `2px solid ${getStatusColor(dayAppointments[0].status, dayAppointments[0].date)}`,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                <CalendarCheck
+                                  size={20}
+                                  color={getStatusColor(
+                                    dayAppointments[0].status,
+                                    dayAppointments[0].date
+                                  )}
                                   strokeWidth={2}
                                 />
                               </div>
@@ -1977,89 +2458,104 @@ const AppointmentOrg = () => {
           isOpen={showNewAppointmentForm}
           onClose={() => setShowNewAppointmentForm(false)}
           onSubmit={handleAddAppointment}
-          appointments={appointments} // <-- ADD THIS PROP
+          appointments={appointments}
+          currentUser={JSON.parse(localStorage.getItem("currentOrgUser"))} // Add this line
         />
 
         {showDetailsModal && currentAppointment && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000
-          }}>
-            <div style={{
-              backgroundColor: 'white',
-              borderRadius: '12px',
-              padding: '30px',
-              maxWidth: '500px',
-              width: '90%',
-              maxHeight: '80vh',
-              overflow: 'auto',
-              boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)',
-              fontFamily: 'Barlow'
-            }}>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '20px'
-              }}>
-                <h3 style={{
-                  color: '#2e7d32',
-                  fontSize: '20px',
-                  fontWeight: '700',
-                  fontFamily: 'Barlow',
-                  margin: '0'
-                }}>
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100%",
+              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: "white",
+                borderRadius: "12px",
+                padding: "30px",
+                maxWidth: "500px",
+                width: "90%",
+                maxHeight: "80vh",
+                overflow: "auto",
+                boxShadow: "0 10px 25px rgba(0, 0, 0, 0.2)",
+                fontFamily: "Barlow",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "20px",
+                }}
+              >
+                <h3
+                  style={{
+                    color: "#2e7d32",
+                    fontSize: "20px",
+                    fontWeight: "700",
+                    fontFamily: "Barlow",
+                    margin: "0",
+                  }}
+                >
                   Appointment Details
                 </h3>
                 <button
                   onClick={() => setShowDetailsModal(false)}
                   style={{
-                    background: 'none',
-                    border: 'none',
-                    fontSize: '24px',
-                    cursor: 'pointer',
-                    color: '#666',
-                    padding: '0',
-                    width: '30px',
-                    height: '30px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: '50%',
-                    transition: 'background-color 0.2s'
+                    background: "none",
+                    border: "none",
+                    fontSize: "24px",
+                    cursor: "pointer",
+                    color: "#666",
+                    padding: "0",
+                    width: "30px",
+                    height: "30px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: "50%",
+                    transition: "background-color 0.2s",
                   }}
-                  onMouseEnter={(e) => e.target.style.backgroundColor = '#f5f5f5'}
-                  onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                  onMouseEnter={(e) =>
+                    (e.target.style.backgroundColor = "#f5f5f5")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.target.style.backgroundColor = "transparent")
+                  }
                 >
                   <X size={18} />
                 </button>
               </div>
 
-              <div style={{ lineHeight: '1.6', fontFamily: 'Barlow' }}>
-                <div style={{ marginBottom: '15px' }}>
-                  <strong style={{ color: '#2e7d32', fontFamily: 'Barlow' }}>Title:</strong>
-                  <div style={{ marginTop: '5px', fontFamily: 'Barlow' }}>
+              <div style={{ lineHeight: "1.6", fontFamily: "Barlow" }}>
+                <div style={{ marginBottom: "15px" }}>
+                  <strong style={{ color: "#2e7d32", fontFamily: "Barlow" }}>
+                    Title:
+                  </strong>
+                  <div style={{ marginTop: "5px", fontFamily: "Barlow" }}>
                     {isEditingAppointment ? (
                       <input
                         type="text"
                         value={`Blood Drive Partnership - ${editedAppointment.contactInfo.lastName}`}
                         readOnly
                         style={{
-                          width: '100%',
-                          padding: '8px',
-                          border: '1px solid #ddd',
-                          borderRadius: '4px',
-                          fontFamily: 'Barlow',
-                          backgroundColor: 'white',
-                          cursor: 'text'
+                          width: "100%",
+                          padding: "8px",
+                          border: "1px solid #ddd",
+                          borderRadius: "4px",
+                          fontFamily: "Barlow",
+                          backgroundColor: "white",
+                          cursor: "text",
                         }}
                       />
                     ) : (
@@ -2068,38 +2564,62 @@ const AppointmentOrg = () => {
                   </div>
                 </div>
 
-                <div style={{ marginBottom: '15px' }}>
-                  <strong style={{ color: '#2e7d32', fontFamily: 'Barlow' }}>Date & Time:</strong>
-                  <div style={{ marginTop: '5px', fontFamily: 'Barlow' }}>
+                <div style={{ marginBottom: "15px" }}>
+                  <strong style={{ color: "#2e7d32", fontFamily: "Barlow" }}>
+                    Date & Time:
+                  </strong>
+                  <div style={{ marginTop: "5px", fontFamily: "Barlow" }}>
                     {isEditingAppointment ? (
-                      <div style={{ display: 'flex', gap: '10px' }}>
+                      <div style={{ display: "flex", gap: "10px" }}>
                         <input
                           type="date"
                           value={editedAppointment.date}
-                          onChange={(e) => setEditedAppointment({...editedAppointment, date: e.target.value})}
-                          disabled={currentAppointment.status === 'scheduled'}
+                          onChange={(e) =>
+                            setEditedAppointment({
+                              ...editedAppointment,
+                              date: e.target.value,
+                            })
+                          }
+                          disabled={currentAppointment.status === "scheduled"}
                           style={{
                             flex: 1,
-                            padding: '8px',
-                            border: '1px solid #ddd',
-                            borderRadius: '4px',
-                            fontFamily: 'Barlow',
-                            backgroundColor: currentAppointment.status === 'scheduled' ? '#f5f5f5' : 'white',
-                            cursor: currentAppointment.status === 'scheduled' ? 'not-allowed' : 'text'
+                            padding: "8px",
+                            border: "1px solid #ddd",
+                            borderRadius: "4px",
+                            fontFamily: "Barlow",
+                            backgroundColor:
+                              currentAppointment.status === "scheduled"
+                                ? "#f5f5f5"
+                                : "white",
+                            cursor:
+                              currentAppointment.status === "scheduled"
+                                ? "not-allowed"
+                                : "text",
                           }}
                         />
                         <select
                           value={editedAppointment.time}
-                          onChange={(e) => setEditedAppointment({...editedAppointment, time: e.target.value})}
-                          disabled={currentAppointment.status === 'scheduled'}
+                          onChange={(e) =>
+                            setEditedAppointment({
+                              ...editedAppointment,
+                              time: e.target.value,
+                            })
+                          }
+                          disabled={currentAppointment.status === "scheduled"}
                           style={{
                             flex: 1,
-                            padding: '8px',
-                            border: '1px solid #ddd',
-                            borderRadius: '4px',
-                            fontFamily: 'Barlow',
-                            backgroundColor: currentAppointment.status === 'scheduled' ? '#f5f5f5' : 'white',
-                            cursor: currentAppointment.status === 'scheduled' ? 'not-allowed' : 'pointer'
+                            padding: "8px",
+                            border: "1px solid #ddd",
+                            borderRadius: "4px",
+                            fontFamily: "Barlow",
+                            backgroundColor:
+                              currentAppointment.status === "scheduled"
+                                ? "#f5f5f5"
+                                : "white",
+                            cursor:
+                              currentAppointment.status === "scheduled"
+                                ? "not-allowed"
+                                : "pointer",
                           }}
                         >
                           <option value="8:00">8:00 AM</option>
@@ -2114,134 +2634,176 @@ const AppointmentOrg = () => {
                   </div>
                 </div>
 
-                <div style={{ marginBottom: '15px' }}>
-                  <strong style={{ color: '#2e7d32', fontFamily: 'Barlow' }}>Type:</strong>
-                  <div style={{ marginTop: '5px' }}>
-                    <span style={{
-                      backgroundColor: '#ffebee',
-                      color: '#c62828',
-                      padding: '4px 8px',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                      fontWeight: '400',
-                      fontFamily: 'Barlow',
-                      border: '1px solid #ffcdd2'
-                    }}>
+                <div style={{ marginBottom: "15px" }}>
+                  <strong style={{ color: "#2e7d32", fontFamily: "Barlow" }}>
+                    Type:
+                  </strong>
+                  <div style={{ marginTop: "5px" }}>
+                    <span
+                      style={{
+                        backgroundColor: "#ffebee",
+                        color: "#c62828",
+                        padding: "4px 8px",
+                        borderRadius: "12px",
+                        fontSize: "12px",
+                        fontWeight: "400",
+                        fontFamily: "Barlow",
+                        border: "1px solid #ffcdd2",
+                      }}
+                    >
                       Blood Drive Partnership
                     </span>
                   </div>
                 </div>
 
                 {currentAppointment.status && (
-                  <div style={{ marginBottom: '15px' }}>
-                    <strong style={{ color: '#2e7d32', fontFamily: 'Barlow' }}>Status:</strong>
-                    <div style={{ marginTop: '5px' }}>
-                      <span style={{
-                        backgroundColor: `${getStatusColor(currentAppointment.status, currentAppointment.date)}15`,
-                        color: getStatusColor(currentAppointment.status, currentAppointment.date),
-                        padding: '4px 8px',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        fontFamily: 'Barlow',
-                        border: `1px solid ${getStatusColor(currentAppointment.status, currentAppointment.date)}`,
-                        textTransform: 'capitalize'
-                      }}>
-                        {getDisplayStatus(currentAppointment.status, currentAppointment.date)}
+                  <div style={{ marginBottom: "15px" }}>
+                    <strong style={{ color: "#2e7d32", fontFamily: "Barlow" }}>
+                      Status:
+                    </strong>
+                    <div style={{ marginTop: "5px" }}>
+                      <span
+                        style={{
+                          backgroundColor: `${getStatusColor(currentAppointment.status, currentAppointment.date)}15`,
+                          color: getStatusColor(
+                            currentAppointment.status,
+                            currentAppointment.date
+                          ),
+                          padding: "4px 8px",
+                          borderRadius: "12px",
+                          fontSize: "12px",
+                          fontWeight: "600",
+                          fontFamily: "Barlow",
+                          border: `1px solid ${getStatusColor(currentAppointment.status, currentAppointment.date)}`,
+                          textTransform: "capitalize",
+                        }}
+                      >
+                        {getDisplayStatus(
+                          currentAppointment.status,
+                          currentAppointment.date
+                        )}
                       </span>
                     </div>
                   </div>
                 )}
 
-                <div style={{ marginBottom: '15px' }}>
-                  <strong style={{ color: '#2e7d32', fontFamily: 'Barlow' }}>Contact Information:</strong>
-                  <div style={{ marginTop: '5px', paddingLeft: '10px', fontFamily: 'Barlow' }}>
-                    <div style={{ marginBottom: '8px' }}>
-                      <strong>Name:</strong> 
+                <div style={{ marginBottom: "15px" }}>
+                  <strong style={{ color: "#2e7d32", fontFamily: "Barlow" }}>
+                    Contact Information:
+                  </strong>
+                  <div
+                    style={{
+                      marginTop: "5px",
+                      paddingLeft: "10px",
+                      fontFamily: "Barlow",
+                    }}
+                  >
+                    <div style={{ marginBottom: "8px" }}>
+                      <strong>Name:</strong>
                       {isEditingAppointment ? (
                         <input
                           type="text"
                           value={editedAppointment.contactInfo.lastName}
-                          onChange={(e) => setEditedAppointment({
-                            ...editedAppointment,
-                            contactInfo: {...editedAppointment.contactInfo, lastName: e.target.value}
-                          })}
+                          onChange={(e) =>
+                            setEditedAppointment({
+                              ...editedAppointment,
+                              contactInfo: {
+                                ...editedAppointment.contactInfo,
+                                lastName: e.target.value,
+                              },
+                            })
+                          }
                           style={{
-                            width: '100%',
-                            padding: '6px',
-                            border: '1px solid #ddd',
-                            borderRadius: '4px',
-                            fontFamily: 'Barlow',
-                            marginTop: '4px'
+                            width: "100%",
+                            padding: "6px",
+                            border: "1px solid #ddd",
+                            borderRadius: "4px",
+                            fontFamily: "Barlow",
+                            marginTop: "4px",
                           }}
                         />
                       ) : (
                         ` ${currentAppointment.contactInfo.lastName}`
                       )}
                     </div>
-                    <div style={{ marginBottom: '8px' }}>
+                    <div style={{ marginBottom: "8px" }}>
                       <strong>Email:</strong>
                       {isEditingAppointment ? (
                         <input
                           type="email"
                           value={editedAppointment.contactInfo.email}
-                          onChange={(e) => setEditedAppointment({
-                            ...editedAppointment,
-                            contactInfo: {...editedAppointment.contactInfo, email: e.target.value}
-                          })}
+                          onChange={(e) =>
+                            setEditedAppointment({
+                              ...editedAppointment,
+                              contactInfo: {
+                                ...editedAppointment.contactInfo,
+                                email: e.target.value,
+                              },
+                            })
+                          }
                           style={{
-                            width: '100%',
-                            padding: '6px',
-                            border: '1px solid #ddd',
-                            borderRadius: '4px',
-                            fontFamily: 'Barlow',
-                            marginTop: '4px'
+                            width: "100%",
+                            padding: "6px",
+                            border: "1px solid #ddd",
+                            borderRadius: "4px",
+                            fontFamily: "Barlow",
+                            marginTop: "4px",
                           }}
                         />
                       ) : (
                         ` ${currentAppointment.contactInfo.email}`
                       )}
                     </div>
-                    <div style={{ marginBottom: '8px' }}>
+                    <div style={{ marginBottom: "8px" }}>
                       <strong>Phone:</strong>
                       {isEditingAppointment ? (
                         <input
                           type="tel"
                           value={editedAppointment.contactInfo.phone}
-                          onChange={(e) => setEditedAppointment({
-                            ...editedAppointment,
-                            contactInfo: {...editedAppointment.contactInfo, phone: e.target.value}
-                          })}
+                          onChange={(e) =>
+                            setEditedAppointment({
+                              ...editedAppointment,
+                              contactInfo: {
+                                ...editedAppointment.contactInfo,
+                                phone: e.target.value,
+                              },
+                            })
+                          }
                           style={{
-                            width: '100%',
-                            padding: '6px',
-                            border: '1px solid #ddd',
-                            borderRadius: '4px',
-                            fontFamily: 'Barlow',
-                            marginTop: '4px'
+                            width: "100%",
+                            padding: "6px",
+                            border: "1px solid #ddd",
+                            borderRadius: "4px",
+                            fontFamily: "Barlow",
+                            marginTop: "4px",
                           }}
                         />
                       ) : (
                         ` ${currentAppointment.contactInfo.phone}`
                       )}
                     </div>
-                    <div style={{ marginBottom: '8px' }}>
+                    <div style={{ marginBottom: "8px" }}>
                       <strong>Address:</strong>
                       {isEditingAppointment ? (
                         <input
                           type="text"
                           value={editedAppointment.contactInfo.address}
-                          onChange={(e) => setEditedAppointment({
-                            ...editedAppointment,
-                            contactInfo: {...editedAppointment.contactInfo, address: e.target.value}
-                          })}
+                          onChange={(e) =>
+                            setEditedAppointment({
+                              ...editedAppointment,
+                              contactInfo: {
+                                ...editedAppointment.contactInfo,
+                                address: e.target.value,
+                              },
+                            })
+                          }
                           style={{
-                            width: '100%',
-                            padding: '6px',
-                            border: '1px solid #ddd',
-                            borderRadius: '4px',
-                            fontFamily: 'Barlow',
-                            marginTop: '4px'
+                            width: "100%",
+                            padding: "6px",
+                            border: "1px solid #ddd",
+                            borderRadius: "4px",
+                            fontFamily: "Barlow",
+                            marginTop: "4px",
                           }}
                         />
                       ) : (
@@ -2249,35 +2811,55 @@ const AppointmentOrg = () => {
                       )}
                     </div>
                     {currentAppointment.contactInfo.type && (
-                      <div><strong>Type:</strong> {currentAppointment.contactInfo.type === 'barangay' ? 'Barangay' : 'Organization'}</div>
+                      <div>
+                        <strong>Type:</strong>{" "}
+                        {currentAppointment.contactInfo.type === "barangay"
+                          ? "Barangay"
+                          : "Organization"}
+                      </div>
                     )}
                   </div>
                 </div>
 
-                {(currentAppointment.contactInfo.message || isEditingAppointment) && (
-                  <div style={{ marginBottom: '15px' }}>
-                    <strong style={{ color: '#2e7d32', fontFamily: 'Barlow' }}>Message:</strong>
-                    <div style={{ marginTop: '5px', fontFamily: 'Barlow' }}>
+                {(currentAppointment.contactInfo.message ||
+                  isEditingAppointment) && (
+                  <div style={{ marginBottom: "15px" }}>
+                    <strong style={{ color: "#2e7d32", fontFamily: "Barlow" }}>
+                      Message:
+                    </strong>
+                    <div style={{ marginTop: "5px", fontFamily: "Barlow" }}>
                       {isEditingAppointment ? (
                         <textarea
-                          value={editedAppointment.contactInfo.message || ''}
-                          onChange={(e) => setEditedAppointment({
-                            ...editedAppointment,
-                            contactInfo: {...editedAppointment.contactInfo, message: e.target.value}
-                          })}
+                          value={editedAppointment.contactInfo.message || ""}
+                          onChange={(e) =>
+                            setEditedAppointment({
+                              ...editedAppointment,
+                              contactInfo: {
+                                ...editedAppointment.contactInfo,
+                                message: e.target.value,
+                              },
+                            })
+                          }
                           style={{
-                            width: '100%',
-                            padding: '8px',
-                            border: '1px solid #ddd',
-                            borderRadius: '4px',
-                            fontFamily: 'Barlow',
-                            minHeight: '60px',
-                            resize: 'vertical'
+                            width: "100%",
+                            padding: "8px",
+                            border: "1px solid #ddd",
+                            borderRadius: "4px",
+                            fontFamily: "Barlow",
+                            minHeight: "60px",
+                            resize: "vertical",
                           }}
                           placeholder="Optional message"
                         />
                       ) : (
-                        <div style={{ padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '6px', border: '1px solid #e9ecef' }}>
+                        <div
+                          style={{
+                            padding: "10px",
+                            backgroundColor: "#f8f9fa",
+                            borderRadius: "6px",
+                            border: "1px solid #e9ecef",
+                          }}
+                        >
                           {currentAppointment.contactInfo.message}
                         </div>
                       )}
@@ -2285,30 +2867,45 @@ const AppointmentOrg = () => {
                   </div>
                 )}
 
-                <div style={{ marginBottom: '15px' }}>
-                  <strong style={{ color: '#2e7d32', fontFamily: 'Barlow' }}>Notes:</strong>
-                  <div style={{ marginTop: '5px', fontFamily: 'Barlow' }}>
-                    {getNotesMessage(currentAppointment.status, currentAppointment.date)}
+                <div style={{ marginBottom: "15px" }}>
+                  <strong style={{ color: "#2e7d32", fontFamily: "Barlow" }}>
+                    Notes:
+                  </strong>
+                  <div style={{ marginTop: "5px", fontFamily: "Barlow" }}>
+                    {getNotesMessage(
+                      currentAppointment.status,
+                      currentAppointment.date
+                    )}
                   </div>
                 </div>
               </div>
 
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                marginTop: '20px',
-                gap: '10px'
-              }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginTop: "20px",
+                  gap: "10px",
+                }}
+              >
                 {!isEditingAppointment ? (
                   <>
                     {/* Check if appointment is finished (past approved/scheduled) */}
                     {(() => {
-                      const isFinished = currentAppointment.date && (() => {
-                        const eventDate = new Date(currentAppointment.date + 'T23:59:59');
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        return eventDate < today && (currentAppointment.status === 'approved' || currentAppointment.status === 'scheduled');
-                      })();
+                      const isFinished =
+                        currentAppointment.date &&
+                        (() => {
+                          const eventDate = new Date(
+                            currentAppointment.date + "T23:59:59"
+                          );
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0);
+                          return (
+                            eventDate < today &&
+                            (currentAppointment.status === "approved" ||
+                              currentAppointment.status === "scheduled")
+                          );
+                        })();
 
                       // If finished, show no buttons
                       if (isFinished) {
@@ -2316,53 +2913,86 @@ const AppointmentOrg = () => {
                       }
 
                       // For declined status, only show centered delete button
-                      if (currentAppointment.status === 'declined' || currentAppointment.status === 'cancelled') {
+                      if (
+                        currentAppointment.status === "declined" ||
+                        currentAppointment.status === "cancelled"
+                      ) {
                         return (
-                          <div style={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "center",
+                              width: "100%",
+                            }}
+                          >
                             <button
-                              onClick={() => handleDeleteAppointment(currentAppointment)}
+                              onClick={() =>
+                                handleDeleteAppointment(currentAppointment)
+                              }
+                              disabled={deleting}
                               style={{
-                                background: '#dc2626',
-                                color: 'white',
-                                border: 'none',
-                                padding: '10px 20px',
-                                borderRadius: '6px',
-                                fontSize: '14px',
-                                fontWeight: '700',
-                                fontFamily: 'Barlow',
-                                cursor: 'pointer',
-                                transition: 'background-color 0.2s'
+                                background: deleting ? "#6b7280" : "#dc2626",
+                                color: "white",
+                                border: "none",
+                                padding: "10px 20px",
+                                borderRadius: "6px",
+                                fontSize: "14px",
+                                fontWeight: "700",
+                                fontFamily: "Barlow",
+                                cursor: deleting ? "not-allowed" : "pointer",
+                                transition: "background-color 0.2s",
+                                position: "relative",
+                                opacity: deleting ? 0.7 : 1,
                               }}
-                              onMouseEnter={(e) => e.target.style.backgroundColor = '#b91c1c'}
-                              onMouseLeave={(e) => e.target.style.backgroundColor = '#dc2626'}
+                              onMouseEnter={(e) => {
+                                if (!deleting) {
+                                  e.target.style.backgroundColor = "#b91c1c";
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!deleting) {
+                                  e.target.style.backgroundColor = "#dc2626";
+                                }
+                              }}
                             >
-                              Delete Appointment
+                              {deleting
+                                ? "Cancelling..."
+                                : "Cancel Appointment"}
                             </button>
                           </div>
                         );
                       }
 
                       // Otherwise, show both buttons (for pending/scheduled)
-                      const canEdit = currentAppointment.status === 'pending' || currentAppointment.status === 'scheduled';
+                      const canEdit =
+                        currentAppointment.status === "pending" ||
+                        currentAppointment.status === "scheduled";
 
                       return (
                         <>
                           <button
-                            onClick={() => handleDeleteAppointment(currentAppointment)}
+                            onClick={() =>
+                              handleDeleteAppointment(currentAppointment)
+                            }
                             style={{
-                              background: '#dc2626',
-                              color: 'white',
-                              border: 'none',
-                              padding: '10px 20px',
-                              borderRadius: '6px',
-                              fontSize: '14px',
-                              fontWeight: '700',
-                              fontFamily: 'Barlow',
-                              cursor: 'pointer',
-                              transition: 'background-color 0.2s'
+                              background: "#dc2626",
+                              color: "white",
+                              border: "none",
+                              padding: "10px 20px",
+                              borderRadius: "6px",
+                              fontSize: "14px",
+                              fontWeight: "700",
+                              fontFamily: "Barlow",
+                              cursor: "pointer",
+                              transition: "background-color 0.2s",
+                              position: "relative",
                             }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = '#b91c1c'}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = '#dc2626'}
+                            onMouseEnter={(e) =>
+                              (e.target.style.backgroundColor = "#b91c1c")
+                            }
+                            onMouseLeave={(e) =>
+                              (e.target.style.backgroundColor = "#dc2626")
+                            }
                           >
                             Cancel Appointment
                           </button>
@@ -2370,26 +3000,26 @@ const AppointmentOrg = () => {
                             onClick={() => handleEditAppointment()}
                             disabled={!canEdit}
                             style={{
-                              background: canEdit ? '#2e7d32' : '#cccccc',
-                              color: 'white',
-                              border: 'none',
-                              padding: '10px 20px',
-                              borderRadius: '6px',
-                              fontSize: '14px',
-                              fontWeight: '700',
-                              fontFamily: 'Barlow',
-                              cursor: canEdit ? 'pointer' : 'not-allowed',
-                              transition: 'background-color 0.2s',
-                              opacity: canEdit ? 1 : 0.6
+                              background: canEdit ? "#2e7d32" : "#cccccc",
+                              color: "white",
+                              border: "none",
+                              padding: "10px 20px",
+                              borderRadius: "6px",
+                              fontSize: "14px",
+                              fontWeight: "700",
+                              fontFamily: "Barlow",
+                              cursor: canEdit ? "pointer" : "not-allowed",
+                              transition: "background-color 0.2s",
+                              opacity: canEdit ? 1 : 0.6,
                             }}
                             onMouseEnter={(e) => {
                               if (canEdit) {
-                                e.target.style.backgroundColor = '#1b5e20';
+                                e.target.style.backgroundColor = "#1b5e20";
                               }
                             }}
                             onMouseLeave={(e) => {
                               if (canEdit) {
-                                e.target.style.backgroundColor = '#2e7d32';
+                                e.target.style.backgroundColor = "#2e7d32";
                               }
                             }}
                           >
@@ -2404,38 +3034,46 @@ const AppointmentOrg = () => {
                     <button
                       onClick={handleCancelEdit}
                       style={{
-                        background: '#666',
-                        color: 'white',
-                        border: 'none',
-                        padding: '10px 20px',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                        fontWeight: '700',
-                        fontFamily: 'Barlow',
-                        cursor: 'pointer',
-                        transition: 'background-color 0.2s'
+                        background: "#666",
+                        color: "white",
+                        border: "none",
+                        padding: "10px 20px",
+                        borderRadius: "6px",
+                        fontSize: "14px",
+                        fontWeight: "700",
+                        fontFamily: "Barlow",
+                        cursor: "pointer",
+                        transition: "background-color 0.2s",
                       }}
-                      onMouseEnter={(e) => e.target.style.backgroundColor = '#555'}
-                      onMouseLeave={(e) => e.target.style.backgroundColor = '#666'}
+                      onMouseEnter={(e) =>
+                        (e.target.style.backgroundColor = "#555")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.target.style.backgroundColor = "#666")
+                      }
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleSaveEdit}
                       style={{
-                        background: '#2e7d32',
-                        color: 'white',
-                        border: 'none',
-                        padding: '10px 20px',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                        fontWeight: '700',
-                        fontFamily: 'Barlow',
-                        cursor: 'pointer',
-                        transition: 'background-color 0.2s'
+                        background: "#2e7d32",
+                        color: "white",
+                        border: "none",
+                        padding: "10px 20px",
+                        borderRadius: "6px",
+                        fontSize: "14px",
+                        fontWeight: "700",
+                        fontFamily: "Barlow",
+                        cursor: "pointer",
+                        transition: "background-color 0.2s",
                       }}
-                      onMouseEnter={(e) => e.target.style.backgroundColor = '#1b5e20'}
-                      onMouseLeave={(e) => e.target.style.backgroundColor = '#2e7d32'}
+                      onMouseEnter={(e) =>
+                        (e.target.style.backgroundColor = "#1b5e20")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.target.style.backgroundColor = "#2e7d32")
+                      }
                     >
                       Save Changes
                     </button>
@@ -2446,27 +3084,144 @@ const AppointmentOrg = () => {
           </div>
         )}
 
-        {/* Delete Confirmation Modal */}
-        <DeleteConfirmationModal
-          isOpen={isDeleteModalOpen}
-          onClose={() => setDeleteModalOpen(false)}
-          onConfirm={handleConfirmDelete}
-          itemCount={1}
-          itemName="appointment"
-          customTitle={
-            currentAppointment?.status === 'declined'
-              ? 'Confirm Delete'
-              : 'Confirm Cancellation'
-          }
-          customDescription={
-            currentAppointment?.status === 'declined'
-              ? 'Are you sure you want to delete this appointment? This action cannot be undone.'
-              : 'Are you sure you want to cancel this appointment? This action cannot be undone.'
-          }
-        />
+        {/* Cancel/Delete Confirmation Modal */}
+        {isDeleteModalOpen && (
+          <div style={styles.successModalOverlay}>
+            <div style={styles.successModal}>
+              <button
+                style={{
+                  ...styles.successCloseButton,
+                  ...(hoverStates.deleteClose
+                    ? styles.successCloseButtonHover
+                    : {}),
+                }}
+                onClick={() => setDeleteModalOpen(false)}
+                onMouseEnter={() => handleMouseEnter("deleteClose")}
+                onMouseLeave={() => handleMouseLeave("deleteClose")}
+                disabled={deleting} // Disable close while deleting
+              >
+                ×
+              </button>
 
-        {/* Deleting Loader */}
-        {deleting && <Loader />}
+              <div
+                style={{
+                  ...styles.successIcon,
+                  backgroundColor: deleting ? "#6b7280" : "#dc2626",
+                }}
+              >
+                {deleting ? (
+                  <div
+                    className="saving-spinner"
+                    style={{
+                      width: "20px",
+                      height: "20px",
+                      borderWidth: "2px",
+                    }}
+                  ></div>
+                ) : (
+                  <svg width="24" height="24" fill="white" viewBox="0 0 24 24">
+                    <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+                  </svg>
+                )}
+              </div>
+
+              <h3 style={styles.successTitle}>
+                {deleting
+                  ? "Processing..."
+                  : currentAppointment?.status === "declined"
+                    ? "Confirm Delete"
+                    : "Confirm Cancellation"}
+              </h3>
+              <p style={styles.successDescription}>
+                {deleting
+                  ? "Please wait while we process your request..."
+                  : currentAppointment?.status === "declined"
+                    ? "Are you sure you want to delete this appointment? This action cannot be undone."
+                    : "Please provide a reason for cancelling this appointment. This will be sent to the Regional Blood Center."}
+              </p>
+
+             {!deleting && currentAppointment?.status !== "declined" && 
+                currentAppointment?.status !== "cancelled" && (
+                  <textarea
+                    style={{
+                      width: "100%",
+                      minHeight: "100px",
+                      padding: "12px",
+                      border: "1px solid #d1d5db",
+                      borderRadius: "8px",
+                      fontSize: "14px",
+                      fontFamily: "Barlow",
+                      resize: "vertical",
+                      marginBottom: "20px",
+                      boxSizing: "border-box",
+                    }}
+                    placeholder="Enter cancellation reason..."
+                    value={cancellationReason}
+                    onChange={(e) => setCancellationReason(e.target.value)}
+                  />
+                )}
+              {!deleting && (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "10px",
+                    width: "100%",
+                    justifyContent: "center",
+                  }}
+                >
+                  <button
+                    style={{
+                      padding: "12px 30px",
+                      backgroundColor: "#f3f4f6",
+                      color: "#374151",
+                      border: "none",
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      fontSize: "16px",
+                      fontWeight: "600",
+                      fontFamily: "Barlow",
+                      transition: "all 0.2s ease",
+                    }}
+                    onClick={() => setDeleteModalOpen(false)}
+                    onMouseEnter={(e) =>
+                      (e.target.style.backgroundColor = "#e5e7eb")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.target.style.backgroundColor = "#f3f4f6")
+                    }
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    style={{
+                      padding: "12px 30px",
+                      backgroundColor: "#dc2626",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      fontSize: "16px",
+                      fontWeight: "600",
+                      fontFamily: "Barlow",
+                      transition: "all 0.2s ease",
+                    }}
+                    onClick={handleConfirmDelete}
+                    onMouseEnter={(e) =>
+                      (e.target.style.backgroundColor = "#b91c1c")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.target.style.backgroundColor = "#dc2626")
+                    }
+                  >
+                    {currentAppointment?.status === "declined"
+                      ? "Delete"
+                      : "Confirm"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Success Modal */}
         {showSuccessModal && (
@@ -2475,36 +3230,36 @@ const AppointmentOrg = () => {
               <button
                 style={{
                   ...styles.successCloseButton,
-                  ...(hoverStates.successClose ? styles.successCloseButtonHover : {})
+                  ...(hoverStates.successClose
+                    ? styles.successCloseButtonHover
+                    : {}),
                 }}
                 onClick={() => setShowSuccessModal(false)}
-                onMouseEnter={() => handleMouseEnter('successClose')}
-                onMouseLeave={() => handleMouseLeave('successClose')}
+                onMouseEnter={() => handleMouseEnter("successClose")}
+                onMouseLeave={() => handleMouseLeave("successClose")}
               >
                 ×
               </button>
 
               <div style={styles.successIcon}>
-                <svg width="48" height="48" fill="white" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                    clipRule="evenodd"
-                  />
+                <svg width="24" height="24" fill="white" viewBox="0 0 24 24">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
                 </svg>
               </div>
 
               <h3 style={styles.successTitle}>{successMessage.title}</h3>
-              <p style={styles.successDescription}>{successMessage.description}</p>
+              <p style={styles.successDescription}>
+                {successMessage.description}
+              </p>
 
               <button
                 style={{
                   ...styles.successOkButton,
-                  ...(hoverStates.successOk ? styles.successOkButtonHover : {})
+                  ...(hoverStates.successOk ? styles.successOkButtonHover : {}),
                 }}
                 onClick={() => setShowSuccessModal(false)}
-                onMouseEnter={() => handleMouseEnter('successOk')}
-                onMouseLeave={() => handleMouseLeave('successOk')}
+                onMouseEnter={() => handleMouseEnter("successOk")}
+                onMouseLeave={() => handleMouseLeave("successOk")}
               >
                 OK
               </button>

@@ -1,26 +1,44 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Mail, Search, Star, Trash2, Reply, Send, Filter, ArrowUpDown, X, Calendar, CheckCircle, XCircle, Clock, Phone } from 'lucide-react';
-import DeleteConfirmationModal from '../../../components/DeleteConfirmationModal';
-import Loader from '../../../components/Loader';
+import React, { useState, useRef, useEffect } from "react";
+import {
+  Mail,
+  Search,
+  Star,
+  Trash2,
+  Reply,
+  Send,
+  Filter,
+  ArrowUpDown,
+  X,
+  Calendar,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Phone,
+} from "lucide-react";
+import DeleteConfirmationModal from "../../../components/DeleteConfirmationModal";
+import Loader from "../../../components/Loader";
 
 const MailComponent = ({ onNavigate }) => {
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
-  const [sortBy, setSortBy] = useState('newest');
+  const [sortBy, setSortBy] = useState("newest");
   const [selectedMail, setSelectedMail] = useState(null);
   const [mails, setMails] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showReplyModal, setShowReplyModal] = useState(false);
-  const [replyMessage, setReplyMessage] = useState('');
+  const [replyMessage, setReplyMessage] = useState("");
   const [showDeclineModal, setShowDeclineModal] = useState(false);
-  const [declineReason, setDeclineReason] = useState('');
+  const [declineReason, setDeclineReason] = useState("");
   const [mailToDecline, setMailToDecline] = useState(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [mailToDelete, setMailToDelete] = useState(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [successMessage, setSuccessMessage] = useState({ title: '', description: '' });
+  const [successMessage, setSuccessMessage] = useState({
+    title: "",
+    description: "",
+  });
   const [isDeleting, setIsDeleting] = useState(false);
 
   const filterDropdownRef = useRef(null);
@@ -40,51 +58,70 @@ const MailComponent = ({ onNavigate }) => {
     try {
       setIsLoading(true);
 
-      if (typeof window !== 'undefined' && window.electronAPI) {
+      if (typeof window !== "undefined" && window.electronAPI) {
         // Load partnership requests from the database
         const requests = await window.electronAPI.getAllPartnershipRequests();
-        console.log('Partnership requests from DB:', requests);
+        console.log("Partnership requests from DB:", requests);
 
-        // Load sync requests from the database
-        const syncRequests = await window.electronAPI.getPendingSyncRequests();
+        // Load sync requests from the database (temp_donor_records)
+        const syncRequests = await window.electronAPI.getPendingTempDonorRecords();
+        console.log("Sync requests from DB:", syncRequests);
 
         // Group sync requests by source organization and user
         const groupedSyncRequests = syncRequests.reduce((acc, record) => {
-          const key = `${record.source_organization}-${record.source_user_id}`;
+          // Use fallback values if organization or user name is missing
+          const organization = record.tdr_source_organization || "Unknown Organization";
+          const userName = record.tdr_source_user_name || "Unknown User";
+          const key = `${organization}-${record.tdr_source_user_id}`;
+
           if (!acc[key]) {
             acc[key] = {
-              source_organization: record.source_organization,
-              source_user_name: record.source_user_name,
-              sync_requested_at: record.sync_requested_at,
-              donors: []
+              source_organization: organization,
+              source_user_name: userName,
+              sync_requested_at: record.tdr_created_at,
+              donors: [],
             };
           }
           acc[key].donors.push(record);
           return acc;
         }, {});
+        console.log("Grouped sync requests:", groupedSyncRequests);
 
         // Transform partnership requests into mail format
-        const mailsFromRequests = requests.map(r => {
-          const avatar = r.organization_name ? r.organization_name.split(' ').map(name => name[0]).join('').substring(0, 2).toUpperCase() : 'UN';
+        const mailsFromRequests = requests.map((r) => {
+          const avatar = r.organization_name
+            ? r.organization_name
+                .split(" ")
+                .map((name) => name[0])
+                .join("")
+                .substring(0, 2)
+                .toUpperCase()
+            : "UN";
 
           // Determine organization type based on organization name or barangay
-          const orgType = r.organization_type || (r.organization_name && r.organization_name.toLowerCase().includes('barangay') ? 'barangay' : 'organization');
+          const orgType =
+            r.organization_type ||
+            (r.organization_name &&
+            r.organization_name.toLowerCase().includes("barangay")
+              ? "barangay"
+              : "organization");
 
           return {
             id: r.id,
             requestId: r.id,
-            type: 'partnership',
+            type: "partnership",
             from: `${r.organization_name} (${r.organization_barangay})`,
             fromEmail: r.contact_email,
             avatar: avatar,
             avatarColor: getAvatarColor(avatar),
-            subject: `Blood Drive Partnership Request`,
+            profilePhoto: r.profile_photo || null,
+            subject: r.appointment_title || `Blood Drive Partnership Request`,
             preview: `${r.organization_name} has requested a blood drive partnership for ${new Date(r.event_date).toLocaleDateString()} at ${r.event_time}.`,
             body: buildPartnershipRequestBody(r),
             timestamp: new Date(r.created_at),
-            read: r.status !== 'pending',
+            read: r.status !== "pending",
             starred: false,
-            category: 'inbox',
+            category: "inbox",
             attachments: [],
             appointmentId: r.appointment_id,
             status: r.status,
@@ -98,56 +135,75 @@ const MailComponent = ({ onNavigate }) => {
               eventDate: r.event_date,
               eventTime: r.event_time,
               eventAddress: r.event_address,
+              appointmentTitle: r.appointment_title || "Blood Drive Partnership Request",
               contactInfo: {
                 name: r.contact_name,
                 email: r.contact_email,
                 phone: r.contact_phone,
                 address: r.event_address,
-                type: orgType
-              }
-            }
+                type: orgType,
+              },
+            },
           };
         });
 
         // Transform sync requests into mail format
-        const mailsFromSyncRequests = Object.values(groupedSyncRequests).map((group, index) => {
-          const orgType = group.source_organization.toLowerCase().includes('barangay') ? 'Barangay' : 'Organization';
-          const avatar = group.source_user_name.split(' ').map(name => name[0]).join('').substring(0, 2).toUpperCase();
+        const mailsFromSyncRequests = Object.values(groupedSyncRequests).map(
+          (group, index) => {
+            const orgType = group.source_organization
+              .toLowerCase()
+              .includes("barangay")
+              ? "Barangay"
+              : "Organization";
+            const avatar = group.source_user_name
+              .split(" ")
+              .map((name) => name[0])
+              .join("")
+              .substring(0, 2)
+              .toUpperCase();
 
-          return {
-            id: `sync-${group.source_organization}-${group.source_user_name}-${index}`,
-            requestId: `sync-${group.source_organization}-${group.source_user_name}`,
-            type: 'sync',
-            from: `${group.source_user_name} (${orgType})`,
-            fromEmail: '',
-            avatar: avatar,
-            avatarColor: getAvatarColor(avatar),
-            subject: `Incoming Record Sync Request`,
-            preview: `${group.source_user_name} would like to approve ${group.donors.length} pending donor record${group.donors.length > 1 ? 's' : ''}.`,
-            body: buildSyncRequestBody(group),
-            timestamp: new Date(group.sync_requested_at),
-            read: false,
-            starred: false,
-            category: 'inbox',
-            attachments: [],
-            status: 'pending',
-            syncInfo: {
-              userName: group.source_user_name,
-              organization: group.source_organization,
-              organizationType: orgType,
-              donorCount: group.donors.length,
-              donors: group.donors
-            }
-          };
-        });
+            return {
+              id: `sync-${group.source_organization}-${group.source_user_name}-${index}`,
+              requestId: `sync-${group.source_organization}-${group.source_user_name}`,
+              type: "sync",
+              from: `${group.source_user_name} (${orgType})`,
+              fromEmail: "",
+              avatar: avatar,
+              avatarColor: getAvatarColor(avatar),
+              subject: `Incoming Record Sync Request`,
+              preview: `${group.source_user_name} would like to approve ${group.donors.length} pending donor record${group.donors.length > 1 ? "s" : ""}.`,
+              body: buildSyncRequestBody(group),
+              timestamp: new Date(group.sync_requested_at),
+              read: false,
+              starred: false,
+              category: "inbox",
+              attachments: [],
+              status: "pending",
+              syncInfo: {
+                userName: group.source_user_name,
+                organization: group.source_organization,
+                organizationType: orgType,
+                donorCount: group.donors.length,
+                donors: group.donors,
+              },
+            };
+          }
+        );
+        console.log("Mails from sync requests:", mailsFromSyncRequests);
 
         // Combine and sort by timestamp
-        const allMails = [...mailsFromRequests, ...mailsFromSyncRequests].sort((a, b) => b.timestamp - a.timestamp);
+        const allMails = [...mailsFromRequests, ...mailsFromSyncRequests].sort(
+          (a, b) => b.timestamp - a.timestamp
+        );
 
         try {
-          const prevIds = new Set(mails.map(m => m.id || m.mailId));
-          const newArrivals = allMails.some(m => !prevIds.has(m.id || m.mailId));
-          if (newArrivals) { new Audio('/assets/message.mp3').play(); }
+          const prevIds = new Set(mails.map((m) => m.id || m.mailId));
+          const newArrivals = allMails.some(
+            (m) => !prevIds.has(m.id || m.mailId)
+          );
+          if (newArrivals) {
+            new Audio("/assets/message.mp3").play();
+          }
         } catch (_) {}
 
         setMails(allMails);
@@ -156,25 +212,26 @@ const MailComponent = ({ onNavigate }) => {
         setMails([
           {
             id: 1,
-            from: 'John Smith',
-            fromEmail: 'john.smith@hospital.com',
-            avatar: 'JS',
-            avatarColor: '#3b82f6',
-            subject: 'Partnership Request - Blood Drive at Community Center',
-            preview: 'We would like to request a partnership for a blood drive event...',
-            body: 'Dear Regional Blood Center,\n\nWe would like to request a partnership for a blood drive event at our Community Center.\n\nContact Information:\nName: John Smith\nEmail: john.smith@hospital.com\nPhone: (555) 123-4567\nType: Organization\n\nBest regards,\nJohn Smith',
+            from: "John Smith",
+            fromEmail: "john.smith@hospital.com",
+            avatar: "JS",
+            avatarColor: "#3b82f6",
+            subject: "Partnership Request - Blood Drive at Community Center",
+            preview:
+              "We would like to request a partnership for a blood drive event...",
+            body: "Dear Regional Blood Center,\n\nWe would like to request a partnership for a blood drive event at our Community Center.\n\nContact Information:\nName: John Smith\nEmail: john.smith@hospital.com\nPhone: (555) 123-4567\nType: Organization\n\nBest regards,\nJohn Smith",
             timestamp: new Date(Date.now() - 2 * 60 * 60000),
             read: false,
             starred: true,
-            category: 'inbox',
+            category: "inbox",
             attachments: [],
-            status: 'pending',
-            appointmentId: 'APT001'
-          }
+            status: "pending",
+            appointmentId: "APT001",
+          },
         ]);
       }
     } catch (error) {
-      console.error('Error loading mails:', error);
+      console.error("Error loading mails:", error);
     } finally {
       setIsLoading(false);
     }
@@ -182,11 +239,11 @@ const MailComponent = ({ onNavigate }) => {
 
   const getSubjectByStatus = (status, title) => {
     switch (status) {
-      case 'approved':
+      case "approved":
         return `Partnership Request Approved - ${title}`;
-      case 'declined':
+      case "declined":
         return `Partnership Request Declined - ${title}`;
-      case 'pending':
+      case "pending":
         return `Partnership Request - ${title}`;
       default:
         return `Partnership Request Update - ${title}`;
@@ -196,11 +253,11 @@ const MailComponent = ({ onNavigate }) => {
   const getPreviewByStatus = (status, message) => {
     const preview = message.substring(0, 100);
     switch (status) {
-      case 'approved':
+      case "approved":
         return `Request approved. ${preview}...`;
-      case 'declined':
+      case "declined":
         return `Request declined. ${preview}...`;
-      case 'pending':
+      case "pending":
         return `New partnership request. ${preview}...`;
       default:
         return `${preview}...`;
@@ -212,40 +269,50 @@ const MailComponent = ({ onNavigate }) => {
     // The details will be shown in the new "Request Details" box.
     const lines = [
       `${request.organization_name} has requested a blood drive partnership.`,
-      'This partnership request is awaiting your review.'
+      "This partnership request is awaiting your review.",
     ];
 
-    return lines.join('\n');
+    return lines.join("\n");
   };
 
   const buildSyncRequestBody = (group) => {
-    const timestamp = new Date(group.sync_requested_at).toLocaleString('en-US', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
+    const timestamp = new Date(group.sync_requested_at).toLocaleString(
+      "en-US",
+      {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      }
+    );
 
     const lines = [
-      `This partner ${group.source_user_name} (${group.source_organization.toLowerCase().includes('barangay') ? 'Barangay' : 'Organization'}) would like to approve their new ${group.donors.length} pending donor record${group.donors.length > 1 ? 's' : ''}. Proceed to Donor Record Page.`,
-      '',
-      'Information:',
+      `This partner ${group.source_user_name} (${group.source_organization.toLowerCase().includes("barangay") ? "Barangay" : "Organization"}) would like to approve their new ${group.donors.length} pending donor record${group.donors.length > 1 ? "s" : ""}. Proceed to Donor Record Page.`,
+      "",
+      "Information:",
       `Name: ${group.source_user_name}`,
       `Organization: ${group.source_organization}`,
       `Timestamp: ${timestamp}`,
       `Number of Donor Records: ${group.donors.length}`,
-      '',
+      "",
       'Click "Proceed Donor Record" button to review the donor records.',
-      ''
+      "",
     ];
 
-    return lines.join('\n');
+    return lines.join("\n");
   };
 
   const getAvatarColor = (text) => {
-    const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#ef4444', '#f59e0b', '#06b6d4'];
+    const colors = [
+      "#3b82f6",
+      "#10b981",
+      "#8b5cf6",
+      "#ef4444",
+      "#f59e0b",
+      "#06b6d4",
+    ];
     let hash = 0;
     for (let i = 0; i < text.length; i++) {
       hash = text.charCodeAt(i) + ((hash << 5) - hash);
@@ -256,17 +323,23 @@ const MailComponent = ({ onNavigate }) => {
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target)) {
+      if (
+        filterDropdownRef.current &&
+        !filterDropdownRef.current.contains(event.target)
+      ) {
         setIsFilterDropdownOpen(false);
       }
-      if (sortDropdownRef.current && !sortDropdownRef.current.contains(event.target)) {
+      if (
+        sortDropdownRef.current &&
+        !sortDropdownRef.current.contains(event.target)
+      ) {
         setIsSortDropdownOpen(false);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
 
@@ -274,39 +347,40 @@ const MailComponent = ({ onNavigate }) => {
     let filtered = mails;
 
     // Apply filter
-    if (activeFilter !== 'all') {
-      if (activeFilter === 'unread') {
-        filtered = filtered.filter(m => !m.read);
-      } else if (activeFilter === 'starred') {
-        filtered = filtered.filter(m => m.starred);
-      } else if (activeFilter === 'approved') {
-        filtered = filtered.filter(m => m.status === 'approved');
-      } else if (activeFilter === 'declined') {
-        filtered = filtered.filter(m => m.status === 'declined');
-      } else if (activeFilter === 'pending') {
-        filtered = filtered.filter(m => m.status === 'pending');
+    if (activeFilter !== "all") {
+      if (activeFilter === "unread") {
+        filtered = filtered.filter((m) => !m.read);
+      } else if (activeFilter === "starred") {
+        filtered = filtered.filter((m) => m.starred);
+      } else if (activeFilter === "approved") {
+        filtered = filtered.filter((m) => m.status === "approved");
+      } else if (activeFilter === "declined") {
+        filtered = filtered.filter((m) => m.status === "declined");
+      } else if (activeFilter === "pending") {
+        filtered = filtered.filter((m) => m.status === "pending");
       } else {
-        filtered = filtered.filter(m => m.category === activeFilter);
+        filtered = filtered.filter((m) => m.category === activeFilter);
       }
     }
 
     // Apply search
     if (searchQuery) {
-      filtered = filtered.filter(m =>
-        m.from.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.body.toLowerCase().includes(searchQuery.toLowerCase())
+      filtered = filtered.filter(
+        (m) =>
+          m.from.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          m.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          m.body.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
     // Apply sorting
     const sorted = [...filtered].sort((a, b) => {
       switch (sortBy) {
-        case 'newest':
+        case "newest":
           return new Date(b.timestamp) - new Date(a.timestamp);
-        case 'oldest':
+        case "oldest":
           return new Date(a.timestamp) - new Date(b.timestamp);
-        case 'unread':
+        case "unread":
           if (a.read !== b.read) {
             return a.read ? 1 : -1;
           }
@@ -326,10 +400,10 @@ const MailComponent = ({ onNavigate }) => {
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
 
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
-    if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
-    if (days < 7) return `${days} day${days !== 1 ? 's' : ''} ago`;
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`;
+    if (hours < 24) return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
+    if (days < 7) return `${days} day${days !== 1 ? "s" : ""} ago`;
     return timestamp.toLocaleDateString();
   };
 
@@ -338,28 +412,30 @@ const MailComponent = ({ onNavigate }) => {
 
     // Mark as read
     if (!mail.read) {
-      setMails(prev => prev.map(m =>
-        m.id === mail.id ? { ...m, read: true } : m
-      ));
+      setMails((prev) =>
+        prev.map((m) => (m.id === mail.id ? { ...m, read: true } : m))
+      );
     }
   };
 
   const handleToggleStar = (mailId, e) => {
     e.stopPropagation();
-    setMails(prev => prev.map(m =>
-      m.id === mailId ? { ...m, starred: !m.starred } : m
-    ));
+    setMails((prev) =>
+      prev.map((m) => (m.id === mailId ? { ...m, starred: !m.starred } : m))
+    );
   };
 
   const handleDeleteClick = (mailId, e) => {
     if (e) e.stopPropagation();
 
     // Find the mail to check its status
-    const mail = mails.find(m => m.id === mailId);
+    const mail = mails.find((m) => m.id === mailId);
 
     // Prevent deletion of approved or declined requests - they should be kept for record-keeping
-    if (mail && (mail.status === 'approved' || mail.status === 'declined')) {
-      alert(`Cannot delete ${mail.status} requests. ${mail.status === 'approved' ? 'Approved' : 'Declined'} requests are kept for record-keeping purposes.`);
+    if (mail && (mail.status === "approved" || mail.status === "declined")) {
+      alert(
+        `Cannot delete ${mail.status} requests. ${mail.status === "approved" ? "Approved" : "Declined"} requests are kept for record-keeping purposes.`
+      );
       return;
     }
 
@@ -372,11 +448,11 @@ const MailComponent = ({ onNavigate }) => {
     setIsDeleting(true);
 
     try {
-      if (typeof window !== 'undefined' && window.electronAPI && mailToDelete) {
+      if (typeof window !== "undefined" && window.electronAPI && mailToDelete) {
         await window.electronAPI.deletePartnershipRequest(mailToDelete);
 
         // Update local state
-        setMails(prev => prev.filter(m => m.id !== mailToDelete));
+        setMails((prev) => prev.filter((m) => m.id !== mailToDelete));
 
         // Close detail view if the deleted mail was selected
         if (selectedMail && selectedMail.id === mailToDelete) {
@@ -384,14 +460,14 @@ const MailComponent = ({ onNavigate }) => {
         }
 
         // Wait 1 second before showing success modal
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
         setIsDeleting(false);
 
         // Show success modal
         setSuccessMessage({
-          title: 'Deleted Successfully!',
-          description: '1 message(s) have been deleted.'
+          title: "Deleted Successfully!",
+          description: "1 message(s) have been deleted.",
         });
         setShowSuccessModal(true);
 
@@ -399,9 +475,9 @@ const MailComponent = ({ onNavigate }) => {
         await loadMails();
       }
     } catch (error) {
-      console.error('Error deleting mail:', error);
+      console.error("Error deleting mail:", error);
       setIsDeleting(false);
-      alert('Failed to delete message. Please try again.');
+      alert("Failed to delete message. Please try again.");
     } finally {
       setMailToDelete(null);
     }
@@ -413,200 +489,142 @@ const MailComponent = ({ onNavigate }) => {
 
   const handleSendReply = () => {
     if (!replyMessage.trim()) {
-      alert('Please enter a message');
+      alert("Please enter a message");
       return;
     }
 
     // Here you would normally send the reply via your backend
-    alert('Reply sent successfully!');
-    setReplyMessage('');
+    alert("Reply sent successfully!");
+    setReplyMessage("");
     setShowReplyModal(false);
   };
 
   const handleProceedDonorRecord = (mail) => {
     // Navigate to Donor Record page
     if (onNavigate) {
-      onNavigate('donor-record');
+      onNavigate("donor-record");
     } else {
-      console.warn('onNavigate prop is not provided to MailComponent');
+      console.warn("onNavigate prop is not provided to MailComponent");
     }
   };
 
   const handleDeclineSyncRequest = (mail) => {
     setMailToDecline(mail);
     setShowDeclineModal(true);
-    setDeclineReason('');
+    setDeclineReason("");
   };
 
   const handleConfirmDeclineSyncRequest = async () => {
     if (!declineReason.trim()) {
-      alert('Please provide a reason for declining this sync request.');
+      alert("Please provide a reason for declining this sync request.");
       return;
     }
 
     const mail = mailToDecline;
 
     try {
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        // Get current user
-        const user = JSON.parse(localStorage.getItem('currentUser'));
-        const declinedBy = user?.fullName || 'RBC Admin';
+      if (typeof window !== "undefined" && window.electronAPI) {
+        // Get current user with proper ID
+        const user = JSON.parse(localStorage.getItem("currentUser"));
+        const declinedByName = user?.fullName || "RBC Admin";
 
-        // Update sync request status to declined in database
-        // Note: updateSyncRequestStatus expects (organization, userName, status, by, reason)
-        await window.electronAPI.updateSyncRequestStatus(
-          mail.syncInfo.organization,
-          mail.syncInfo.userName,
-          'declined',
-          declinedBy,
+        // Get all temp donor record IDs from this sync request
+        const tdrIds = mail.syncInfo.donors.map((donor) => donor.tdr_id);
+
+        // Decline temp donor records in database
+        await window.electronAPI.declineTempDonorRecords(
+          tdrIds,
+          declinedByName,
           declineReason
         );
 
-        // Create notification for PARTNERED ORG database about declined sync request
-        try {
-          const currentDate = new Date();
-
-          const subject = `Donor Records Sync Request Declined`;
-
-          const body = [
-            'Dear Partner,',
-            '',
-            'We regret to inform you that your donor records sync request has been DECLINED by the Regional Blood Center.',
-            '',
-            'Reason for Decline:',
-            declineReason,
-            '',
-            'If you have any questions or would like to discuss this decision, please contact us at admin@regionalbloodcenter.org',
-            '',
-            'Best regards,',
-            'Regional Blood Center Team'
-          ].join('\n');
-
-          console.log('[DECLINE SYNC] Creating notification for organization...');
-          // Create notification in partnered org database
-          const notifResult = await window.electronAPI.createOrgNotification({
-            notificationId: `SYNC-DECLINED-${Date.now()}`,
-            type: 'sync_response',
-            status: 'declined',
-            title: subject,
-            message: body,
-            declineReason: declineReason,
-            requestorName: declinedBy,
-            requestorOrganization: 'Regional Blood Center',
-            donorCount: mail.syncInfo.donorCount,
-            contactEmail: 'admin@regionalbloodcenter.org',
-            contactPhone: '+63 (85) 225-1234',
-            contactAddress: 'J.V Serina St., Carmen, Cagayan de Oro City, Misamis Oriental.'
-          });
-          console.log('[DECLINE SYNC] Notification created:', notifResult);
-        } catch (notifError) {
-          console.error('Error creating notification:', notifError);
-        }
+        // Note: Notification to organization will be handled through their system
+        console.log("[DECLINE SYNC] Sync request declined successfully");
+        console.log("[DECLINE SYNC] Decline reason:", declineReason);
+        console.log("[DECLINE SYNC] Declined by:", declinedByName);
+        console.log("[DECLINE SYNC] Organization:", mail.syncInfo.organization);
 
         // Update local state to mark as declined
-        setMails(prev => prev.map(m =>
-          m.id === mail.id
-            ? { ...m, read: true, status: 'declined', declineReason: declineReason }
-            : m
-        ));
+        setMails((prev) =>
+          prev.map((m) =>
+            m.id === mail.id
+              ? {
+                  ...m,
+                  read: true,
+                  status: "declined",
+                  declineReason: declineReason,
+                }
+              : m
+          )
+        );
 
         if (selectedMail && selectedMail.id === mail.id) {
-          setSelectedMail({ ...selectedMail, read: true, status: 'declined', declineReason: declineReason });
+          setSelectedMail({
+            ...selectedMail,
+            read: true,
+            status: "declined",
+            declineReason: declineReason,
+          });
         }
 
         // Show success modal matching plasma.jsx styling (already implemented below)
         setSuccessMessage({
-          title: 'SYNC DECLINED',
-          description: 'The sync request has been declined with the provided reason.'
+          title: "SYNC DECLINED",
+          description:
+            "The sync request has been declined with the provided reason.",
         });
         setShowSuccessModal(true);
 
         setShowDeclineModal(false);
         setMailToDecline(null);
-        setDeclineReason('');
+        setDeclineReason("");
         await loadMails();
       }
     } catch (error) {
-      console.error('Error declining sync request:', error);
-      alert('Failed to decline sync request, please try again');
+      console.error("Error declining sync request:", error);
+      alert("Failed to decline sync request, please try again");
     }
   };
 
   const handleAcceptSyncRequest = async (mail) => {
     try {
-      if (typeof window !== 'undefined' && window.electronAPI) {
+      if (typeof window !== "undefined" && window.electronAPI) {
         // Get current user
-        const user = JSON.parse(localStorage.getItem('currentUser'));
-        const approvedBy = user?.fullName || 'RBC Admin';
+        const user = JSON.parse(localStorage.getItem("currentUser"));
+        const approvedBy = user?.fullName || "RBC Admin";
 
         // Update sync request status to approved in database
         // Note: updateSyncRequestStatus expects (organization, userName, status, by, reason)
         await window.electronAPI.updateSyncRequestStatus(
           mail.syncInfo.organization,
           mail.syncInfo.userName,
-          'approved',
+          "approved",
           approvedBy,
           null
         );
 
-        // Create notification for PARTNERED ORG database
-        try {
-          const currentDate = new Date();
-
-          const subject = `Donor Records Sync Request Approved`;
-
-          const body = [
-            'Dear Partner,',
-            '',
-            'We are pleased to inform you that your donor records sync request has been APPROVED by the Regional Blood Center.',
-            '',
-            `Your ${mail.syncInfo.donorCount} donor record${mail.syncInfo.donorCount > 1 ? 's have' : ' has'} been successfully synced to our system.`,
-            '',
-            'Next Steps:',
-            '- You can now view these records in your donor records page.',
-            '- The records are now part of the Regional Blood Center database.',
-            '',
-            'If you have any questions, please contact us at admin@regionalbloodcenter.org',
-            '',
-            'Best regards,',
-            'Regional Blood Center Team'
-          ].join('\n');
-
-          console.log('[APPROVAL SYNC] Creating notification for organization...');
-          // Create notification in partnered org database
-          const notifResult = await window.electronAPI.createOrgNotification({
-            notificationId: `SYNC-APPROVED-${Date.now()}`,
-            type: 'sync_response',
-            status: 'approved',
-            title: subject,
-            message: body,
-            requestorName: approvedBy,
-            requestorOrganization: 'Regional Blood Center',
-            donorCount: mail.syncInfo.donorCount,
-            contactEmail: 'admin@regionalbloodcenter.org',
-            contactPhone: '+63 (85) 225-1234',
-            contactAddress: 'J.V Serina St., Carmen, Cagayan de Oro City, Misamis Oriental.'
-          });
-          console.log('[APPROVAL SYNC] Notification created:', notifResult);
-        } catch (notifError) {
-          console.error('Error creating notification:', notifError);
-        }
+        // Note: Notification to organization will be handled through their system
+        console.log("[APPROVAL SYNC] Sync request approved successfully");
+        console.log("[APPROVAL SYNC] Approved by:", approvedBy);
+        console.log("[APPROVAL SYNC] Organization:", mail.syncInfo.organization);
+        console.log("[APPROVAL SYNC] Donor count:", mail.syncInfo.donorCount);
 
         // Update local state
-        setMails(prev => prev.map(m =>
-          m.id === mail.id
-            ? { ...m, read: true, status: 'approved' }
-            : m
-        ));
+        setMails((prev) =>
+          prev.map((m) =>
+            m.id === mail.id ? { ...m, read: true, status: "approved" } : m
+          )
+        );
 
         if (selectedMail && selectedMail.id === mail.id) {
-          setSelectedMail({ ...selectedMail, read: true, status: 'approved' });
+          setSelectedMail({ ...selectedMail, read: true, status: "approved" });
         }
 
         // Show custom success modal
         setSuccessMessage({
-          title: 'SYNC APPROVED',
-          description: 'The sync request has been approved and donor records have been updated.'
+          title: "SYNC APPROVED",
+          description:
+            "The sync request has been approved and donor records have been updated.",
         });
         setShowSuccessModal(true);
 
@@ -614,8 +632,8 @@ const MailComponent = ({ onNavigate }) => {
         await loadMails();
       }
     } catch (error) {
-      console.error('Error accepting sync request:', error);
-      alert('Failed to accept sync request. Please try again.');
+      console.error("Error accepting sync request:", error);
+      alert("Failed to accept sync request. Please try again.");
     }
   };
 
@@ -625,271 +643,141 @@ const MailComponent = ({ onNavigate }) => {
     }
 
     try {
-      if (typeof window !== 'undefined' && window.electronAPI) {
+      if (typeof window !== "undefined" && window.electronAPI) {
         // Get current user
-        const user = JSON.parse(localStorage.getItem('currentUser'));
-        const approvedBy = user?.fullName || 'RBC Admin';
+        const user = JSON.parse(localStorage.getItem("currentUser"));
+        const approvedBy = user?.fullName || "RBC Admin";
 
         // Update partnership request status
         await window.electronAPI.updatePartnershipRequestStatus(
           mail.requestId,
-          'approved',
+          "approved",
           approvedBy
         );
 
         // ADD THIS LINE TO UPDATE THE LOCAL CALENDAR
-        await window.electronAPI.updateAppointmentStatus(mail.appointmentId, 'scheduled');
+        await window.electronAPI.updateAppointmentStatus(
+          mail.appointmentId,
+          "scheduled"
+        );
 
-        // Create MAIL (not notification) for PARTNERED ORG database
-        try {
-          const currentDate = new Date();
-          const formattedDate = currentDate.toLocaleDateString('en-US', {
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true
-          });
-
-          const dateSubmitted = new Date(mail.requestInfo.eventDate);
-          const formattedSubmitDate = dateSubmitted.toLocaleDateString('en-US', {
-            month: '2-digit',
-            day: '2-digit',
-            year: 'numeric'
-          });
-
-          const subject = `Partnership Request Approved – Blood Drive Partnership Request`;
-          const preview = 'Your Partnership Request has been APPROVED…';
-
-          // --- THIS IS THE UPDATED BODY ---
-          const body = [
-            'Dear Partner,',
-            '',
-            'We are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center.',
-            '',
-            'Next Steps:',
-            '- Our team will contact you shortly to coordinate the blood drive details.',
-            '- Please Prepare the necessary documentation and venue arrangements.',
-            '- Check your calendar for the scheduled appointment.',
-            '',
-            'If you have any questions, please contact us at admin@regionalbloodcenter.org',
-            '',
-            'Best regards,',
-            'Regional Blood Center Team'
-          ].join('\n'); // Use \n for new lines
-          // --- END OF UPDATED BODY ---
-
-          console.log('[APPROVAL] Creating mail for organization...');
-          const mailResult = await window.electronAPI.createMail({
-            from_name: 'Regional Blood Center',
-            from_email: 'admin@regionalbloodcenter.org',
-            subject: subject,
-            preview: preview,
-            body: body,
-            status: 'approved',
-            appointment_id: mail.appointmentId,
-            request_title: 'Blood Drive Partnership Request',
-            requestor: mail.requestInfo.organizationName,
-            request_organization: 'Organization',
-            date_submitted: dateSubmitted
-          });
-          console.log('[APPROVAL] Mail created successfully:', mailResult);
-        } catch (mailError) {
-          console.error('Error creating mail:', mailError);
-          // Don't fail the whole operation if mail fails
-        }
-
-        // Create NOTIFICATION for PARTNERED ORG database
-        try {
-          console.log('[APPROVAL] Creating notification for organization...');
-          const notifResult = await window.electronAPI.createOrgNotification({
-            notificationId: `PARTNERSHIP-APPROVED-${Date.now()}`,
-            type: 'partnership_response',
-            status: 'approved',
-            title: 'Partnership Request Approved',
-            message: `Your blood drive partnership request has been approved by the Regional Blood Center. Event: ${mail.requestInfo?.eventDate || 'TBD'}`,
-            requestorName: approvedBy,
-            requestorOrganization: 'Regional Blood Center',
-            appointmentId: mail.appointmentId,
-            contactEmail: 'admin@regionalbloodcenter.org',
-            contactPhone: '+63 (85) 225-1234'
-          });
-          console.log('[APPROVAL] Notification created:', notifResult);
-        } catch (notifError) {
-          console.error('Error creating notification:', notifError);
-        }
+        // Note: Notification to organization will be handled through their system
+        console.log("[APPROVAL] Partnership request approved successfully");
+        console.log("[APPROVAL] Approved by:", approvedBy);
+        console.log("[APPROVAL] Organization:", mail.requestInfo.organizationName);
+        console.log("[APPROVAL] Appointment ID:", mail.appointmentId);
 
         // Update local state
-        setMails(prev => prev.map(m =>
-          m.id === mail.id
-            ? { ...m, read: true, status: 'approved' }
-            : m
-        ));
+        setMails((prev) =>
+          prev.map((m) =>
+            m.id === mail.id ? { ...m, read: true, status: "approved" } : m
+          )
+        );
 
         if (selectedMail && selectedMail.id === mail.id) {
-          setSelectedMail({ ...selectedMail, read: true, status: 'approved' });
+          setSelectedMail({ ...selectedMail, read: true, status: "approved" });
         }
 
-        alert('Partnership request accepted successfully!');
+        alert("Partnership request accepted successfully!");
         loadMails(); // Reload to get fresh data
       }
     } catch (error) {
-      console.error('Error accepting request:', error);
-      alert('Failed to accept request. Please try again.');
+      console.error("Error accepting request:", error);
+      alert("Failed to accept request. Please try again.");
     }
   };
 
   const handleDeclineRequest = (mail) => {
     setMailToDecline(mail);
     setShowDeclineModal(true);
-    setDeclineReason('');
+    setDeclineReason("");
   };
 
   const handleConfirmDecline = async () => {
     if (!declineReason.trim()) {
-      alert('Please provide a reason for declining this request.');
+      alert("Please provide a reason for declining this request.");
       return;
     }
 
     const mail = mailToDecline;
 
     try {
-      if (typeof window !== 'undefined' && window.electronAPI) {
+      if (typeof window !== "undefined" && window.electronAPI) {
         // Get current user
-        const user = JSON.parse(localStorage.getItem('currentUser'));
-        const declinedBy = user?.fullName || 'RBC Admin';
+        const user = JSON.parse(localStorage.getItem("currentUser"));
+        const declinedBy = user?.fullName || "RBC Admin";
 
         // Update partnership request status
         await window.electronAPI.updatePartnershipRequestStatus(
           mail.requestId,
-          'declined',
-          declinedBy
+          "declined", // Make sure this matches the constraint
+          declinedBy,
+          declineReason // Pass the decline reason
         );
 
         // ADD THIS LINE TO UPDATE THE LOCAL CALENDAR
-        await window.electronAPI.updateAppointmentStatus(mail.appointmentId, 'declined');
+        await window.electronAPI.updateAppointmentStatus(
+          mail.appointmentId,
+          "declined"
+        );
 
-        // Create MAIL (not notification) for PARTNERED ORG database
-        try {
-          const currentDate = new Date();
-          const formattedDate = currentDate.toLocaleDateString('en-US', {
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true
-          });
-
-          const dateSubmitted = new Date(mail.requestInfo.eventDate);
-          const formattedSubmitDate = dateSubmitted.toLocaleDateString('en-US', {
-            month: '2-digit',
-            day: '2-digit',
-            year: 'numeric'
-          });
-
-          const subject = `Partnership Request Declined – Blood Drive Partnership Request`;
-          const preview = 'Your Partnership Request has been DECLINED…';
-
-          // --- THIS IS THE UPDATED BODY ---
-          const body = [
-            'Dear Partner,',
-            '',
-            'We regret to inform you that your partnership request has been DECLINED by the Regional Blood Center.',
-            '',
-            'Reason for Decline:',
-            declineReason, // This is the reason you type in the modal
-            '',
-            'If you have any questions or would like to discuss this decision, please contact us at admin@regionalbloodcenter.org',
-            '',
-            'Best regards,',
-            'Regional Blood Center Team'
-          ].join('\n'); // Use \n for new lines
-          // --- END OF UPDATED BODY ---
-
-          console.log('[DECLINE] Creating mail for organization...');
-          const mailResult = await window.electronAPI.createMail({
-            from_name: 'Regional Blood Center',
-            from_email: 'admin@regionalbloodcenter.org',
-            subject: subject,
-            preview: preview,
-            body: body,
-            status: 'declined',
-            appointment_id: mail.appointmentId,
-            decline_reason: declineReason,
-            request_title: 'Blood Drive Partnership Request',
-            requestor: mail.requestInfo.organizationName,
-            request_organization: 'Organization',
-            date_submitted: dateSubmitted
-          });
-          console.log('[DECLINE] Mail created successfully:', mailResult);
-        } catch (mailError) {
-          console.error('Error creating mail:', mailError);
-          // Don't fail the whole operation if mail fails
-        }
-
-        // Create NOTIFICATION for PARTNERED ORG database
-        try {
-          console.log('[DECLINE] Creating notification for organization...');
-          const notifResult = await window.electronAPI.createOrgNotification({
-            notificationId: `PARTNERSHIP-DECLINED-${Date.now()}`,
-            type: 'partnership_response',
-            status: 'declined',
-            title: 'Partnership Request Declined',
-            message: `Your blood drive partnership request has been declined by the Regional Blood Center.`,
-            declineReason: declineReason,
-            requestorName: declinedBy,
-            requestorOrganization: 'Regional Blood Center',
-            appointmentId: mail.appointmentId,
-            contactEmail: 'admin@regionalbloodcenter.org',
-            contactPhone: '+63 (85) 225-1234'
-          });
-          console.log('[DECLINE] Notification created:', notifResult);
-        } catch (notifError) {
-          console.error('Error creating notification:', notifError);
-        }
+        // Note: Notification to organization will be handled through their system
+        console.log("[DECLINE] Partnership request declined successfully");
+        console.log("[DECLINE] Decline reason:", declineReason);
+        console.log("[DECLINE] Declined by:", declinedBy);
+        console.log("[DECLINE] Appointment ID:", mail.appointmentId);
 
         // Update local state
-        setMails(prev => prev.map(m =>
-          m.id === mail.id
-            ? { ...m, read: true, status: 'declined', declineReason: declineReason }
-            : m
-        ));
+        setMails((prev) =>
+          prev.map((m) =>
+            m.id === mail.id
+              ? {
+                  ...m,
+                  read: true,
+                  status: "declined",
+                  declineReason: declineReason,
+                }
+              : m
+          )
+        );
 
         if (selectedMail && selectedMail.id === mail.id) {
-          setSelectedMail({ ...selectedMail, read: true, status: 'declined', declineReason: declineReason });
+          setSelectedMail({
+            ...selectedMail,
+            read: true,
+            status: "declined",
+            declineReason: declineReason,
+          });
         }
 
         // Show custom success modal
         setSuccessMessage({
-          title: 'PARTNERSHIP DECLINED',
-          description: 'The partnership request has been successfully declined.'
+          title: "PARTNERSHIP DECLINED",
+          description:
+            "The partnership request has been successfully declined.",
         });
         setShowSuccessModal(true);
 
         // Reload mails to get fresh data
-        await loadMails();  
+        await loadMails();
         setShowDeclineModal(false);
         setMailToDecline(null);
-        setDeclineReason('');
+        setDeclineReason("");
         loadMails(); // Reload to get fresh data
       }
     } catch (error) {
-      console.error('Error declining request:', error);
-      alert('Failed to decline request. Please try again.');
+      console.error("Error declining request:", error);
+      alert("Failed to decline request. Please try again.");
     }
   };
 
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'approved':
+      case "approved":
         return <CheckCircle size={16} color="#10b981" />;
-      case 'declined':
+      case "declined":
         return <XCircle size={16} color="#ef4444" />;
-      case 'pending':
+      case "pending":
         return <Clock size={16} color="#f59e0b" />;
       default:
         return <Mail size={16} color="#6b7280" />;
@@ -899,26 +787,30 @@ const MailComponent = ({ onNavigate }) => {
   const getCounts = () => {
     return {
       all: mails.length,
-      unread: mails.filter(m => !m.read).length,
-      starred: mails.filter(m => m.starred).length,
-      approved: mails.filter(m => m.status === 'approved').length,
-      declined: mails.filter(m => m.status === 'declined').length,
-      pending: mails.filter(m => m.status === 'pending').length,
-      inbox: mails.filter(m => m.category === 'inbox').length
+      unread: mails.filter((m) => !m.read).length,
+      starred: mails.filter((m) => m.starred).length,
+      approved: mails.filter((m) => m.status === "approved").length,
+      declined: mails.filter((m) => m.status === "declined").length,
+      pending: mails.filter((m) => m.status === "pending").length,
+      inbox: mails.filter((m) => m.category === "inbox").length,
     };
   };
 
   const getSortLabel = (sortKey) => {
     switch (sortKey) {
-      case 'newest': return 'Latest';
-      case 'oldest': return 'Oldest';
-      case 'unread': return 'Unread';
-      default: return 'Latest';
+      case "newest":
+        return "Latest";
+      case "oldest":
+        return "Oldest";
+      case "unread":
+        return "Unread";
+      default:
+        return "Latest";
     }
   };
 
   const getFilterLabel = (filter) => {
-    if (filter === 'all') return 'All';
+    if (filter === "all") return "All";
     return filter.charAt(0).toUpperCase() + filter.slice(1);
   };
 
@@ -1012,7 +904,7 @@ const MailComponent = ({ onNavigate }) => {
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
-                className={`dropdown-arrow ${isFilterDropdownOpen ? 'rotated' : ''}`}
+                className={`dropdown-arrow ${isFilterDropdownOpen ? "rotated" : ""}`}
               >
                 <path
                   strokeLinecap="round"
@@ -1027,38 +919,56 @@ const MailComponent = ({ onNavigate }) => {
                 <div className="dropdown-section">
                   <h4 className="dropdown-section-title">Filter by Status</h4>
                   <button
-                    className={`dropdown-item ${activeFilter === 'all' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('all'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "all" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("all");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     All ({counts.all})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'pending' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('pending'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "pending" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("pending");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Pending ({counts.pending})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'approved' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('approved'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "approved" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("approved");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Approved ({counts.approved})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'declined' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('declined'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "declined" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("declined");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Declined ({counts.declined})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'unread' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('unread'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "unread" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("unread");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Unread ({counts.unread})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'starred' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('starred'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "starred" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("starred");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Starred ({counts.starred})
                   </button>
@@ -1084,7 +994,7 @@ const MailComponent = ({ onNavigate }) => {
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
-                className={`dropdown-arrow ${isSortDropdownOpen ? 'rotated' : ''}`}
+                className={`dropdown-arrow ${isSortDropdownOpen ? "rotated" : ""}`}
               >
                 <path
                   strokeLinecap="round"
@@ -1099,20 +1009,29 @@ const MailComponent = ({ onNavigate }) => {
                 <div className="dropdown-section">
                   <h4 className="dropdown-section-title">Sort Options</h4>
                   <button
-                    className={`dropdown-item ${sortBy === 'newest' ? 'active' : ''}`}
-                    onClick={() => { setSortBy('newest'); setIsSortDropdownOpen(false); }}
+                    className={`dropdown-item ${sortBy === "newest" ? "active" : ""}`}
+                    onClick={() => {
+                      setSortBy("newest");
+                      setIsSortDropdownOpen(false);
+                    }}
                   >
                     Latest
                   </button>
                   <button
-                    className={`dropdown-item ${sortBy === 'oldest' ? 'active' : ''}`}
-                    onClick={() => { setSortBy('oldest'); setIsSortDropdownOpen(false); }}
+                    className={`dropdown-item ${sortBy === "oldest" ? "active" : ""}`}
+                    onClick={() => {
+                      setSortBy("oldest");
+                      setIsSortDropdownOpen(false);
+                    }}
                   >
                     Oldest
                   </button>
                   <button
-                    className={`dropdown-item ${sortBy === 'unread' ? 'active' : ''}`}
-                    onClick={() => { setSortBy('unread'); setIsSortDropdownOpen(false); }}
+                    className={`dropdown-item ${sortBy === "unread" ? "active" : ""}`}
+                    onClick={() => {
+                      setSortBy("unread");
+                      setIsSortDropdownOpen(false);
+                    }}
                   >
                     Unread First
                   </button>
@@ -1127,8 +1046,19 @@ const MailComponent = ({ onNavigate }) => {
             onClick={loadMails}
             title="Refresh messages"
           >
-            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            <svg
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
             </svg>
           </button>
         </div>
@@ -1142,21 +1072,34 @@ const MailComponent = ({ onNavigate }) => {
             <div className="empty-state">
               <Mail size={48} />
               <h3>No messages found</h3>
-              <p>{searchQuery ? 'Try adjusting your search' : `No ${activeFilter === 'all' ? '' : activeFilter} messages available`}</p>
+              <p>
+                {searchQuery
+                  ? "Try adjusting your search"
+                  : `No ${activeFilter === "all" ? "" : activeFilter} messages available`}
+              </p>
             </div>
           ) : (
             <div className="mail-list">
-              {filteredMails.map(mail => (
+              {filteredMails.map((mail) => (
                 <div
                   key={mail.id}
-                  className={`mail-item ${!mail.read ? 'unread' : ''} ${selectedMail && selectedMail.id === mail.id ? 'selected' : ''}`}
+                  className={`mail-item ${!mail.read ? "unread" : ""} ${selectedMail && selectedMail.id === mail.id ? "selected" : ""}`}
                   onClick={() => handleMailClick(mail)}
                 >
                   <div
                     className="mail-avatar"
-                    style={{ backgroundColor: mail.avatarColor }}
+                    style={{
+                      backgroundColor: mail.profilePhoto
+                        ? "transparent"
+                        : mail.avatarColor,
+                      backgroundImage: mail.profilePhoto
+                        ? `url(${mail.profilePhoto})`
+                        : "none",
+                      backgroundSize: "cover",
+                      backgroundPosition: "center",
+                    }}
                   >
-                    {mail.avatar}
+                    {mail.profilePhoto ? "" : mail.avatar}
                   </div>
 
                   <div className="mail-item-content">
@@ -1164,7 +1107,9 @@ const MailComponent = ({ onNavigate }) => {
                       <span className="mail-from">{mail.from}</span>
                       <div className="mail-meta">
                         {getStatusIcon(mail.status)}
-                        <span className="mail-time">{getTimeAgo(mail.timestamp)}</span>
+                        <span className="mail-time">
+                          {getTimeAgo(mail.timestamp)}
+                        </span>
                       </div>
                     </div>
                     <div className="mail-subject">{mail.subject}</div>
@@ -1173,11 +1118,14 @@ const MailComponent = ({ onNavigate }) => {
 
                   <div className="mail-actions">
                     <button
-                      className={`star-button ${mail.starred ? 'starred' : ''}`}
+                      className={`star-button ${mail.starred ? "starred" : ""}`}
                       onClick={(e) => handleToggleStar(mail.id, e)}
-                      title={mail.starred ? 'Unstar' : 'Star'}
+                      title={mail.starred ? "Unstar" : "Star"}
                     >
-                      <Star size={16} fill={mail.starred ? '#f59e0b' : 'none'} />
+                      <Star
+                        size={16}
+                        fill={mail.starred ? "#f59e0b" : "none"}
+                      />
                     </button>
                     <button
                       className="delete-button"
@@ -1202,13 +1150,24 @@ const MailComponent = ({ onNavigate }) => {
               <div className="mail-detail-from">
                 <div
                   className="mail-detail-avatar"
-                  style={{ backgroundColor: selectedMail.avatarColor }}
+                  style={{
+                    backgroundColor: selectedMail.profilePhoto
+                      ? "transparent"
+                      : selectedMail.avatarColor,
+                    backgroundImage: selectedMail.profilePhoto
+                      ? `url(${selectedMail.profilePhoto})`
+                      : "none",
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                  }}
                 >
-                  {selectedMail.avatar}
+                  {selectedMail.profilePhoto ? "" : selectedMail.avatar}
                 </div>
                 <div>
                   <div className="mail-detail-name">{selectedMail.from}</div>
-                  <div className="mail-detail-email">{selectedMail.fromEmail}</div>
+                  <div className="mail-detail-email">
+                    {selectedMail.fromEmail}
+                  </div>
                 </div>
               </div>
               <div className="mail-detail-actions">
@@ -1220,11 +1179,14 @@ const MailComponent = ({ onNavigate }) => {
                   <Reply size={18} />
                 </button>
                 <button
-                  className={`action-btn ${selectedMail.starred ? 'starred' : ''}`}
+                  className={`action-btn ${selectedMail.starred ? "starred" : ""}`}
                   onClick={(e) => handleToggleStar(selectedMail.id, e)}
-                  title={selectedMail.starred ? 'Unstar' : 'Star'}
+                  title={selectedMail.starred ? "Unstar" : "Star"}
                 >
-                  <Star size={18} fill={selectedMail.starred ? '#f59e0b' : 'none'} />
+                  <Star
+                    size={18}
+                    fill={selectedMail.starred ? "#f59e0b" : "none"}
+                  />
                 </button>
                 <button
                   className="action-btn delete-btn"
@@ -1238,13 +1200,13 @@ const MailComponent = ({ onNavigate }) => {
 
             <div className="mail-detail-subject">{selectedMail.subject}</div>
             <div className="mail-detail-meta">
-              {selectedMail.timestamp.toLocaleString('en-US', {
-                weekday: 'short',
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: 'numeric',
-                minute: '2-digit'
+              {selectedMail.timestamp.toLocaleString("en-US", {
+                weekday: "short",
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
               })}
             </div>
 
@@ -1258,84 +1220,118 @@ const MailComponent = ({ onNavigate }) => {
 
             {/* MESSAGE SECTION */}
             <div className="mail-detail-body">
-              {selectedMail.body.split('\n').map((line, index) => (
-                <p key={index}>{line || '\u00A0'}</p>
+              {selectedMail.body.split("\n").map((line, index) => (
+                <p key={index}>{line || "\u00A0"}</p>
               ))}
             </div>
 
             {/* --- REQUEST DETAILS SECTION (For Partnership Requests) --- */}
-            {selectedMail.type === 'partnership' && selectedMail.requestInfo && selectedMail.requestInfo.organizationName && (
-              <div className="request-details-box">
-                <h4 className="request-details-title">Request Details:</h4>
-                <div className="request-detail-item">
-                  <span className="request-detail-label">Title:</span>
-                  <span className="request-detail-value">Blood Drive Partnership Request</span>
+            {selectedMail.type === "partnership" &&
+              selectedMail.requestInfo &&
+              selectedMail.requestInfo.organizationName && (
+                <div className="request-details-box">
+                  <h4 className="request-details-title">Request Details:</h4>
+                  <div className="request-detail-item">
+                    <span className="request-detail-label">Title:</span>
+                    <span className="request-detail-value">
+                      {selectedMail.requestInfo.appointmentTitle || "Blood Drive Partnership Request"}
+                    </span>
+                  </div>
+                  <div className="request-detail-item">
+                    <span className="request-detail-label">Requestor:</span>
+                    <span className="request-detail-value">
+                      {selectedMail.requestInfo.organizationName} – (
+                      {selectedMail.requestInfo.organizationBarangay})
+                    </span>
+                  </div>
+                  <div className="request-detail-item">
+                    <span className="request-detail-label">Event Date:</span>
+                    <span className="request-detail-value">
+                      {new Date(
+                        selectedMail.requestInfo.eventDate
+                      ).toLocaleDateString("en-US", {
+                        weekday: "long",
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })}
+                    </span>
+                  </div>
+                  <div className="request-detail-item">
+                    <span className="request-detail-label">Event Time:</span>
+                    <span className="request-detail-value">
+                      {selectedMail.requestInfo.eventTime}
+                    </span>
+                  </div>
+                  <div className="request-detail-item">
+                    <span className="request-detail-label">Event Address:</span>
+                    <span className="request-detail-value">
+                      {selectedMail.requestInfo.eventAddress}
+                    </span>
+                  </div>
+                  <div className="request-detail-item">
+                    <span className="request-detail-label">
+                      Date Submitted:
+                    </span>
+                    <span className="request-detail-value">
+                      {new Date(selectedMail.timestamp).toLocaleDateString(
+                        "en-US",
+                        {
+                          year: "numeric",
+                          month: "2-digit",
+                          day: "2-digit",
+                        }
+                      )}
+                    </span>
+                  </div>
                 </div>
-                <div className="request-detail-item">
-                  <span className="request-detail-label">Requestor:</span>
-                  <span className="request-detail-value">{selectedMail.requestInfo.organizationName} – ({selectedMail.requestInfo.organizationBarangay})</span>
-                </div>
-                <div className="request-detail-item">
-                  <span className="request-detail-label">Event Date:</span>
-                  <span className="request-detail-value">
-                    {new Date(selectedMail.requestInfo.eventDate).toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                  </span>
-                </div>
-                <div className="request-detail-item">
-                  <span className="request-detail-label">Event Time:</span>
-                  <span className="request-detail-value">{selectedMail.requestInfo.eventTime}</span>
-                </div>
-                <div className="request-detail-item">
-                  <span className="request-detail-label">Event Address:</span>
-                  <span className="request-detail-value">{selectedMail.requestInfo.eventAddress}</span>
-                </div>
-                <div className="request-detail-item">
-                  <span className="request-detail-label">Date Submitted:</span>
-                  <span className="request-detail-value">
-                    {new Date(selectedMail.timestamp).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit'
-                    })}
-                  </span>
-                </div>
-              </div>
-            )}
+              )}
             {/* --- END REQUEST DETAILS SECTION (Partnership) --- */}
 
             {/* --- REQUEST DETAILS SECTION (For Sync Requests) --- */}
-            {selectedMail.type === 'sync' && selectedMail.syncInfo && (
+            {selectedMail.type === "sync" && selectedMail.syncInfo && (
               <div className="request-details-box">
                 <h4 className="request-details-title">Sync Request Details:</h4>
                 <div className="request-detail-item">
                   <span className="request-detail-label">Title:</span>
-                  <span className="request-detail-value">Donor Records Sync Request</span>
+                  <span className="request-detail-value">
+                    Donor Records Sync Request
+                  </span>
                 </div>
                 <div className="request-detail-item">
                   <span className="request-detail-label">Requestor:</span>
-                  <span className="request-detail-value">{selectedMail.syncInfo.userName} – ({selectedMail.syncInfo.organization})</span>
+                  <span className="request-detail-value">
+                    {selectedMail.syncInfo.userName} – (
+                    {selectedMail.syncInfo.organization})
+                  </span>
                 </div>
                 <div className="request-detail-item">
-                  <span className="request-detail-label">Organization Type:</span>
-                  <span className="request-detail-value">{selectedMail.syncInfo.organizationType}</span>
+                  <span className="request-detail-label">
+                    Organization Type:
+                  </span>
+                  <span className="request-detail-value">
+                    {selectedMail.syncInfo.organizationType}
+                  </span>
                 </div>
                 <div className="request-detail-item">
-                  <span className="request-detail-label">Number of Donor Records:</span>
-                  <span className="request-detail-value">{selectedMail.syncInfo.donorCount}</span>
+                  <span className="request-detail-label">
+                    Number of Donor Records:
+                  </span>
+                  <span className="request-detail-value">
+                    {selectedMail.syncInfo.donorCount}
+                  </span>
                 </div>
                 <div className="request-detail-item">
                   <span className="request-detail-label">Date Submitted:</span>
                   <span className="request-detail-value">
-                    {new Date(selectedMail.timestamp).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit'
-                    })}
+                    {new Date(selectedMail.timestamp).toLocaleDateString(
+                      "en-US",
+                      {
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                      }
+                    )}
                   </span>
                 </div>
               </div>
@@ -1343,53 +1339,75 @@ const MailComponent = ({ onNavigate }) => {
             {/* --- END REQUEST DETAILS SECTION (Sync) --- */}
 
             {/* --- CONTACT INFORMATION SECTION (For Partnership Requests) --- */}
-            {selectedMail.type === 'partnership' && selectedMail.requestInfo && selectedMail.requestInfo.contactInfo && (
-              <div className="request-details-box">
-                <h4 className="request-details-title">
-                  <Phone size={18} style={{ marginRight: '8px', verticalAlign: 'middle' }} />
-                  {selectedMail.requestInfo.contactInfo.type === 'barangay' ? "Barangay's Contact Information:" : "Organization's Contact Information:"}
-                </h4>
-                <div className="request-detail-item">
-                  <span className="request-detail-label">Name:</span>
-                  <span className="request-detail-value">{selectedMail.requestInfo.contactInfo.name || 'N/A'}</span>
+            {selectedMail.type === "partnership" &&
+              selectedMail.requestInfo &&
+              selectedMail.requestInfo.contactInfo && (
+                <div className="request-details-box">
+                  <h4 className="request-details-title">
+                    <Phone
+                      size={18}
+                      style={{ marginRight: "8px", verticalAlign: "middle" }}
+                    />
+                    {selectedMail.requestInfo.contactInfo.type === "barangay"
+                      ? "Barangay's Contact Information:"
+                      : "Organization's Contact Information:"}
+                  </h4>
+                  <div className="request-detail-item">
+                    <span className="request-detail-label">Name:</span>
+                    <span className="request-detail-value">
+                      {selectedMail.requestInfo.contactInfo.name || "N/A"}
+                    </span>
+                  </div>
+                  <div className="request-detail-item">
+                    <span className="request-detail-label">Email:</span>
+                    <span className="request-detail-value">
+                      {selectedMail.requestInfo.contactInfo.email || "N/A"}
+                    </span>
+                  </div>
+                  <div className="request-detail-item">
+                    <span className="request-detail-label">Phone:</span>
+                    <span className="request-detail-value">
+                      {selectedMail.requestInfo.contactInfo.phone || "N/A"}
+                    </span>
+                  </div>
+                  <div className="request-detail-item">
+                    <span className="request-detail-label">Address:</span>
+                    <span className="request-detail-value">
+                      {selectedMail.requestInfo.contactInfo.address || "N/A"}
+                    </span>
+                  </div>
+                  <div className="request-detail-item">
+                    <span className="request-detail-label">Type:</span>
+                    <span className="request-detail-value">
+                      {selectedMail.requestInfo.contactInfo.type === "barangay"
+                        ? "Barangay"
+                        : "Organization"}
+                    </span>
+                  </div>
                 </div>
-                <div className="request-detail-item">
-                  <span className="request-detail-label">Email:</span>
-                  <span className="request-detail-value">{selectedMail.requestInfo.contactInfo.email || 'N/A'}</span>
-                </div>
-                <div className="request-detail-item">
-                  <span className="request-detail-label">Phone:</span>
-                  <span className="request-detail-value">{selectedMail.requestInfo.contactInfo.phone || 'N/A'}</span>
-                </div>
-                <div className="request-detail-item">
-                  <span className="request-detail-label">Address:</span>
-                  <span className="request-detail-value">{selectedMail.requestInfo.contactInfo.address || 'N/A'}</span>
-                </div>
-                <div className="request-detail-item">
-                  <span className="request-detail-label">Type:</span>
-                  <span className="request-detail-value">
-                    {selectedMail.requestInfo.contactInfo.type === 'barangay' ? 'Barangay' : 'Organization'}
-                  </span>
-                </div>
-              </div>
-            )}
+              )}
             {/* --- END CONTACT INFORMATION SECTION (Partnership) --- */}
 
             {/* Decline Reason Display */}
-            {selectedMail.status === 'declined' && selectedMail.declineReason && (
-              <div className="decline-reason-display">
-                <div className="decline-reason-header">
-                  <XCircle size={20} color="#ef4444" />
-                  <strong>Reason for Decline</strong>
+            {selectedMail.status === "declined" &&
+              selectedMail.declineReason && (
+                <div className="decline-reason-display">
+                  <div className="decline-reason-header">
+                    <XCircle size={20} color="#ef4444" />
+                    <strong>Reason for Decline</strong>
+                  </div>
+                  <p className="decline-reason-text">
+                    {selectedMail.declineReason}
+                  </p>
                 </div>
-                <p className="decline-reason-text">{selectedMail.declineReason}</p>
-              </div>
-            )}
+              )}
 
             {/* Donor Table for Sync Requests */}
-            {selectedMail.type === 'sync' && selectedMail.syncInfo && (
+            {selectedMail.type === "sync" && selectedMail.syncInfo && (
               <div className="donor-sync-info">
-                <h4 className="donor-table-title">Pending Donor Records ({selectedMail.syncInfo.donorCount})</h4>
+                <h4 className="donor-table-title">
+                  Pending Donor Records ({selectedMail.syncInfo.donorCount})
+                </h4>
                 <div className="donor-table-container">
                   <table className="donor-table">
                     <thead>
@@ -1412,10 +1430,12 @@ const MailComponent = ({ onNavigate }) => {
                         <tr key={index}>
                           <td>{donor.donor_id}</td>
                           <td>{donor.first_name}</td>
-                          <td>{donor.middle_name || '-'}</td>
+                          <td>{donor.middle_name || "-"}</td>
                           <td>{donor.last_name}</td>
                           <td>{donor.gender}</td>
-                          <td>{new Date(donor.birthdate).toLocaleDateString()}</td>
+                          <td>
+                            {new Date(donor.birthdate).toLocaleDateString()}
+                          </td>
                           <td>{donor.age}</td>
                           <td>{donor.blood_type}</td>
                           <td>{donor.rh_factor}</td>
@@ -1428,7 +1448,7 @@ const MailComponent = ({ onNavigate }) => {
                 </div>
 
                 {/* Action Buttons for Sync Requests */}
-                {selectedMail.status === 'pending' && (
+                {selectedMail.status === "pending" && (
                   <div className="request-actions">
                     <button
                       className="proceed-donor-btn"
@@ -1455,53 +1475,60 @@ const MailComponent = ({ onNavigate }) => {
                 )}
 
                 {/* Show status badge for approved/declined sync requests */}
-                {selectedMail.status === 'approved' && (
+                {selectedMail.status === "approved" && (
                   <div className="sync-status-message approved">
                     <CheckCircle size={20} />
-                    <span>This sync request has been APPROVED. The donor records have been synced successfully.</span>
+                    <span>
+                      This sync request has been APPROVED. The donor records
+                      have been synced successfully.
+                    </span>
                   </div>
                 )}
-                {selectedMail.status === 'declined' && selectedMail.declineReason && (
-                  <div className="sync-status-message declined">
-                    <XCircle size={20} />
-                    <div>
-                      <strong>This sync request has been DECLINED</strong>
-                      <p>Reason: {selectedMail.declineReason}</p>
+                {selectedMail.status === "declined" &&
+                  selectedMail.declineReason && (
+                    <div className="sync-status-message declined">
+                      <XCircle size={20} />
+                      <div>
+                        <strong>This sync request has been DECLINED</strong>
+                        <p>Reason: {selectedMail.declineReason}</p>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
               </div>
             )}
 
             {/* Appointment Info for Partnership Requests */}
-            {selectedMail.type === 'partnership' && selectedMail.appointmentId && (
-              <div className="mail-appointment-info">
-                <div className="appointment-badge">
-                  <Calendar size={16} />
-                  <span>Related Appointment ID: {selectedMail.appointmentId}</span>
-                </div>
-
-                {/* Accept/Decline Buttons for Pending Partnership Requests */}
-                {selectedMail.status === 'pending' && (
-                  <div className="request-actions">
-                    <button
-                      className="accept-request-btn"
-                      onClick={() => handleAcceptRequest(selectedMail)}
-                    >
-                      <CheckCircle size={16} />
-                      Accept Partnership Request
-                    </button>
-                    <button
-                      className="decline-request-btn"
-                      onClick={() => handleDeclineRequest(selectedMail)}
-                    >
-                      <XCircle size={16} />
-                      Decline Partnership Request
-                    </button>
+            {selectedMail.type === "partnership" &&
+              selectedMail.appointmentId && (
+                <div className="mail-appointment-info">
+                  <div className="appointment-badge">
+                    <Calendar size={16} />
+                    <span>
+                      Related Appointment ID: {selectedMail.appointmentId}
+                    </span>
                   </div>
-                )}
-              </div>
-            )}
+
+                  {/* Accept/Decline Buttons for Pending Partnership Requests */}
+                  {selectedMail.status === "pending" && (
+                    <div className="request-actions">
+                      <button
+                        className="accept-request-btn"
+                        onClick={() => handleAcceptRequest(selectedMail)}
+                      >
+                        <CheckCircle size={16} />
+                        Accept Partnership Request
+                      </button>
+                      <button
+                        className="decline-request-btn"
+                        onClick={() => handleDeclineRequest(selectedMail)}
+                      >
+                        <XCircle size={16} />
+                        Decline Partnership Request
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
           </div>
         )}
 
@@ -1548,10 +1575,7 @@ const MailComponent = ({ onNavigate }) => {
               >
                 Cancel
               </button>
-              <button
-                className="btn-send"
-                onClick={handleSendReply}
-              >
+              <button className="btn-send" onClick={handleSendReply}>
                 <Send size={16} />
                 Send Reply
               </button>
@@ -1565,13 +1589,18 @@ const MailComponent = ({ onNavigate }) => {
         <div className="modal-overlay">
           <div className="modal-content">
             <div className="modal-header">
-              <h3>Decline {mailToDecline.type === 'sync' ? 'Donor Records Sync Request' : 'Partnership Request'}</h3>
+              <h3>
+                Decline{" "}
+                {mailToDecline.type === "sync"
+                  ? "Donor Records Sync Request"
+                  : "Partnership Request"}
+              </h3>
               <button
                 className="modal-close"
                 onClick={() => {
                   setShowDeclineModal(false);
                   setMailToDecline(null);
-                  setDeclineReason('');
+                  setDeclineReason("");
                 }}
               >
                 <X size={20} />
@@ -1579,8 +1608,12 @@ const MailComponent = ({ onNavigate }) => {
             </div>
             <div className="modal-body">
               <div className="decline-info">
-                <p><strong>From:</strong> {mailToDecline.from}</p>
-                <p><strong>Subject:</strong> {mailToDecline.subject}</p>
+                <p>
+                  <strong>From:</strong> {mailToDecline.from}
+                </p>
+                <p>
+                  <strong>Subject:</strong> {mailToDecline.subject}
+                </p>
               </div>
               <div className="decline-reason-section">
                 <label htmlFor="declineReason" className="decline-label">
@@ -1590,12 +1623,15 @@ const MailComponent = ({ onNavigate }) => {
                 <textarea
                   id="declineReason"
                   className="decline-textarea"
-                  placeholder={`Please provide a reason for declining this ${mailToDecline.type === 'sync' ? 'sync request' : 'partnership request'}...`}
+                  placeholder={`Please provide a reason for declining this ${mailToDecline.type === "sync" ? "sync request" : "partnership request"}...`}
                   value={declineReason}
                   onChange={(e) => setDeclineReason(e.target.value)}
                   rows={6}
                 />
-                <p className="decline-hint">This reason will be sent to the organization and will be visible in their notifications.</p>
+                <p className="decline-hint">
+                  This reason will be sent to the organization and will be
+                  visible in their notifications.
+                </p>
               </div>
             </div>
             <div className="modal-footer">
@@ -1604,14 +1640,18 @@ const MailComponent = ({ onNavigate }) => {
                 onClick={() => {
                   setShowDeclineModal(false);
                   setMailToDecline(null);
-                  setDeclineReason('');
+                  setDeclineReason("");
                 }}
               >
                 Cancel
               </button>
               <button
                 className="btn-decline-confirm"
-                onClick={mailToDecline.type === 'sync' ? handleConfirmDeclineSyncRequest : handleConfirmDecline}
+                onClick={
+                  mailToDecline.type === "sync"
+                    ? handleConfirmDeclineSyncRequest
+                    : handleConfirmDecline
+                }
               >
                 <XCircle size={16} />
                 Confirm Decline
@@ -1634,17 +1674,27 @@ const MailComponent = ({ onNavigate }) => {
       {showSuccessModal && (
         <div className="success-modal-overlay">
           <div className="success-modal">
-            <button className="success-close-button" onClick={() => setShowSuccessModal(false)}>
+            <button
+              className="success-close-button"
+              onClick={() => setShowSuccessModal(false)}
+            >
               <X size={24} />
             </button>
             <div className="success-icon">
               <svg width="48" height="48" fill="white" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                <path
+                  fillRule="evenodd"
+                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  clipRule="evenodd"
+                />
               </svg>
             </div>
             <h3 className="success-title">{successMessage.title}</h3>
             <p className="success-description">{successMessage.description}</p>
-            <button className="success-ok-button" onClick={() => setShowSuccessModal(false)}>
+            <button
+              className="success-ok-button"
+              onClick={() => setShowSuccessModal(false)}
+            >
               OK
             </button>
           </div>
