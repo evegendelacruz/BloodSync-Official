@@ -5,6 +5,153 @@ console.log("Preload script loading...");
 contextBridge.exposeInMainWorld("electronAPI", {
   test: () => "API Working!",
 
+  // ============================================================================
+  // A. CALENDAR AND APPOINTMENTS
+  // ============================================================================
+
+  // A1. Get all appointments by organization
+  getAllAppointments: async (organizationName) => {
+    try {
+      return await ipcRenderer.invoke(
+        "db:getAllAppointments",
+        organizationName
+      );
+    } catch (error) {
+      console.error("Preload Error - getAllAppointments:", error);
+      throw error;
+    }
+  },
+
+  // A2. Add appointment
+  addAppointment: async (appointmentData, userName = "Alaiza Rose Olores") => {
+    try {
+      return await ipcRenderer.invoke(
+        "db:addAppointment",
+        appointmentData,
+        userName
+      );
+    } catch (error) {
+      console.error("Preload Error - addAppointment:", error);
+      throw error;
+    }
+  },
+
+  // A3. Update appointment
+  updateAppointment: async (
+    id,
+    appointmentData,
+    userName = "Alaiza Rose Olores"
+  ) => {
+    try {
+      return await ipcRenderer.invoke(
+        "db:updateAppointment",
+        id,
+        appointmentData,
+        userName
+      );
+    } catch (error) {
+      console.error("Preload Error - updateAppointment:", error);
+      throw error;
+    }
+  },
+
+  // A4. Update appointment status
+  updateAppointmentStatus: async (
+    appointmentId,
+    status,
+    userName = "Central System Admin"
+  ) => {
+    try {
+      return await ipcRenderer.invoke(
+        "db:updateAppointmentStatus",
+        appointmentId,
+        status,
+        userName
+      );
+    } catch (error) {
+      console.error("Preload Error - updateAppointmentStatus:", error);
+      throw error;
+    }
+  },
+
+  // A5. Cancel appointment with reason
+  cancelAppointmentWithReason: async (appointmentId, reason, userName) => {
+    try {
+      return await ipcRenderer.invoke(
+        "db:cancelAppointmentWithReason",
+        appointmentId,
+        reason,
+        userName
+      );
+    } catch (error) {
+      console.error("Preload Error - cancelAppointmentWithReason:", error);
+      throw error;
+    }
+  },
+
+  // A6. Delete multiple appointments
+  deleteAppointments: async (ids, userName = "Alaiza Rose Olores") => {
+    try {
+      return await ipcRenderer.invoke("db:deleteAppointments", ids, userName);
+    } catch (error) {
+      console.error("Preload Error - deleteAppointments:", error);
+      throw error;
+    }
+  },
+
+  // A7. Delete single appointment
+  deleteAppointment: async (id, userName = "Alaiza Rose Olores") => {
+    try {
+      return await ipcRenderer.invoke("db:deleteAppointment", id, userName);
+    } catch (error) {
+      console.error("Preload Error - deleteAppointment:", error);
+      throw error;
+    }
+  },
+
+  // A8. Search appointments
+  searchAppointments: async (searchTerm) => {
+    try {
+      return await ipcRenderer.invoke("db:searchAppointments", searchTerm);
+    } catch (error) {
+      console.error("Preload Error - searchAppointments:", error);
+      throw error;
+    }
+  },
+
+  // A9. Get appointments by date range
+  getAppointmentsByDateRange: async (startDate, endDate) => {
+    try {
+      return await ipcRenderer.invoke(
+        "db:getAppointmentsByDateRange",
+        startDate,
+        endDate
+      );
+    } catch (error) {
+      console.error("Preload Error - getAppointmentsByDateRange:", error);
+      throw error;
+    }
+  },
+
+  // A10. Get appointment by ID
+  getAppointmentById: async (id) => {
+    try {
+      return await ipcRenderer.invoke("db:getAppointmentById", id);
+    } catch (error) {
+      console.error("Preload Error - getAppointmentById:", error);
+      throw error;
+    }
+  },
+
+  // A11. Get appointment statistics
+  getAppointmentStatistics: async () => {
+    try {
+      return await ipcRenderer.invoke("db:getAppointmentStatistics");
+    } catch (error) {
+      console.error("Preload Error - getAppointmentStatistics:", error);
+      throw error;
+    }
+  },
   // ========== RED BLOOD CELL METHODS ==========
   getAllBloodStock: async () => {
     try {
@@ -26,7 +173,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   updateBloodStock: async (id, bloodData, userData) => {
     try {
-      return await ipcRenderer.invoke("db:updateBloodStock", id, bloodData, userData);
+      return await ipcRenderer.invoke(
+        "db:updateBloodStock",
+        id,
+        bloodData,
+        userData
+      );
     } catch (error) {
       console.error("Preload Error - updateBloodStock:", error);
       throw error;
@@ -66,7 +218,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       console.log("Preload - releasing blood stock:", releaseData);
       const result = await ipcRenderer.invoke(
         "db:releaseBloodStock",
-        releaseData, userData
+        releaseData,
+        userData
       );
       return result;
     } catch (error) {
@@ -100,7 +253,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   deleteReleasedBloodStock: async (ids, userData) => {
     try {
-      return await ipcRenderer.invoke("db:deleteReleasedBloodStock", ids, userData);
+      return await ipcRenderer.invoke(
+        "db:deleteReleasedBloodStock",
+        ids,
+        userData
+      );
     } catch (error) {
       console.error("Preload Error - deleteReleasedBloodStock:", error);
       throw error;
@@ -119,7 +276,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   addPlateletStock: async (plateletData, userData) => {
     try {
-      return await ipcRenderer.invoke("db:addPlateletStock", plateletData, userData);
+      return await ipcRenderer.invoke(
+        "db:addPlateletStock",
+        plateletData,
+        userData
+      );
     } catch (error) {
       console.error("Preload Error - addPlateletStock:", error);
       throw error;
@@ -131,7 +292,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       return await ipcRenderer.invoke(
         "db:updatePlateletStock",
         id,
-        plateletData, userData
+        plateletData,
+        userData
       );
     } catch (error) {
       console.error("Preload Error - updatePlateletStock:", error);
@@ -210,7 +372,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   deleteReleasedPlateletStock: async (ids, userData) => {
     try {
-      return await ipcRenderer.invoke("db:deleteReleasedPlateletStock", ids, userData);
+      return await ipcRenderer.invoke(
+        "db:deleteReleasedPlateletStock",
+        ids,
+        userData
+      );
     } catch (error) {
       console.error("Preload Error - deleteReleasedPlateletStock:", error);
       throw error;
@@ -229,7 +395,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   addPlasmaStock: async (plasmaData, userData) => {
     try {
-      return await ipcRenderer.invoke("db:addPlasmaStock", plasmaData, userData);
+      return await ipcRenderer.invoke(
+        "db:addPlasmaStock",
+        plasmaData,
+        userData
+      );
     } catch (error) {
       console.error("Preload Error - addPlasmaStock:", error);
       throw error;
@@ -238,7 +408,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   updatePlasmaStock: async (id, plasmaData, userData) => {
     try {
-      return await ipcRenderer.invoke("db:updatePlasmaStock", id, plasmaData, userData);
+      return await ipcRenderer.invoke(
+        "db:updatePlasmaStock",
+        id,
+        plasmaData,
+        userData
+      );
     } catch (error) {
       console.error("Preload Error - updatePlasmaStock:", error);
       throw error;
@@ -269,7 +444,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       const result = await ipcRenderer.invoke(
         "db:releasePlasmaStock",
         releaseData,
-        userData,
+        userData
       );
       return result;
     } catch (error) {
@@ -312,7 +487,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   deleteReleasedPlasmaStock: async (ids, userData) => {
     try {
-      return await ipcRenderer.invoke("db:deleteReleasedPlasmaStock", ids, userData);
+      return await ipcRenderer.invoke(
+        "db:deleteReleasedPlasmaStock",
+        ids,
+        userData
+      );
     } catch (error) {
       console.error("Preload Error - deleteReleasedPlasmaStock:", error);
       throw error;
@@ -327,7 +506,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return await ipcRenderer.invoke("db:addDonorRecord", donorData, userData);
   },
   updateDonorRecord: async (id, donorData, userData) => {
-    return await ipcRenderer.invoke("db:updateDonorRecord", id, donorData, userData);
+    return await ipcRenderer.invoke(
+      "db:updateDonorRecord",
+      id,
+      donorData,
+      userData
+    );
   },
   deleteDonorRecords: async (ids, userData) => {
     return await ipcRenderer.invoke("db:deleteDonorRecords", ids, userData);
@@ -400,7 +584,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   updateNonConforming: async (id, ncData, userData) => {
     try {
-      return await ipcRenderer.invoke("db:updateNonConforming", id, ncData, userData);
+      return await ipcRenderer.invoke(
+        "db:updateNonConforming",
+        id,
+        ncData,
+        userData
+      );
     } catch (error) {
       console.error("Preload Error - updateNonConforming:", error);
       throw error;
@@ -427,7 +616,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   transferToNonConforming: async (serialIds, userData) => {
     try {
-      return await ipcRenderer.invoke("db:transferToNonConforming", serialIds, userData);
+      return await ipcRenderer.invoke(
+        "db:transferToNonConforming",
+        serialIds,
+        userData
+      );
     } catch (error) {
       console.error("Preload Error - transferToNonConforming:", error);
       throw error;
@@ -510,7 +703,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       throw error;
     }
   },
-  
 
   // Platelet Non-Conforming
   getAllPlateletNonConforming: () =>
@@ -518,7 +710,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getPlateletStockBySerialIdForNC: (serialId) =>
     ipcRenderer.invoke("db:getPlateletStockBySerialIdForNC", serialId),
   transferPlateletToNonConforming: (serialIds, userData) =>
-    ipcRenderer.invoke("db:transferPlateletToNonConforming", serialIds, userData),
+    ipcRenderer.invoke(
+      "db:transferPlateletToNonConforming",
+      serialIds,
+      userData
+    ),
   updatePlateletNonConforming: (id, ncData, userData) =>
     ipcRenderer.invoke("db:updatePlateletNonConforming", id, ncData, userData),
   deletePlateletNonConforming: (ids, userData) =>
@@ -526,7 +722,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   searchPlateletNonConforming: (searchTerm) =>
     ipcRenderer.invoke("db:searchPlateletNonConforming", searchTerm),
   discardPlateletNonConformingStock: (discardData, userData) =>
-    ipcRenderer.invoke("db:discardPlateletNonConformingStock", discardData, userData),
+    ipcRenderer.invoke(
+      "db:discardPlateletNonConformingStock",
+      discardData,
+      userData
+    ),
   getPlateletNonConformingBySerialIdForDiscard: (serialId) =>
     ipcRenderer.invoke(
       "db:getPlateletNonConformingBySerialIdForDiscard",
@@ -574,15 +774,36 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getPlasmaStockBySerialIdForNC: (serialId) =>
     ipcRenderer.invoke("db:getPlasmaStockBySerialIdForNC", serialId),
   transferPlasmaToNonConforming: (serialIds, userData, currentUser) =>
-    ipcRenderer.invoke("db:transferPlasmaToNonConforming", serialIds, userData, currentUser),
+    ipcRenderer.invoke(
+      "db:transferPlasmaToNonConforming",
+      serialIds,
+      userData,
+      currentUser
+    ),
   updatePlasmaNonConforming: (id, ncData, userData, currentUser) =>
-    ipcRenderer.invoke("db:updatePlasmaNonConforming", id, ncData, userData, currentUser),
+    ipcRenderer.invoke(
+      "db:updatePlasmaNonConforming",
+      id,
+      ncData,
+      userData,
+      currentUser
+    ),
   deletePlasmaNonConforming: (ids, userData, currentUser) =>
-    ipcRenderer.invoke("db:deletePlasmaNonConforming", ids, userData, currentUser),
+    ipcRenderer.invoke(
+      "db:deletePlasmaNonConforming",
+      ids,
+      userData,
+      currentUser
+    ),
   searchPlasmaNonConforming: (searchTerm) =>
     ipcRenderer.invoke("db:searchPlasmaNonConforming", searchTerm),
   discardPlasmaNonConformingStock: (discardData, userData, currentUser) =>
-    ipcRenderer.invoke("db:discardPlasmaNonConformingStock", discardData, userData, currentUser),
+    ipcRenderer.invoke(
+      "db:discardPlasmaNonConformingStock",
+      discardData,
+      userData,
+      currentUser
+    ),
   getPlasmaNonConformingBySerialIdForDiscard: (serialId) =>
     ipcRenderer.invoke(
       "db:getPlasmaNonConformingBySerialIdForDiscard",
@@ -805,6 +1026,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }
   },
 
+  getPendingSyncRequests: async () => {
+    try {
+      return await ipcRenderer.invoke("db:getPendingSyncRequests");
+    } catch (error) {
+      console.error("Preload Error - getPendingSyncRequests:", error);
+      throw error;
+    }
+  },
+
   getPartnershipRequestById: async (requestId) => {
     try {
       return await ipcRenderer.invoke(
@@ -817,13 +1047,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }
   },
 
-  updatePartnershipRequestStatus: async (requestId, status, approvedBy) => {
+  updatePartnershipRequestStatus: async (requestId, status, approvedBy, declineReason = null) => {
     try {
       return await ipcRenderer.invoke(
         "db:updatePartnershipRequestStatus",
         requestId,
         status,
-        approvedBy
+        approvedBy,
+        declineReason
       );
     } catch (error) {
       console.error("Preload Error - updatePartnershipRequestStatus:", error);
@@ -851,35 +1082,210 @@ contextBridge.exposeInMainWorld("electronAPI", {
       throw error;
     }
   },
+
+  // ========== TEMP DONOR RECORDS (SYNC REQUESTS) METHODS ==========
+
+  getPendingTempDonorRecords: async () => {
+    try {
+      return await ipcRenderer.invoke("db:getPendingTempDonorRecords");
+    } catch (error) {
+      console.error("Preload Error - getPendingTempDonorRecords:", error);
+      throw error;
+    }
+  },
+
+  getPendingTempDonorRecordsCount: async () => {
+    try {
+      return await ipcRenderer.invoke("db:getPendingTempDonorRecordsCount");
+    } catch (error) {
+      console.error("Preload Error - getPendingTempDonorRecordsCount:", error);
+      throw error;
+    }
+  },
+
+  approveTempDonorRecords: async (tdrIds, approvedBy) => {
+    try {
+      return await ipcRenderer.invoke("db:approveTempDonorRecords", tdrIds, approvedBy);
+    } catch (error) {
+      console.error("Preload Error - approveTempDonorRecords:", error);
+      throw error;
+    }
+  },
+
+  declineTempDonorRecords: async (tdrIds, declinedBy, declineReason) => {
+    try {
+      return await ipcRenderer.invoke("db:declineTempDonorRecords", tdrIds, declinedBy, declineReason);
+    } catch (error) {
+      console.error("Preload Error - declineTempDonorRecords:", error);
+      throw error;
+    }
+  },
+
   // ========== RECENT ACTIVITY METHODS ==========
-    recordActivity: (userId, userName, actionType, actionDescription, entityType, entityId, details) =>
-    ipcRenderer.invoke('record-activity', userId, userName, actionType, actionDescription, entityType, entityId, details),
-    getAllActivities: (limit, offset) =>
-    ipcRenderer.invoke('get-all-activities', limit, offset),
-    getUserActivities: (userId, limit, offset) =>
-    ipcRenderer.invoke('get-user-activities', userId, limit, offset),
-    searchActivities: (searchTerm, limit) =>
-    ipcRenderer.invoke('search-activities', searchTerm, limit),
+  recordActivity: (
+    userId,
+    userName,
+    actionType,
+    actionDescription,
+    entityType,
+    entityId,
+    details
+  ) =>
+    ipcRenderer.invoke(
+      "record-activity",
+      userId,
+      userName,
+      actionType,
+      actionDescription,
+      entityType,
+      entityId,
+      details
+    ),
+  getAllActivities: (limit, offset) =>
+    ipcRenderer.invoke("get-all-activities", limit, offset),
+  getUserActivities: (userId, limit, offset) =>
+    ipcRenderer.invoke("get-user-activities", userId, limit, offset),
+  searchActivities: (searchTerm, limit) =>
+    ipcRenderer.invoke("search-activities", searchTerm, limit),
 
-    //============ORGANIZATION PROFILE===============
-    getUserProfileByIdOrg: (userId) => ipcRenderer.invoke('get-user-profile-org', userId),
-    updateUserProfileOrg: (userId, data) => ipcRenderer.invoke('update-user-profile-org', userId, data),
-    updateUserProfileImageOrg: (userId, imageData) => ipcRenderer.invoke('update-profile-image-org', userId, imageData),
+  //============ORGANIZATION PROFILE===============
+  getUserProfileByIdOrg: (userId) =>
+    ipcRenderer.invoke("get-user-profile-org", userId),
+  updateUserProfileOrg: (userId, data) =>
+    ipcRenderer.invoke("update-user-profile-org", userId, data),
+  updateUserProfileImageOrg: (userId, imageData) =>
+    ipcRenderer.invoke("update-profile-image-org", userId, imageData),
 
-    // ========== ACCOUNT SETTINGS ORG UPDATE METHOD ==========
-    updateUserPasswordOrg: (userId, currentPassword, newPassword) => 
-    ipcRenderer.invoke('updateUserPasswordOrg', userId, currentPassword, newPassword),
+  // ========== ACCOUNT SETTINGS ORG UPDATE METHOD ==========
+  updateUserPasswordOrg: (userId, currentPassword, newPassword) =>
+    ipcRenderer.invoke(
+      "updateUserPasswordOrg",
+      userId,
+      currentPassword,
+      newPassword
+    ),
 
-    //================USER ORG ACTIVITY LOG=====================
-    getUserActivityLogOrg: (userId, page, limit) => 
-    ipcRenderer.invoke('get-user-activity-log-org', userId, page, limit),
-  
-    getUserActivityLogCountOrg: (userId) => 
-      ipcRenderer.invoke('get-user-activity-log-count-org', userId),
-    
-    getUserActivityLogWithFilterOrg: (userId, startDate, endDate, page, limit) => 
-      ipcRenderer.invoke('get-user-activity-log-with-filter-org', userId, startDate, endDate, page, limit),
-    
+  //================USER ORG ACTIVITY LOG=====================
+  getUserActivityLogOrg: (userId, page, limit) =>
+    ipcRenderer.invoke("get-user-activity-log-org", userId, page, limit),
+
+  getUserActivityLogCountOrg: (userId) =>
+    ipcRenderer.invoke("get-user-activity-log-count-org", userId),
+
+  getUserActivityLogWithFilterOrg: (userId, startDate, endDate, page, limit) =>
+    ipcRenderer.invoke(
+      "get-user-activity-log-with-filter-org",
+      userId,
+      startDate,
+      endDate,
+      page,
+      limit
+    ),
+
+  //================ORGANIZATION NOTIFICATIONS AND MAILS=====================
+  getAllNotificationsOrg: async () => {
+    try {
+      return await ipcRenderer.invoke("db:getAllNotificationsOrg");
+    } catch (error) {
+      console.error("Preload Error - getAllNotificationsOrg:", error);
+      throw error;
+    }
+  },
+
+  getAllNotificationsOrg: async () => {
+    try {
+      return await ipcRenderer.invoke("db:getAllNotificationsOrg");
+    } catch (error) {
+      console.error("Preload Error - getAllNotificationsOrg:", error);
+      return []; // Return empty array on error to prevent app crash
+    }
+  },
+
+  getUnreadNotificationCount: async () => {
+    try {
+      return await ipcRenderer.invoke("db:getUnreadNotificationCount");
+    } catch (error) {
+      console.error("Preload Error - getUnreadNotificationCount:", error);
+      return 0;
+    }
+  },
+
+  markOrgNotificationAsRead: async (id) => {
+    return await ipcRenderer.invoke("db:markOrgNotificationAsRead", id);
+  },
+
+  markAllOrgNotificationsAsRead: async () => {
+    return await ipcRenderer.invoke("db:markAllOrgNotificationsAsRead");
+  },
+
+  getAllOrgNotifications: async () => {
+    try {
+      return await ipcRenderer.invoke("db:getAllNotificationsOrg");
+    } catch (error) {
+      console.error("Preload Error - getAllOrgNotifications:", error);
+      return [];
+    }
+  },
+
+  createSyncRequest: async (sourceOrganization, sourceUserName, sourceUserId, donorIds) => {
+    try {
+      return await ipcRenderer.invoke("createSyncRequest", sourceOrganization, sourceUserName, sourceUserId, donorIds);
+    } catch (error) {
+      console.error("Preload Error - createSyncRequest:", error);
+      throw error;
+    }
+  },
+
+  createOrgNotification: async (notificationData) => {
+    try {
+      return await ipcRenderer.invoke(
+        "db:createOrgNotification",
+        notificationData
+      );
+    } catch (error) {
+      console.error("Preload Error - createOrgNotification:", error);
+      throw error;
+    }
+  },
+
+  createMail: async (mailData) => {
+    try {
+      return await ipcRenderer.invoke("db:createMail", mailData);
+    } catch (error) {
+      console.error("Preload Error - createMail:", error);
+      throw error;
+    }
+  },
+
+  getAllMails: async () => {
+    try {
+      return await ipcRenderer.invoke("db:getAllMails");
+    } catch (error) {
+      console.error("Preload Error - getAllMails:", error);
+      throw error;
+    }
+  },
+
+  markMailAsRead: async (mailId) => {
+    return await ipcRenderer.invoke("db:markMailAsRead", mailId);
+  },
+
+  toggleMailStar: async (mailId) => {
+    return await ipcRenderer.invoke("db:toggleMailStar", mailId);
+  },
+
+  deleteMail: async (mailId) => {
+    return await ipcRenderer.invoke("db:deleteMail", mailId);
+  },
+
+  getTableSchema: async (tableName) => {
+    try {
+      return await ipcRenderer.invoke("db:getTableSchema", tableName);
+    } catch (error) {
+      console.error("Preload Error - getTableSchema:", error);
+      throw error;
+    }
+  },
 });
 
 console.log("electronAPI exposed successfully");

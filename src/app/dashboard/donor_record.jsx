@@ -35,6 +35,9 @@ const DonorRecord = () => {
     title: "",
     description: "",
   });
+  const [showApproveSyncModal, setShowApproveSyncModal] = useState(false);
+  const [pendingSyncRecords, setPendingSyncRecords] = useState([]);
+  const [syncDeclineReason, setSyncDeclineReason] = useState("");
   const sortDropdownRef = useRef(null);
   const filterDropdownRef = useRef(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -349,6 +352,86 @@ const DonorRecord = () => {
     } catch (err) {
       console.error("Error deleting donors:", err);
       setError("Failed to delete donors");
+    }
+  };
+
+  // Sync Request Handlers
+  const handleApproveSync = async () => {
+    try {
+      if (!window.electronAPI) {
+        setError("Electron API not available");
+        return;
+      }
+
+      // Load all pending temp donor records
+      const records = await window.electronAPI.getPendingTempDonorRecords();
+
+      if (records.length === 0) {
+        alert("No pending sync requests found");
+        return;
+      }
+
+      setPendingSyncRecords(records);
+      setShowApproveSyncModal(true);
+    } catch (error) {
+      console.error("Error loading sync requests:", error);
+      alert(`Failed to load sync requests: ${error.message}`);
+    }
+  };
+
+  const handleConfirmApproveSync = async () => {
+    try {
+      const user = JSON.parse(localStorage.getItem("currentUser"));
+      const approvedBy = user?.fullName || "RBC Admin";
+      const tdrIds = pendingSyncRecords.map((d) => d.tdr_id);
+
+      const result = await window.electronAPI.approveTempDonorRecords(tdrIds, approvedBy);
+
+      if (result.success) {
+        setShowApproveSyncModal(false);
+        setSuccessMessage({
+          title: "Sync Requests Approved!",
+          description: `${result.count} donor record(s) have been approved and added to the database.`,
+        });
+        setShowSuccessModal(true);
+        await loadDonorData(); // Reload data
+      }
+    } catch (error) {
+      console.error("Error approving sync:", error);
+      alert(`Failed to approve sync request: ${error.message}`);
+    }
+  };
+
+  const handleConfirmDeclineSync = async () => {
+    if (!syncDeclineReason.trim()) {
+      alert("Please provide a reason for declining this sync request.");
+      return;
+    }
+
+    try {
+      const user = JSON.parse(localStorage.getItem("currentUser"));
+      const declinedBy = user?.fullName || "RBC Admin";
+      const tdrIds = pendingSyncRecords.map((d) => d.tdr_id);
+
+      const result = await window.electronAPI.declineTempDonorRecords(
+        tdrIds,
+        declinedBy,
+        syncDeclineReason
+      );
+
+      if (result.success) {
+        setShowApproveSyncModal(false);
+        setSuccessMessage({
+          title: "Sync Requests Declined",
+          description: `${result.count} donor record(s) have been declined.`,
+        });
+        setShowSuccessModal(true);
+        await loadDonorData(); // Reload data
+        setSyncDeclineReason("");
+      }
+    } catch (error) {
+      console.error("Error declining sync:", error);
+      alert(`Failed to decline sync request: ${error.message}`);
     }
   };
 
@@ -1045,6 +1128,7 @@ const DonorRecord = () => {
               fontSize: "14px",
               fontFamily: 'Barlow'
             }}
+            onClick={handleApproveSync}
           >
             <svg
               width="16"
@@ -3196,6 +3280,379 @@ const DonorRecord = () => {
                 onClick={handleSaveEdit}
               >
                 Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Approve Sync Modal */}
+      {showApproveSyncModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 3000,
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "white",
+              borderRadius: 12,
+              width: "90%",
+              maxWidth: 1200,
+              maxHeight: "90vh",
+              padding: "30px",
+              boxShadow: "0 20px 25px rgba(0,0,0,0.25)",
+              display: "flex",
+              flexDirection: "column",
+              fontFamily: "Barlow",
+              position: "relative",
+              overflow: "hidden",
+            }}
+          >
+            <button
+              style={{
+                position: "absolute",
+                top: 16,
+                right: 16,
+                background: "none",
+                border: "none",
+                fontSize: 24,
+                color: "#9ca3af",
+                cursor: "pointer",
+                padding: 4,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 32,
+                height: 32,
+                borderRadius: 4,
+              }}
+              onClick={() => {
+                setShowApproveSyncModal(false);
+                setSyncDeclineReason("");
+              }}
+            >
+              ×
+            </button>
+
+            {/* Header */}
+            <div style={{ marginBottom: 20 }}>
+              <h3
+                style={{
+                  fontSize: 24,
+                  fontWeight: "bold",
+                  color: "#165C3C",
+                  fontFamily: "Barlow",
+                  marginBottom: 8,
+                }}
+              >
+                Donor Record Sync Request
+              </h3>
+              <p
+                style={{
+                  fontSize: 16,
+                  color: "#6b7280",
+                  fontFamily: "Barlow",
+                }}
+              >
+                From:{" "}
+                <strong style={{ color: "#165C3C" }}>
+                  {pendingSyncRecords[0]?.tdr_source_organization || "Organization"}
+                </strong>{" "}
+                ({pendingSyncRecords.length} record{pendingSyncRecords.length !== 1 ? "s" : ""})
+              </p>
+            </div>
+
+            {/* Table Container */}
+            <div
+              style={{
+                flex: 1,
+                overflow: "auto",
+                border: "1px solid #e5e7eb",
+                borderRadius: 8,
+                marginBottom: 20,
+              }}
+            >
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontFamily: "Barlow",
+                  fontSize: 14,
+                }}
+              >
+                <thead>
+                  <tr style={{ backgroundColor: "#f9fafb" }}>
+                    <th
+                      style={{
+                        padding: "12px 16px",
+                        textAlign: "left",
+                        borderBottom: "2px solid #e5e7eb",
+                        fontWeight: "600",
+                        color: "#374151",
+                        position: "sticky",
+                        top: 0,
+                        backgroundColor: "#f9fafb",
+                      }}
+                    >
+                      Donor ID
+                    </th>
+                    <th
+                      style={{
+                        padding: "12px 16px",
+                        textAlign: "left",
+                        borderBottom: "2px solid #e5e7eb",
+                        fontWeight: "600",
+                        color: "#374151",
+                        position: "sticky",
+                        top: 0,
+                        backgroundColor: "#f9fafb",
+                      }}
+                    >
+                      Full Name
+                    </th>
+                    <th
+                      style={{
+                        padding: "12px 16px",
+                        textAlign: "left",
+                        borderBottom: "2px solid #e5e7eb",
+                        fontWeight: "600",
+                        color: "#374151",
+                        position: "sticky",
+                        top: 0,
+                        backgroundColor: "#f9fafb",
+                      }}
+                    >
+                      Blood Type
+                    </th>
+                    <th
+                      style={{
+                        padding: "12px 16px",
+                        textAlign: "left",
+                        borderBottom: "2px solid #e5e7eb",
+                        fontWeight: "600",
+                        color: "#374151",
+                        position: "sticky",
+                        top: 0,
+                        backgroundColor: "#f9fafb",
+                      }}
+                    >
+                      Age
+                    </th>
+                    <th
+                      style={{
+                        padding: "12px 16px",
+                        textAlign: "left",
+                        borderBottom: "2px solid #e5e7eb",
+                        fontWeight: "600",
+                        color: "#374151",
+                        position: "sticky",
+                        top: 0,
+                        backgroundColor: "#f9fafb",
+                      }}
+                    >
+                      Gender
+                    </th>
+                    <th
+                      style={{
+                        padding: "12px 16px",
+                        textAlign: "left",
+                        borderBottom: "2px solid #e5e7eb",
+                        fontWeight: "600",
+                        color: "#374151",
+                        position: "sticky",
+                        top: 0,
+                        backgroundColor: "#f9fafb",
+                      }}
+                    >
+                      Contact
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingSyncRecords.map((record, index) => (
+                    <tr
+                      key={record.tdr_id}
+                      style={{
+                        backgroundColor: index % 2 === 0 ? "white" : "#f9fafb",
+                      }}
+                    >
+                      <td
+                        style={{
+                          padding: "12px 16px",
+                          borderBottom: "1px solid #e5e7eb",
+                          color: "#374151",
+                        }}
+                      >
+                        {record.tdr_donor_id}
+                      </td>
+                      <td
+                        style={{
+                          padding: "12px 16px",
+                          borderBottom: "1px solid #e5e7eb",
+                          color: "#374151",
+                        }}
+                      >
+                        {record.tdr_first_name} {record.tdr_middle_name} {record.tdr_last_name}
+                      </td>
+                      <td
+                        style={{
+                          padding: "12px 16px",
+                          borderBottom: "1px solid #e5e7eb",
+                          color: "#374151",
+                        }}
+                      >
+                        {record.tdr_blood_type}
+                        {record.tdr_rh_factor}
+                      </td>
+                      <td
+                        style={{
+                          padding: "12px 16px",
+                          borderBottom: "1px solid #e5e7eb",
+                          color: "#374151",
+                        }}
+                      >
+                        {record.tdr_age}
+                      </td>
+                      <td
+                        style={{
+                          padding: "12px 16px",
+                          borderBottom: "1px solid #e5e7eb",
+                          color: "#374151",
+                        }}
+                      >
+                        {record.tdr_gender}
+                      </td>
+                      <td
+                        style={{
+                          padding: "12px 16px",
+                          borderBottom: "1px solid #e5e7eb",
+                          color: "#374151",
+                        }}
+                      >
+                        {record.tdr_contact_number}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Decline Reason Textarea (conditional) */}
+            {syncDeclineReason !== null && syncDeclineReason !== "" && (
+              <textarea
+                style={{
+                  width: "100%",
+                  minHeight: 100,
+                  padding: 12,
+                  border: "1px solid #d1d5db",
+                  borderRadius: 8,
+                  fontSize: 14,
+                  fontFamily: "Barlow",
+                  resize: "vertical",
+                  marginBottom: 20,
+                }}
+                placeholder="Enter reason for declining (optional)..."
+                value={syncDeclineReason}
+                onChange={(e) => setSyncDeclineReason(e.target.value)}
+              />
+            )}
+
+            {/* Action Buttons */}
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                justifyContent: "flex-end",
+              }}
+            >
+              <button
+                style={{
+                  padding: "12px 24px",
+                  backgroundColor: "#F3F4F6",
+                  color: "#6B7280",
+                  border: "none",
+                  borderRadius: 8,
+                  fontSize: 14,
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  fontFamily: "Barlow",
+                  transition: "all 0.2s",
+                }}
+                onClick={() => {
+                  setShowApproveSyncModal(false);
+                  setSyncDeclineReason("");
+                }}
+                onMouseOver={(e) => {
+                  e.target.style.backgroundColor = "#E5E7EB";
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.backgroundColor = "#F3F4F6";
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                style={{
+                  padding: "12px 24px",
+                  backgroundColor: "#EF4444",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  fontSize: 14,
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  fontFamily: "Barlow",
+                  transition: "all 0.2s",
+                }}
+                onClick={() => {
+                  if (syncDeclineReason === "") {
+                    setSyncDeclineReason(" ");
+                  } else {
+                    handleConfirmDeclineSync();
+                  }
+                }}
+                onMouseOver={(e) => {
+                  e.target.style.backgroundColor = "#DC2626";
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.backgroundColor = "#EF4444";
+                }}
+              >
+                {syncDeclineReason === "" ? "Decline Sync" : "Confirm Decline"}
+              </button>
+              <button
+                style={{
+                  padding: "12px 24px",
+                  backgroundColor: "#10B981",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  fontSize: 14,
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  fontFamily: "Barlow",
+                  transition: "all 0.2s",
+                }}
+                onClick={handleConfirmApproveSync}
+                onMouseOver={(e) => {
+                  e.target.style.backgroundColor = "#059669";
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.backgroundColor = "#10B981";
+                }}
+              >
+                Approve Sync
               </button>
             </div>
           </div>

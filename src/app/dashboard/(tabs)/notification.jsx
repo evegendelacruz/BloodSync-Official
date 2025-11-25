@@ -1,14 +1,30 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Search, Filter, RefreshCw, CheckCircle, XCircle, Clock, Calendar, Trash2, MoreVertical, Mail, Users, Check, X, AlertTriangle } from 'lucide-react';
-import StockExpirationModal from '../../../components/StockExpirationModal';
-import DeleteConfirmationModal from '../../../components/DeleteConfirmationModal';
-import Loader from '../../../components/Loader';
+import React, { useState, useEffect, useRef } from "react";
+import {
+  Bell,
+  Search,
+  Filter,
+  RefreshCw,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Calendar,
+  Trash2,
+  MoreVertical,
+  Mail,
+  Users,
+  Check,
+  X,
+  AlertTriangle,
+} from "lucide-react";
+import StockExpirationModal from "../../../components/StockExpirationModal";
+import DeleteConfirmationModal from "../../../components/DeleteConfirmationModal";
+import Loader from "../../../components/Loader";
 
 const NotificationComponent = () => {
   const [notifications, setNotifications] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all");
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [activeNotificationMenu, setActiveNotificationMenu] = useState(null);
   const [selectedNotification, setSelectedNotification] = useState(null);
@@ -18,7 +34,10 @@ const NotificationComponent = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [notificationToDelete, setNotificationToDelete] = useState(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [successMessage, setSuccessMessage] = useState({ title: '', description: '' });
+  const [successMessage, setSuccessMessage] = useState({
+    title: "",
+    description: "",
+  });
   const [isDeleting, setIsDeleting] = useState(false);
 
   const filterDropdownRef = useRef(null);
@@ -30,13 +49,13 @@ const NotificationComponent = () => {
     let lastUnread = 0;
     const interval = setInterval(async () => {
       try {
-        if (typeof window !== 'undefined' && window.electronAPI) {
+        if (typeof window !== "undefined" && window.electronAPI) {
           // Only check for new notifications, not force-create
           const count = await window.electronAPI.getUnreadNotificationCount();
-          if (typeof count === 'number' && count > lastUnread) {
+          if (typeof count === "number" && count > lastUnread) {
             lastUnread = count;
             await loadNotifications();
-          } else if (typeof count === 'number') {
+          } else if (typeof count === "number") {
             lastUnread = count;
           }
         }
@@ -48,17 +67,23 @@ const NotificationComponent = () => {
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target)) {
+      if (
+        filterDropdownRef.current &&
+        !filterDropdownRef.current.contains(event.target)
+      ) {
         setIsFilterDropdownOpen(false);
       }
-      if (notificationMenuRef.current && !notificationMenuRef.current.contains(event.target)) {
+      if (
+        notificationMenuRef.current &&
+        !notificationMenuRef.current.contains(event.target)
+      ) {
         setActiveNotificationMenu(null);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
 
@@ -68,67 +93,85 @@ const NotificationComponent = () => {
         setIsLoading(true);
       }
 
-      if (typeof window !== 'undefined' && window.electronAPI) {
+      if (typeof window !== "undefined" && window.electronAPI) {
         // Only load notifications table data
-        const notificationsData = await window.electronAPI.getAllNotifications();
-        const readLocalIds = JSON.parse(localStorage.getItem('rbcPageReadNotificationIds') || '[]');
-        const transformedNotifications = notificationsData.map(n => {
-          let stockData = null;
-          let expirationDate = null;
-          let serialId = null;
-          if (n.link_to) {
-            try {
-              if (n.link_to.trim().startsWith('{')) {
-                stockData = JSON.parse(n.link_to);
-                expirationDate = stockData.expirationDate;
-                serialId = stockData.serialId;
-              }
-            } catch (e) {}
-          }
-
-          // Map priority to status for expiration notifications
-          let displayStatus = n.status;
-          const notifType = n.notification_type || n.type;
-          if (notifType === 'stock_expired' || notifType === 'stock_out') {
-            displayStatus = n.priority === 'critical' ? 'CRITICAL' : displayStatus;
-          } else if (notifType === 'stock_expiring_urgent') {
-            displayStatus = n.priority === 'urgent' ? 'URGENT' : displayStatus;
-          } else if (notifType === 'stock_expiring_soon' || notifType === 'expiration_warning' || notifType === 'stock_low') {
-            displayStatus = n.priority === 'high' ? 'STOCK ALERT' : displayStatus;
-          }
-
-          // Filter out donor records sync request approval notification
-          if (
-            n.title?.includes('Donor Records Sync Request Approval') ||
-            n.message?.includes('requested to sync') ||
-            n.message?.includes('Please review and approve the sync request')
-          ) {
-            return null;
-          }
-          return {
-            id: n.id,
-            notificationId: n.notification_id,
-            type: notifType || 'partnership_request',
-            status: displayStatus,
-            priority: n.priority,
-            title: n.title,
-            message: n.message || n.description,
-            requestor: n.requestor || 'System',
-            timestamp: new Date(n.updated_at || n.created_at),
-            read: (n.read || n.is_read || false) || readLocalIds.includes(n.notification_id) || readLocalIds.includes(n.id),
-            appointmentId: n.appointment_id,
-            declineReason: n.decline_reason,
-            expirationDate: expirationDate,
-            serialId: serialId,
-            stockData: stockData,
-            contactInfo: {
-              email: n.contact_email,
-              phone: n.contact_phone,
-              address: n.contact_address,
-              type: n.contact_type
+        const notificationsData =
+          await window.electronAPI.getAllNotifications();
+        const readLocalIds = JSON.parse(
+          localStorage.getItem("rbcPageReadNotificationIds") || "[]"
+        );
+        const transformedNotifications = notificationsData
+          .map((n) => {
+            let stockData = null;
+            let expirationDate = null;
+            let serialId = null;
+            if (n.link_to) {
+              try {
+                if (n.link_to.trim().startsWith("{")) {
+                  stockData = JSON.parse(n.link_to);
+                  expirationDate = stockData.expirationDate;
+                  serialId = stockData.serialId;
+                }
+              } catch (e) {}
             }
-          };
-        }).filter(Boolean);
+
+            // Map priority to status for expiration notifications
+            let displayStatus = n.status;
+            const notifType = n.notification_type || n.type;
+            if (notifType === "stock_expired" || notifType === "stock_out") {
+              displayStatus =
+                n.priority === "critical" ? "CRITICAL" : displayStatus;
+            } else if (notifType === "stock_expiring_urgent") {
+              displayStatus =
+                n.priority === "urgent" ? "URGENT" : displayStatus;
+            } else if (
+              notifType === "stock_expiring_soon" ||
+              notifType === "expiration_warning" ||
+              notifType === "stock_low"
+            ) {
+              displayStatus =
+                n.priority === "high" ? "STOCK ALERT" : displayStatus;
+            }
+
+            // Filter out donor records sync request approval notification
+            if (
+              n.title?.includes("Donor Records Sync Request Approval") ||
+              n.message?.includes("requested to sync") ||
+              n.message?.includes("Please review and approve the sync request")
+            ) {
+              return null;
+            }
+            return {
+              id: n.id,
+              notificationId: n.notification_id,
+              type: notifType || "partnership_request",
+              status: displayStatus,
+              priority: n.priority,
+              title: n.title,
+              message: n.message || n.description,
+              requestor: n.requestor || "System",
+              timestamp: new Date(n.updated_at || n.created_at),
+              read:
+                n.read ||
+                n.is_read ||
+                false ||
+                readLocalIds.includes(n.notification_id) ||
+                readLocalIds.includes(n.id),
+              appointmentId: n.appointment_id,
+              declineReason: n.decline_reason,
+              cancellationReason: n.cancellation_reason || n.decline_reason, // Unified reason field
+              expirationDate: expirationDate,
+              serialId: serialId,
+              stockData: stockData,
+              contactInfo: {
+                email: n.contact_email,
+                phone: n.contact_phone,
+                address: n.contact_address,
+                type: n.contact_type,
+              },
+            };
+          })
+          .filter(Boolean);
         // Sort by unread first, then by timestamp
         const allNotifications = transformedNotifications.sort((a, b) => {
           if (a.read !== b.read) {
@@ -141,13 +184,13 @@ const NotificationComponent = () => {
         setNotifications([]);
       }
     } catch (error) {
-      console.error('Error loading notifications:', error);
+      console.error("Error loading notifications:", error);
       setNotifications([]);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }
+  };
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await loadNotifications();
@@ -155,23 +198,27 @@ const NotificationComponent = () => {
   };
 
   const handleAcceptRequest = async (notification) => {
-    if (!confirm(`Accept partnership request from ${notification.requestor}?`)) {
+    if (
+      !confirm(`Accept partnership request from ${notification.requestor}?`)
+    ) {
       return;
     }
 
     try {
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        const fullAppointment = await window.electronAPI.getAppointmentById(notification.appointmentId);
+      if (typeof window !== "undefined" && window.electronAPI) {
+        const fullAppointment = await window.electronAPI.getAppointmentById(
+          notification.appointmentId
+        );
 
         if (!fullAppointment) {
-          alert('Appointment not found. It may have been deleted.');
+          alert("Appointment not found. It may have been deleted.");
           return;
         }
 
         await window.electronAPI.updateNotificationStatus(
           notification.notificationId,
-          'approved',
-          'Central System Admin'
+          "approved",
+          "Central System Admin"
         );
 
         await window.electronAPI.updateAppointment(
@@ -181,52 +228,56 @@ const NotificationComponent = () => {
             date: fullAppointment.date,
             time: fullAppointment.time,
             type: fullAppointment.type,
-            status: 'approved',
-            notes: 'Partnership request approved by centralized system.',
-            contactInfo: fullAppointment.contactInfo
+            status: "approved",
+            notes: "Partnership request approved by centralized system.",
+            contactInfo: fullAppointment.contactInfo,
           },
-          'Central System Admin'
+          "Central System Admin"
         );
       }
 
-      const updatedNotifications = notifications.map(n =>
+      const updatedNotifications = notifications.map((n) =>
         n.id === notification.id
           ? {
               ...n,
-              status: 'approved',
+              status: "approved",
               read: true,
-              message: `Partnership request from ${notification.requestor} has been approved.`
+              message: `Partnership request from ${notification.requestor} has been approved.`,
             }
           : n
       );
       setNotifications(updatedNotifications);
 
-      alert('Partnership request approved.');
+      alert("Partnership request approved.");
       await loadNotifications();
     } catch (error) {
-      console.error('Error accepting request:', error);
-      alert('Failed to accept request. Please try again.');
+      console.error("Error accepting request:", error);
+      alert("Failed to accept request. Please try again.");
     }
   };
 
   const handleDeclineRequest = async (notification) => {
-    if (!confirm(`Decline partnership request from ${notification.requestor}?`)) {
+    if (
+      !confirm(`Decline partnership request from ${notification.requestor}?`)
+    ) {
       return;
     }
 
     try {
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        const fullAppointment = await window.electronAPI.getAppointmentById(notification.appointmentId);
+      if (typeof window !== "undefined" && window.electronAPI) {
+        const fullAppointment = await window.electronAPI.getAppointmentById(
+          notification.appointmentId
+        );
 
         if (!fullAppointment) {
-          alert('Appointment not found. It may have been deleted.');
+          alert("Appointment not found. It may have been deleted.");
           return;
         }
 
         await window.electronAPI.updateNotificationStatus(
           notification.notificationId,
-          'declined',
-          'Central System Admin'
+          "declined",
+          "Central System Admin"
         );
 
         await window.electronAPI.updateAppointment(
@@ -236,44 +287,52 @@ const NotificationComponent = () => {
             date: fullAppointment.date,
             time: fullAppointment.time,
             type: fullAppointment.type,
-            status: 'cancelled',
-            notes: 'Partnership request declined by centralized system.',
-            contactInfo: fullAppointment.contactInfo
+            status: "cancelled",
+            notes: "Partnership request declined by centralized system.",
+            contactInfo: fullAppointment.contactInfo,
           },
-          'Central System Admin'
+          "Central System Admin"
         );
       }
 
-      const updatedNotifications = notifications.map(n =>
+      const updatedNotifications = notifications.map((n) =>
         n.id === notification.id
           ? {
               ...n,
-              status: 'declined',
+              status: "declined",
               read: true,
-              message: `Partnership request from ${notification.requestor} has been declined.`
+              message: `Partnership request from ${notification.requestor} has been declined.`,
             }
           : n
       );
       setNotifications(updatedNotifications);
 
-      alert('Partnership request declined.');
+      alert("Partnership request declined.");
       await loadNotifications();
     } catch (error) {
-      console.error('Error declining request:', error);
-      alert('Failed to decline request. Please try again.');
+      console.error("Error declining request:", error);
+      alert("Failed to decline request. Please try again.");
     }
   };
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'approved': return { bg: '#ecfdf5', border: '#10b981', text: '#059669' };
-      case 'declined': return { bg: '#fee2e2', border: '#ef4444', text: '#dc2626' };
-      case 'pending': return { bg: '#fef3c7', border: '#f59e0b', text: '#d97706' };
-      case 'info': return { bg: '#dbeafe', border: '#3b82f6', text: '#2563eb' };
-      case 'CRITICAL': return { bg: '#fee2e2', border: '#dc2626', text: '#991b1b' };
-      case 'URGENT': return { bg: '#fef3c7', border: '#f59e0b', text: '#d97706' };
-      case 'STOCK ALERT': return { bg: '#fff7ed', border: '#fb923c', text: '#ea580c' };
-      default: return { bg: '#f3f4f6', border: '#6b7280', text: '#4b5563' };
+      case "approved":
+        return { bg: "#ecfdf5", border: "#10b981", text: "#059669" };
+      case "declined":
+        return { bg: "#fee2e2", border: "#ef4444", text: "#dc2626" };
+      case "pending":
+        return { bg: "#fef3c7", border: "#f59e0b", text: "#d97706" };
+      case "info":
+        return { bg: "#dbeafe", border: "#3b82f6", text: "#2563eb" };
+      case "CRITICAL":
+        return { bg: "#fee2e2", border: "#dc2626", text: "#991b1b" };
+      case "URGENT":
+        return { bg: "#fef3c7", border: "#f59e0b", text: "#d97706" };
+      case "STOCK ALERT":
+        return { bg: "#fff7ed", border: "#fb923c", text: "#ea580c" };
+      default:
+        return { bg: "#f3f4f6", border: "#6b7280", text: "#4b5563" };
     }
   };
 
@@ -283,11 +342,25 @@ const NotificationComponent = () => {
     const statusColors = getStatusColor(notification.status);
 
     // White background for new notification types (keep the original border color)
-    if (type === 'expiration_warning' || type === 'stock_expiring_soon' || type === 'stock_expiring_urgent' || type === 'stock_expired' ||
-        type === 'blood_release' || type === 'blood_adding' || type === 'blood_restoring' ||
-        type === 'blood_discarding' || type === 'nonconforming_adding' ||
-        type === 'blood_stock_update' || type === 'nonconforming_update' || type === 'released_update') {
-      return { bg: '#FFFFFF', border: statusColors.border, text: statusColors.text };
+    if (
+      type === "expiration_warning" ||
+      type === "stock_expiring_soon" ||
+      type === "stock_expiring_urgent" ||
+      type === "stock_expired" ||
+      type === "blood_release" ||
+      type === "blood_adding" ||
+      type === "blood_restoring" ||
+      type === "blood_discarding" ||
+      type === "nonconforming_adding" ||
+      type === "blood_stock_update" ||
+      type === "nonconforming_update" ||
+      type === "released_update"
+    ) {
+      return {
+        bg: "#FFFFFF",
+        border: statusColors.border,
+        text: statusColors.text,
+      };
     }
 
     // Default to status color for other notifications
@@ -296,11 +369,16 @@ const NotificationComponent = () => {
 
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'approved': return <CheckCircle size={20} />;
-      case 'declined': return <XCircle size={20} />;
-      case 'pending': return <Clock size={20} />;
-      case 'info': return <Calendar size={20} />;
-      default: return <Bell size={20} />;
+      case "approved":
+        return <CheckCircle size={20} />;
+      case "declined":
+        return <XCircle size={20} />;
+      case "pending":
+        return <Clock size={20} />;
+      case "info":
+        return <Calendar size={20} />;
+      default:
+        return <Bell size={20} />;
     }
   };
 
@@ -309,29 +387,73 @@ const NotificationComponent = () => {
     const type = notification.type;
 
     // Stock EXPIRED notifications (critical)
-    if (type === 'stock_expired') {
-      return <img src="/assets/expired-blood.png" alt="Expired Blood" style={{ width: '24px', height: '24px' }} />;
+    if (type === "stock_expired") {
+      return (
+        <img
+          src="/assets/expired-blood.png"
+          alt="Expired Blood"
+          style={{ width: "24px", height: "24px" }}
+        />
+      );
     }
 
     // Stock OUT notifications (critical)
-    if (type === 'stock_out') {
-      return <img src="/assets/expired-blood.png" alt="Out of Stock" style={{ width: '24px', height: '24px' }} />;
+    if (type === "stock_out") {
+      return (
+        <img
+          src="/assets/expired-blood.png"
+          alt="Out of Stock"
+          style={{ width: "24px", height: "24px" }}
+        />
+      );
     }
 
     // Stock LOW and expiration warnings (urgent and alerts)
-    if (type === 'stock_low' || type === 'expiration_warning' || type === 'stock_expiring_soon' || type === 'stock_expiring_urgent') {
-      return <img src="/assets/urgent-blood.png" alt="Blood Alert" style={{ width: '24px', height: '24px' }} />;
+    if (
+      type === "stock_low" ||
+      type === "expiration_warning" ||
+      type === "stock_expiring_soon" ||
+      type === "stock_expiring_urgent"
+    ) {
+      return (
+        <img
+          src="/assets/urgent-blood.png"
+          alt="Blood Alert"
+          style={{ width: "24px", height: "24px" }}
+        />
+      );
     }
 
     // Blood operation confirmations
-    if (type === 'blood_release' || type === 'blood_adding' || type === 'blood_restoring' ||
-        type === 'blood_discarding' || type === 'nonconforming_adding') {
-      return <img src="/assets/release-done.png" alt="Confirmation" style={{ width: '24px', height: '24px' }} />;
+    if (
+      type === "blood_release" ||
+      type === "blood_adding" ||
+      type === "blood_restoring" ||
+      type === "blood_discarding" ||
+      type === "nonconforming_adding"
+    ) {
+      return (
+        <img
+          src="/assets/release-done.png"
+          alt="Confirmation"
+          style={{ width: "24px", height: "24px" }}
+        />
+      );
     }
 
     // Stock update notifications
-    if (type === 'blood_stock_update' || type === 'nonconforming_update' || type === 'released_update') {
-      return <img src="/assets/blood-update.png" alt="Stock Update" style={{ width: '24px', height: '24px' }} />;
+    if (
+      type === "blood_stock_update" ||
+      type === "nonconforming_update" ||
+      type === "released_update"
+    ) {
+      return (
+        <img
+          src="/assets/blood-update.png"
+          alt="Stock Update"
+          style={{ width: "24px", height: "24px" }}
+        />
+      );
     }
 
     // Default to status icon for other notifications
@@ -340,24 +462,28 @@ const NotificationComponent = () => {
 
   const getTypeIcon = (type) => {
     switch (type) {
-      case 'partnership_request': return <Mail size={16} />;
-      case 'upcoming_event': return <Calendar size={16} />;
-      case 'expiration_warning':
-      case 'stock_expiring_soon':
-      case 'stock_expiring_urgent':
-      case 'stock_expired':
-      case 'stock_low':
-      case 'stock_out':
-      case 'blood_release':
-      case 'blood_adding':
-      case 'blood_restoring':
-      case 'blood_discarding':
-      case 'nonconforming_adding':
-      case 'blood_stock_update':
-      case 'nonconforming_update':
-      case 'released_update':
+      case "partnership_request":
+        return <Mail size={16} />;
+      case "upcoming_event":
+      case "event_finished":
+        return <Calendar size={16} />;
+      case "expiration_warning":
+      case "stock_expiring_soon":
+      case "stock_expiring_urgent":
+      case "stock_expired":
+      case "stock_low":
+      case "stock_out":
+      case "blood_release":
+      case "blood_adding":
+      case "blood_restoring":
+      case "blood_discarding":
+      case "nonconforming_adding":
+      case "blood_stock_update":
+      case "nonconforming_update":
+      case "released_update":
         return <AlertTriangle size={16} />;
-      default: return <Bell size={16} />;
+      default:
+        return <Bell size={16} />;
     }
   };
 
@@ -368,7 +494,7 @@ const NotificationComponent = () => {
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
 
-    if (minutes < 1) return 'Just now';
+    if (minutes < 1) return "Just now";
     if (minutes < 60) return `${minutes}m ago`;
     if (hours < 24) return `${hours}h ago`;
     if (days < 7) return `${days}d ago`;
@@ -376,31 +502,36 @@ const NotificationComponent = () => {
   };
 
   const formatEventDateTime = (date, time) => {
-    if (!date || !time) return '';
-    const dateObj = new Date(date + 'T' + time);
-    return dateObj.toLocaleString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit'
+    if (!date || !time) return "";
+    const dateObj = new Date(date + "T" + time);
+    return dateObj.toLocaleString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
     });
   };
 
   const toggleNotificationReadStatus = (notificationId) => {
-    setNotifications(prev =>
-      prev.map(n =>
-        n.id === notificationId ? { ...n, read: !n.read } : n
-      )
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notificationId ? { ...n, read: !n.read } : n))
     );
     try {
-      const key = 'rbcPageReadNotificationIds';
-      const existing = JSON.parse(localStorage.getItem(key) || '[]');
-      const isReadNow = notifications.find(n => n.id === notificationId)?.read === false; // toggling to true
+      const key = "rbcPageReadNotificationIds";
+      const existing = JSON.parse(localStorage.getItem(key) || "[]");
+      const isReadNow =
+        notifications.find((n) => n.id === notificationId)?.read === false; // toggling to true
       if (isReadNow) {
-        localStorage.setItem(key, JSON.stringify(Array.from(new Set([...existing, notificationId]))));
+        localStorage.setItem(
+          key,
+          JSON.stringify(Array.from(new Set([...existing, notificationId])))
+        );
       } else {
-        localStorage.setItem(key, JSON.stringify(existing.filter(id => id !== notificationId)));
+        localStorage.setItem(
+          key,
+          JSON.stringify(existing.filter((id) => id !== notificationId))
+        );
       }
     } catch (_) {}
     setActiveNotificationMenu(null);
@@ -408,21 +539,24 @@ const NotificationComponent = () => {
 
   const markAllAsRead = async () => {
     try {
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        const unreadIds = notifications.filter(n => !n.read).map(n => n.id);
+      if (typeof window !== "undefined" && window.electronAPI) {
+        const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id);
         if (unreadIds.length > 0) {
           await window.electronAPI.markAllNotificationsAsRead();
           try {
-            const key = 'rbcPageReadNotificationIds';
-            const existing = JSON.parse(localStorage.getItem(key) || '[]');
-            const allIds = notifications.map(n => n.id);
-            localStorage.setItem(key, JSON.stringify(Array.from(new Set([...existing, ...allIds]))));
+            const key = "rbcPageReadNotificationIds";
+            const existing = JSON.parse(localStorage.getItem(key) || "[]");
+            const allIds = notifications.map((n) => n.id);
+            localStorage.setItem(
+              key,
+              JSON.stringify(Array.from(new Set([...existing, ...allIds])))
+            );
           } catch (_) {}
           await loadNotifications(); // Refresh the list from the backend
         }
       }
     } catch (error) {
-      console.error('Error marking all notifications as read:', error);
+      console.error("Error marking all notifications as read:", error);
     }
   };
 
@@ -437,26 +571,35 @@ const NotificationComponent = () => {
     setIsDeleting(true);
 
     try {
-      if (typeof window !== 'undefined' && window.electronAPI && notificationToDelete) {
+      if (
+        typeof window !== "undefined" &&
+        window.electronAPI &&
+        notificationToDelete
+      ) {
         await window.electronAPI.deleteNotification(notificationToDelete);
 
         // Update local state
-        setNotifications(prev => prev.filter(n => n.id !== notificationToDelete));
+        setNotifications((prev) =>
+          prev.filter((n) => n.id !== notificationToDelete)
+        );
 
         // Close detail modal if the deleted notification was selected
-        if (selectedNotification && selectedNotification.id === notificationToDelete) {
+        if (
+          selectedNotification &&
+          selectedNotification.id === notificationToDelete
+        ) {
           setSelectedNotification(null);
         }
 
         // Wait 1 second before showing success modal
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
         setIsDeleting(false);
 
         // Show success modal
         setSuccessMessage({
-          title: 'Deleted Successfully!',
-          description: '1 notification(s) have been deleted.'
+          title: "Deleted Successfully!",
+          description: "1 notification(s) have been deleted.",
         });
         setShowSuccessModal(true);
 
@@ -464,18 +607,27 @@ const NotificationComponent = () => {
         await loadNotifications();
       }
     } catch (error) {
-      console.error('Error deleting notification:', error);
+      console.error("Error deleting notification:", error);
       setIsDeleting(false);
-      alert('Failed to delete notification. Please try again.');
+      alert("Failed to delete notification. Please try again.");
     } finally {
       setNotificationToDelete(null);
     }
   };
 
   const handleNotificationClick = (notification) => {
-    console.log('[handleNotificationClick] Selected notification:', notification);
-    console.log('[handleNotificationClick] Notification type:', notification.type);
-    console.log('[handleNotificationClick] Stock data:', notification.stockData);
+    console.log(
+      "[handleNotificationClick] Selected notification:",
+      notification
+    );
+    console.log(
+      "[handleNotificationClick] Notification type:",
+      notification.type
+    );
+    console.log(
+      "[handleNotificationClick] Stock data:",
+      notification.stockData
+    );
     setSelectedNotification(notification);
 
     // Mark as read
@@ -485,60 +637,69 @@ const NotificationComponent = () => {
   };
 
   const handleViewStockDetails = (notification) => {
-    console.log('[handleViewStockDetails] notification:', notification);
-    console.log('[handleViewStockDetails] stockData:', notification.stockData);
+    console.log("[handleViewStockDetails] notification:", notification);
+    console.log("[handleViewStockDetails] stockData:", notification.stockData);
 
     if (notification.stockData) {
       setSelectedStockData(notification.stockData);
       setIsStockModalOpen(true);
     } else {
-      console.warn('[handleViewStockDetails] No stock data available');
+      console.warn("[handleViewStockDetails] No stock data available");
     }
   };
 
   const getFilteredNotifications = () => {
     let filtered = notifications;
     // Unified filter for expiration statuses
-    if (activeFilter === 'stock_expiration') {
-      filtered = filtered.filter(n =>
-        n.status === 'STOCK ALERT' ||
-        n.status === 'URGENT' ||
-        n.status === 'CRITICAL' ||
-        n.type === 'expiration_warning' ||
-        n.type === 'stock_expiring_soon' ||
-        n.type === 'stock_expiring_urgent' ||
-        n.type === 'stock_expired'
+    if (activeFilter === "stock_expiration") {
+      filtered = filtered.filter(
+        (n) =>
+          n.status === "STOCK ALERT" ||
+          n.status === "URGENT" ||
+          n.status === "CRITICAL" ||
+          n.type === "expiration_warning" ||
+          n.type === "stock_expiring_soon" ||
+          n.type === "stock_expiring_urgent" ||
+          n.type === "stock_expired"
       );
-    } else if (activeFilter !== 'all') {
-      if (activeFilter === 'unread') {
-        filtered = filtered.filter(n => !n.read);
-      } else if (activeFilter === 'partnership_request') {
-        filtered = filtered.filter(n => n.type === 'partnership_request');
-      } else if (activeFilter === 'upcoming_event') {
-        filtered = filtered.filter(n => n.type === 'upcoming_event');
-      } else if (activeFilter === 'blood_operations') {
-        filtered = filtered.filter(n =>
-          n.type === 'blood_release' ||
-          n.type === 'blood_adding' ||
-          n.type === 'blood_restoring' ||
-          n.type === 'blood_discarding' ||
-          n.type === 'nonconforming_adding'
+    } else if (activeFilter !== "all") {
+      if (activeFilter === "unread") {
+        filtered = filtered.filter((n) => !n.read);
+      } else if (activeFilter === "partnership_request") {
+        filtered = filtered.filter((n) => n.type === "partnership_request");
+      } else if (activeFilter === "upcoming_event") {
+        filtered = filtered.filter(
+          (n) => n.type === "upcoming_event" || n.type === "event_finished"
         );
-      } else if (activeFilter === 'stock_updates') {
-        filtered = filtered.filter(n =>
-          n.type === 'blood_stock_update' ||
-          n.type === 'nonconforming_update' ||
-          n.type === 'released_update'
+      } else if (activeFilter === "blood_operations") {
+        filtered = filtered.filter(
+          (n) =>
+            n.type === "blood_release" ||
+            n.type === "blood_adding" ||
+            n.type === "blood_restoring" ||
+            n.type === "blood_discarding" ||
+            n.type === "nonconforming_adding"
+        );
+      } else if (activeFilter === "stock_updates") {
+        filtered = filtered.filter(
+          (n) =>
+            n.type === "blood_stock_update" ||
+            n.type === "nonconforming_update" ||
+            n.type === "released_update"
         );
       } else {
-        filtered = filtered.filter(n => n.status === activeFilter);
+        filtered = filtered.filter((n) => n.status === activeFilter);
       }
     }
     if (searchQuery) {
-      filtered = filtered.filter(n =>
-        (n.title && n.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (n.message && n.message.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (n.requestor && n.requestor.toLowerCase().includes(searchQuery.toLowerCase()))
+      filtered = filtered.filter(
+        (n) =>
+          (n.title &&
+            n.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
+          (n.message &&
+            n.message.toLowerCase().includes(searchQuery.toLowerCase())) ||
+          (n.requestor &&
+            n.requestor.toLowerCase().includes(searchQuery.toLowerCase()))
       );
     }
     return filtered;
@@ -547,45 +708,52 @@ const NotificationComponent = () => {
   const getCounts = () => {
     return {
       all: notifications.length,
-      unread: notifications.filter(n => !n.read).length,
-      approved: notifications.filter(n => n.status === 'approved').length,
-      declined: notifications.filter(n => n.status === 'declined').length,
-      pending: notifications.filter(n => n.status === 'pending').length,
-      partnership_request: notifications.filter(n => n.type === 'partnership_request').length,
-      upcoming_event: notifications.filter(n => n.type === 'upcoming_event').length,
-      stock_expiration: notifications.filter(n =>
-        n.type === 'expiration_warning' ||
-        n.type === 'stock_expiring_soon' ||
-        n.type === 'stock_expiring_urgent' ||
-        n.type === 'stock_expired'
+      unread: notifications.filter((n) => !n.read).length,
+      approved: notifications.filter((n) => n.status === "approved").length,
+      declined: notifications.filter((n) => n.status === "declined").length,
+      pending: notifications.filter((n) => n.status === "pending").length,
+      partnership_request: notifications.filter(
+        (n) => n.type === "partnership_request"
       ).length,
-      blood_operations: notifications.filter(n =>
-        n.type === 'blood_release' ||
-        n.type === 'blood_adding' ||
-        n.type === 'blood_restoring' ||
-        n.type === 'blood_discarding' ||
-        n.type === 'nonconforming_adding'
+      upcoming_event: notifications.filter(
+        (n) => n.type === "upcoming_event" || n.type === "event_finished"
       ).length,
-      stock_updates: notifications.filter(n =>
-        n.type === 'blood_stock_update' ||
-        n.type === 'nonconforming_update' ||
-        n.type === 'released_update'
-      ).length
+      stock_expiration: notifications.filter(
+        (n) =>
+          n.type === "expiration_warning" ||
+          n.type === "stock_expiring_soon" ||
+          n.type === "stock_expiring_urgent" ||
+          n.type === "stock_expired"
+      ).length,
+      blood_operations: notifications.filter(
+        (n) =>
+          n.type === "blood_release" ||
+          n.type === "blood_adding" ||
+          n.type === "blood_restoring" ||
+          n.type === "blood_discarding" ||
+          n.type === "nonconforming_adding"
+      ).length,
+      stock_updates: notifications.filter(
+        (n) =>
+          n.type === "blood_stock_update" ||
+          n.type === "nonconforming_update" ||
+          n.type === "released_update"
+      ).length,
     };
   };
 
   const getFilterLabel = (filter) => {
     const labels = {
-      all: 'All',
-      unread: 'Unread',
-      approved: 'Approved',
-      declined: 'Declined',
-      pending: 'Pending',
-      partnership_request: 'Requests',
-      upcoming_event: 'Events',
-      stock_expiration: 'Stock Alerts',
-      blood_operations: 'Operations',
-      stock_updates: 'Updates'
+      all: "All",
+      unread: "Unread",
+      approved: "Approved",
+      declined: "Declined",
+      pending: "Pending",
+      partnership_request: "Requests",
+      upcoming_event: "Events",
+      stock_expiration: "Stock Alerts",
+      blood_operations: "Operations",
+      stock_updates: "Updates",
     };
     return labels[filter] || filter;
   };
@@ -598,11 +766,17 @@ const NotificationComponent = () => {
     const handleGlobalNotificationUpdate = () => {
       loadNotifications();
     };
-    window.addEventListener('bloodsync-notifications-updated', handleGlobalNotificationUpdate);
+    window.addEventListener(
+      "bloodsync-notifications-updated",
+      handleGlobalNotificationUpdate
+    );
     return () => {
-      window.removeEventListener('bloodsync-notifications-updated', handleGlobalNotificationUpdate);
+      window.removeEventListener(
+        "bloodsync-notifications-updated",
+        handleGlobalNotificationUpdate
+      );
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (isLoading) {
@@ -663,7 +837,7 @@ const NotificationComponent = () => {
       {/* Stats Cards */}
       <div className="stats-grid">
         <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: '#dbeafe' }}>
+          <div className="stat-icon" style={{ backgroundColor: "#dbeafe" }}>
             <Bell size={20} color="#2563eb" />
           </div>
           <div className="stat-info">
@@ -672,7 +846,7 @@ const NotificationComponent = () => {
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: '#fef3c7' }}>
+          <div className="stat-icon" style={{ backgroundColor: "#fef3c7" }}>
             <Mail size={20} color="#d97706" />
           </div>
           <div className="stat-info">
@@ -681,7 +855,7 @@ const NotificationComponent = () => {
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: '#fef2f2' }}>
+          <div className="stat-icon" style={{ backgroundColor: "#fef2f2" }}>
             <AlertTriangle size={20} color="#dc2626" />
           </div>
           <div className="stat-info">
@@ -690,7 +864,7 @@ const NotificationComponent = () => {
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: '#dbeafe' }}>
+          <div className="stat-icon" style={{ backgroundColor: "#dbeafe" }}>
             <Calendar size={20} color="#2563eb" />
           </div>
           <div className="stat-info">
@@ -730,9 +904,14 @@ const NotificationComponent = () => {
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
-                className={`dropdown-arrow ${isFilterDropdownOpen ? 'rotated' : ''}`}
+                className={`dropdown-arrow ${isFilterDropdownOpen ? "rotated" : ""}`}
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m19 9-7 7-7-7" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="m19 9-7 7-7-7"
+                />
               </svg>
             </button>
             {isFilterDropdownOpen && (
@@ -740,32 +919,47 @@ const NotificationComponent = () => {
                 <div className="dropdown-section">
                   <h4 className="dropdown-section-title">By Status</h4>
                   <button
-                    className={`dropdown-item ${activeFilter === 'all' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('all'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "all" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("all");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     All ({counts.all})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'unread' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('unread'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "unread" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("unread");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Unread ({counts.unread})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'approved' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('approved'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "approved" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("approved");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Approved ({counts.approved})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'declined' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('declined'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "declined" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("declined");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Declined ({counts.declined})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'pending' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('pending'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "pending" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("pending");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Pending ({counts.pending})
                   </button>
@@ -774,32 +968,47 @@ const NotificationComponent = () => {
                 <div className="dropdown-section">
                   <h4 className="dropdown-section-title">By Type</h4>
                   <button
-                    className={`dropdown-item ${activeFilter === 'partnership_request' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('partnership_request'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "partnership_request" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("partnership_request");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Partnership Requests ({counts.partnership_request})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'upcoming_event' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('upcoming_event'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "upcoming_event" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("upcoming_event");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Upcoming Events ({counts.upcoming_event})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'stock_expiration' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('stock_expiration'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "stock_expiration" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("stock_expiration");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Stock Alerts ({counts.stock_expiration})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'blood_operations' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('blood_operations'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "blood_operations" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("blood_operations");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Blood Operations ({counts.blood_operations})
                   </button>
                   <button
-                    className={`dropdown-item ${activeFilter === 'stock_updates' ? 'active' : ''}`}
-                    onClick={() => { setActiveFilter('stock_updates'); setIsFilterDropdownOpen(false); }}
+                    className={`dropdown-item ${activeFilter === "stock_updates" ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveFilter("stock_updates");
+                      setIsFilterDropdownOpen(false);
+                    }}
                   >
                     Stock Updates ({counts.stock_updates})
                   </button>
@@ -810,7 +1019,7 @@ const NotificationComponent = () => {
 
           {/* Refresh Button */}
           <button
-            className={`refresh-button ${isRefreshing ? 'refreshing' : ''}`}
+            className={`refresh-button ${isRefreshing ? "refreshing" : ""}`}
             onClick={handleRefresh}
             disabled={isRefreshing}
             title="Refresh notifications"
@@ -836,21 +1045,28 @@ const NotificationComponent = () => {
             <div className="empty-state">
               <Bell size={48} />
               <h3>No notifications found</h3>
-              <p>{searchQuery ? 'Try adjusting your search' : `No ${activeFilter === 'all' ? '' : activeFilter} notifications available`}</p>
+              <p>
+                {searchQuery
+                  ? "Try adjusting your search"
+                  : `No ${activeFilter === "all" ? "" : activeFilter} notifications available`}
+              </p>
             </div>
           ) : (
             <div className="notifications-list">
-              {filteredNotifications.map(notification => {
+              {filteredNotifications.map((notification) => {
                 const colors = getNotificationIconColor(notification);
                 return (
                   <div
                     key={notification.id}
-                    className={`notification-item ${!notification.read ? 'unread' : ''} ${selectedNotification && selectedNotification.id === notification.id ? 'selected' : ''}`}
+                    className={`notification-item ${!notification.read ? "unread" : ""} ${selectedNotification && selectedNotification.id === notification.id ? "selected" : ""}`}
                     onClick={() => handleNotificationClick(notification)}
                   >
                     <div
                       className="notification-icon"
-                      style={{ backgroundColor: colors.bg, borderColor: colors.border }}
+                      style={{
+                        backgroundColor: colors.bg,
+                        borderColor: colors.border,
+                      }}
                     >
                       <div style={{ color: colors.text }}>
                         {getNotificationMainIcon(notification)}
@@ -861,17 +1077,28 @@ const NotificationComponent = () => {
                       <div className="notification-item-header">
                         <div className="notification-type-badge">
                           {getTypeIcon(notification.type)}
-                          <span>{notification.type === 'partnership_request' ? 'Request' : 'Event'}</span>
+                          <span>
+                            {notification.type === "partnership_request"
+                              ? "Request"
+                              : "Event"}
+                          </span>
                         </div>
-                        <span className="notification-time">{getTimeAgo(notification.timestamp)}</span>
+                        <span className="notification-time">
+                          {getTimeAgo(notification.timestamp)}
+                        </span>
                       </div>
-                      <div className="notification-title">{notification.title}</div>
+                      <div className="notification-title">
+                        {notification.title}
+                      </div>
                       <div className="notification-preview">
-                        {notification.message && notification.message.length > 100
+                        {notification.message &&
+                        notification.message.length > 100
                           ? `${notification.message.substring(0, 100)}...`
-                          : notification.message || 'No message content'}
+                          : notification.message || "No message content"}
                       </div>
-                      <div className="notification-requestor">From: {notification.requestor}</div>
+                      <div className="notification-requestor">
+                        From: {notification.requestor}
+                      </div>
                     </div>
 
                     <div className="notification-actions">
@@ -880,14 +1107,19 @@ const NotificationComponent = () => {
                         onClick={(e) => {
                           e.stopPropagation();
                           setActiveNotificationMenu(
-                            activeNotificationMenu === notification.id ? null : notification.id
+                            activeNotificationMenu === notification.id
+                              ? null
+                              : notification.id
                           );
                         }}
                       >
                         <MoreVertical size={16} />
                       </button>
                       {activeNotificationMenu === notification.id && (
-                        <div className="notification-menu" ref={notificationMenuRef}>
+                        <div
+                          className="notification-menu"
+                          ref={notificationMenuRef}
+                        >
                           <button
                             className="notification-menu-item"
                             onClick={(e) => {
@@ -895,7 +1127,7 @@ const NotificationComponent = () => {
                               toggleNotificationReadStatus(notification.id);
                             }}
                           >
-                            Mark as {notification.read ? 'Unread' : 'Read'}
+                            Mark as {notification.read ? "Unread" : "Read"}
                           </button>
                           <button
                             className="notification-menu-item delete"
@@ -925,21 +1157,37 @@ const NotificationComponent = () => {
               <div
                 className="notification-detail-icon"
                 style={{
-                  backgroundColor: getStatusColor(selectedNotification.status).bg,
-                  borderColor: getStatusColor(selectedNotification.status).border
+                  backgroundColor: getStatusColor(selectedNotification.status)
+                    .bg,
+                  borderColor: getStatusColor(selectedNotification.status)
+                    .border,
                 }}
               >
-                <div style={{ color: getStatusColor(selectedNotification.status).text }}>
+                <div
+                  style={{
+                    color: getStatusColor(selectedNotification.status).text,
+                  }}
+                >
                   {getStatusIcon(selectedNotification.status)}
                 </div>
               </div>
               <div className="notification-detail-actions">
                 <button
                   className="action-btn"
-                  onClick={() => toggleNotificationReadStatus(selectedNotification.id)}
-                  title={selectedNotification.read ? 'Mark as unread' : 'Mark as read'}
+                  onClick={() =>
+                    toggleNotificationReadStatus(selectedNotification.id)
+                  }
+                  title={
+                    selectedNotification.read
+                      ? "Mark as unread"
+                      : "Mark as read"
+                  }
                 >
-                  {selectedNotification.read ? <Mail size={18} /> : <CheckCircle size={18} />}
+                  {selectedNotification.read ? (
+                    <Mail size={18} />
+                  ) : (
+                    <CheckCircle size={18} />
+                  )}
                 </button>
                 <button
                   className="action-btn delete-btn"
@@ -951,29 +1199,35 @@ const NotificationComponent = () => {
               </div>
             </div>
 
-            <div className="notification-detail-title">{selectedNotification.title}</div>
+            <div className="notification-detail-title">
+              {selectedNotification.title}
+            </div>
             <div className="notification-detail-meta">
               <div className="meta-item">
                 <span className="meta-label">From:</span>
-                <span className="meta-value">{selectedNotification.requestor}</span>
+                <span className="meta-value">
+                  {selectedNotification.requestor}
+                </span>
               </div>
               <div className="meta-item">
                 <span className="meta-label">Time:</span>
                 <span className="meta-value">
-                  {selectedNotification.timestamp.toLocaleString('en-US', {
-                    weekday: 'short',
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit'
+                  {selectedNotification.timestamp.toLocaleString("en-US", {
+                    weekday: "short",
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
                   })}
                 </span>
               </div>
               {selectedNotification.appointmentId && (
                 <div className="meta-item">
                   <span className="meta-label">Appointment ID:</span>
-                  <span className="meta-value">{selectedNotification.appointmentId}</span>
+                  <span className="meta-value">
+                    {selectedNotification.appointmentId}
+                  </span>
                 </div>
               )}
             </div>
@@ -983,9 +1237,11 @@ const NotificationComponent = () => {
               <div
                 className="status-badge"
                 style={{
-                  backgroundColor: getStatusColor(selectedNotification.status).bg,
+                  backgroundColor: getStatusColor(selectedNotification.status)
+                    .bg,
                   color: getStatusColor(selectedNotification.status).text,
-                  borderColor: getStatusColor(selectedNotification.status).border
+                  borderColor: getStatusColor(selectedNotification.status)
+                    .border,
                 }}
               >
                 {getStatusIcon(selectedNotification.status)}
@@ -994,90 +1250,102 @@ const NotificationComponent = () => {
             </div>
 
             {/* Message for non-stock-expiration notifications - shown at top */}
-            {selectedNotification.type !== 'expiration_warning' &&
-              selectedNotification.type !== 'stock_expiring_soon' &&
-              selectedNotification.type !== 'stock_expiring_urgent' &&
-              selectedNotification.type !== 'stock_expired' && (
-              <div className="notification-detail-message">
-                {selectedNotification.message}
-              </div>
-            )}
+            {selectedNotification.type !== "expiration_warning" &&
+              selectedNotification.type !== "stock_expiring_soon" &&
+              selectedNotification.type !== "stock_expiring_urgent" &&
+              selectedNotification.type !== "stock_expired" && (
+                <div className="notification-detail-message">
+                  {selectedNotification.message}
+                </div>
+              )}
 
             {/* Action Buttons for Partnership Requests */}
-            {selectedNotification.type === 'partnership_request' && selectedNotification.status === 'pending' && (
-              <div className="request-actions">
-                <button
-                  className="action-button accept-button"
-                  onClick={() => handleAcceptRequest(selectedNotification)}
-                >
-                  <Check size={16} />
-                  Accept Request
-                </button>
-                <button
-                  className="action-button decline-button"
-                  onClick={() => handleDeclineRequest(selectedNotification)}
-                >
-                  <X size={16} />
-                  Decline Request
-                </button>
-              </div>
-            )}
+            {selectedNotification.type === "partnership_request" &&
+              selectedNotification.status === "pending" && (
+                <div className="request-actions">
+                  <button
+                    className="action-button accept-button"
+                    onClick={() => handleAcceptRequest(selectedNotification)}
+                  >
+                    <Check size={16} />
+                    Accept Request
+                  </button>
+                  <button
+                    className="action-button decline-button"
+                    onClick={() => handleDeclineRequest(selectedNotification)}
+                  >
+                    <X size={16} />
+                    Decline Request
+                  </button>
+                </div>
+              )}
 
             {/* Event Details for Upcoming Events */}
-            {selectedNotification.type === 'upcoming_event' && selectedNotification.eventDate && (
-              <div className="event-details-card">
-                <h4 className="event-details-title">Event Details</h4>
-                <div className="event-details-grid">
-                  <div className="event-detail-item">
-                    <Calendar size={16} />
-                    <span>{formatEventDateTime(selectedNotification.eventDate, selectedNotification.eventTime)}</span>
-                  </div>
-                  {selectedNotification.contactInfo?.address && (
+            {selectedNotification.type === "upcoming_event" &&
+              selectedNotification.eventDate && (
+                <div className="event-details-card">
+                  <h4 className="event-details-title">Event Details</h4>
+                  <div className="event-details-grid">
                     <div className="event-detail-item">
-                      <Users size={16} />
-                      <span>{selectedNotification.contactInfo.address}</span>
+                      <Calendar size={16} />
+                      <span>
+                        {formatEventDateTime(
+                          selectedNotification.eventDate,
+                          selectedNotification.eventTime
+                        )}
+                      </span>
                     </div>
-                  )}
+                    {selectedNotification.contactInfo?.address && (
+                      <div className="event-detail-item">
+                        <Users size={16} />
+                        <span>{selectedNotification.contactInfo.address}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {/* Stock Expiration Details */}
-            {(selectedNotification.type === 'expiration_warning' ||
-              selectedNotification.type === 'stock_expiring_soon' ||
-              selectedNotification.type === 'stock_expiring_urgent' ||
-              selectedNotification.type === 'stock_expired') && (
+            {(selectedNotification.type === "expiration_warning" ||
+              selectedNotification.type === "stock_expiring_soon" ||
+              selectedNotification.type === "stock_expiring_urgent" ||
+              selectedNotification.type === "stock_expired") && (
               <div className="stock-expiration-card">
                 <div className="stock-expiration-header">
                   <AlertTriangle size={20} color="#dc2626" />
                   <h4 className="stock-expiration-title">REMINDERS:</h4>
                 </div>
                 <p className="stock-expiration-reminder">
-                  {selectedNotification.type === 'stock_expired'
-                    ? 'This stock has EXPIRED!'
-                    : 'This stock is about to expire soon!'}
+                  {selectedNotification.type === "stock_expired"
+                    ? "This stock has EXPIRED!"
+                    : "This stock is about to expire soon!"}
                 </p>
 
                 <div className="stock-expiration-info">
                   <div className="stock-expiry-date-label">Date:</div>
                   <div className="stock-expiry-date-value">
                     {selectedNotification.expirationDate
-                      ? new Date(selectedNotification.expirationDate).toLocaleDateString('en-US', {
-                          month: '2-digit',
-                          day: '2-digit',
-                          year: 'numeric'
+                      ? new Date(
+                          selectedNotification.expirationDate
+                        ).toLocaleDateString("en-US", {
+                          month: "2-digit",
+                          day: "2-digit",
+                          year: "numeric",
                         })
-                      : 'N/A'}
+                      : "N/A"}
                   </div>
 
                   <div className="stock-serial-label">SERIAL ID:</div>
-                  <div className="stock-serial-value">{selectedNotification.serialId || 'N/A'}</div>
+                  <div className="stock-serial-value">
+                    {selectedNotification.serialId || "N/A"}
+                  </div>
                 </div>
 
                 <p className="stock-expiration-note">
-                  <strong>Note:</strong> {selectedNotification.type === 'stock_expired'
-                    ? 'This stock must be disposed of immediately to prevent safety hazards!'
-                    : 'To prevent wastage of that stock, take action immediately!'}
+                  <strong>Note:</strong>{" "}
+                  {selectedNotification.type === "stock_expired"
+                    ? "This stock must be disposed of immediately to prevent safety hazards!"
+                    : "To prevent wastage of that stock, take action immediately!"}
                 </p>
 
                 {selectedNotification.stockData && (
@@ -1093,113 +1361,157 @@ const NotificationComponent = () => {
             )}
 
             {/* Message for stock expiration notifications - shown below REMINDERS box */}
-            {(selectedNotification.type === 'expiration_warning' ||
-              selectedNotification.type === 'stock_expiring_soon' ||
-              selectedNotification.type === 'stock_expiring_urgent' ||
-              selectedNotification.type === 'stock_expired') && (
-              <div className="notification-detail-message" style={{ marginTop: '16px' }}>
+            {(selectedNotification.type === "expiration_warning" ||
+              selectedNotification.type === "stock_expiring_soon" ||
+              selectedNotification.type === "stock_expiring_urgent" ||
+              selectedNotification.type === "stock_expired") && (
+              <div
+                className="notification-detail-message"
+                style={{ marginTop: "16px" }}
+              >
                 {selectedNotification.message}
               </div>
             )}
 
             {/* Stock Level Alert Details */}
-            {(selectedNotification.type === 'stock_low' || selectedNotification.type === 'stock_out') && selectedNotification.stockData && (
-              <div className="stock-expiration-card" style={{ backgroundColor: 'white' }}>
-                <div className="stock-expiration-header">
-                  <AlertTriangle size={20} color="#dc2626" />
-                  <h4 className="stock-expiration-title">STOCK ALERT:</h4>
-                </div>
-                <p className="stock-expiration-reminder">
-                  {selectedNotification.type === 'stock_out'
-                    ? 'Stock is completely depleted!'
-                    : 'Stock levels are critically low!'}
-                </p>
+            {(selectedNotification.type === "stock_low" ||
+              selectedNotification.type === "stock_out") &&
+              selectedNotification.stockData && (
+                <div
+                  className="stock-expiration-card"
+                  style={{ backgroundColor: "white" }}
+                >
+                  <div className="stock-expiration-header">
+                    <AlertTriangle size={20} color="#dc2626" />
+                    <h4 className="stock-expiration-title">STOCK ALERT:</h4>
+                  </div>
+                  <p className="stock-expiration-reminder">
+                    {selectedNotification.type === "stock_out"
+                      ? "Stock is completely depleted!"
+                      : "Stock levels are critically low!"}
+                  </p>
 
-                <div className="stock-expiration-info">
-                  <div className="stock-expiry-date-label">Category:</div>
-                  <div className="stock-expiry-date-value">
-                    {selectedNotification.stockData.category || 'N/A'}
+                  <div className="stock-expiration-info">
+                    <div className="stock-expiry-date-label">Category:</div>
+                    <div className="stock-expiry-date-value">
+                      {selectedNotification.stockData.category || "N/A"}
+                    </div>
+
+                    <div className="stock-serial-label">Current Stock:</div>
+                    <div className="stock-serial-value">
+                      {selectedNotification.stockData.stockCount || 0} units
+                    </div>
                   </div>
 
-                  <div className="stock-serial-label">Current Stock:</div>
-                  <div className="stock-serial-value">
-                    {selectedNotification.stockData.stockCount || 0} units
+                  <p className="stock-expiration-note">
+                    <strong>Note:</strong> Take action immediately to maintain
+                    blood supply operations!
+                  </p>
+
+                  {/* PROCEED TO buttons */}
+                  <div
+                    style={{ display: "flex", gap: "8px", marginTop: "12px" }}
+                  >
+                    {selectedNotification.stockData.category ===
+                      "Red Blood Cell" && (
+                      <button
+                        className="view-stock-details-button"
+                        onClick={() =>
+                          (window.location.hash = "#/dashboard/blood_stock/rbc")
+                        }
+                        style={{ flex: 1 }}
+                      >
+                        <AlertTriangle size={16} />
+                        PROCEED TO RED BLOOD CELL
+                      </button>
+                    )}
+                    {selectedNotification.stockData.category === "Plasma" && (
+                      <button
+                        className="view-stock-details-button"
+                        onClick={() =>
+                          (window.location.hash =
+                            "#/dashboard/blood_stock/plasma")
+                        }
+                        style={{ flex: 1 }}
+                      >
+                        <AlertTriangle size={16} />
+                        PROCEED TO PLASMA
+                      </button>
+                    )}
+                    {selectedNotification.stockData.category === "Platelet" && (
+                      <button
+                        className="view-stock-details-button"
+                        onClick={() =>
+                          (window.location.hash =
+                            "#/dashboard/blood_stock/platelet")
+                        }
+                        style={{ flex: 1 }}
+                      >
+                        <AlertTriangle size={16} />
+                        PROCEED TO PLATELETS
+                      </button>
+                    )}
                   </div>
                 </div>
+              )}
 
-                <p className="stock-expiration-note">
-                  <strong>Note:</strong> Take action immediately to maintain blood supply operations!
-                </p>
-
-                {/* PROCEED TO buttons */}
-                <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                  {selectedNotification.stockData.category === 'Red Blood Cell' && (
-                    <button
-                      className="view-stock-details-button"
-                      onClick={() => window.location.hash = '#/dashboard/blood_stock/rbc'}
-                      style={{ flex: 1 }}
-                    >
-                      <AlertTriangle size={16} />
-                      PROCEED TO RED BLOOD CELL
-                    </button>
-                  )}
-                  {selectedNotification.stockData.category === 'Plasma' && (
-                    <button
-                      className="view-stock-details-button"
-                      onClick={() => window.location.hash = '#/dashboard/blood_stock/plasma'}
-                      style={{ flex: 1 }}
-                    >
-                      <AlertTriangle size={16} />
-                      PROCEED TO PLASMA
-                    </button>
-                  )}
-                  {selectedNotification.stockData.category === 'Platelet' && (
-                    <button
-                      className="view-stock-details-button"
-                      onClick={() => window.location.hash = '#/dashboard/blood_stock/platelet'}
-                      style={{ flex: 1 }}
-                    >
-                      <AlertTriangle size={16} />
-                      PROCEED TO PLATELETS
-                    </button>
+            {/* Cancellation Reason Display for Cancelled Appointments */}
+            {(selectedNotification.type === "appointment_cancelled" ||
+              selectedNotification.type === "cancellation") &&
+              (selectedNotification.cancellationReason ||
+                selectedNotification.message?.includes("Reason:")) && (
+                <div className="decline-reason-display">
+                  <div className="decline-reason-header">
+                    <XCircle size={20} color="#ef4444" />
+                    <strong>Cancellation Details</strong>
+                  </div>
+                  {selectedNotification.cancellationReason ? (
+                    <p className="decline-reason-text">
+                      {selectedNotification.cancellationReason}
+                    </p>
+                  ) : (
+                    <div style={{ whiteSpace: "pre-line", fontSize: "14px", color: "#374151" }}>
+                      {selectedNotification.message}
+                    </div>
                   )}
                 </div>
-              </div>
-            )}
-
-            {/* Decline Reason Display */}
-            {selectedNotification.status === 'declined' && selectedNotification.declineReason && (
-              <div className="decline-reason-display">
-                <div className="decline-reason-header">
-                  <XCircle size={20} color="#ef4444" />
-                  <strong>Reason for Decline</strong>
-                </div>
-                <p className="decline-reason-text">{selectedNotification.declineReason}</p>
-              </div>
-            )}
+              )}
 
             {/* Contact Information */}
-            {selectedNotification.contactInfo && (selectedNotification.contactInfo.email || selectedNotification.contactInfo.phone) && (
-              <div className="contact-info-card">
-                <h4 className="contact-info-title">Contact Information</h4>
-                <div className="contact-info-grid">
-                  {selectedNotification.contactInfo.email && (
-                    <div className="contact-info-item">
-                      <Mail size={16} />
-                      <span>{selectedNotification.contactInfo.email}</span>
-                    </div>
-                  )}
-                  {selectedNotification.contactInfo.phone && (
-                    <div className="contact-info-item">
-                      <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                      </svg>
-                      <span>{selectedNotification.contactInfo.phone}</span>
-                    </div>
-                  )}
+            {selectedNotification.contactInfo &&
+              (selectedNotification.contactInfo.email ||
+                selectedNotification.contactInfo.phone) && (
+                <div className="contact-info-card">
+                  <h4 className="contact-info-title">Contact Information</h4>
+                  <div className="contact-info-grid">
+                    {selectedNotification.contactInfo.email && (
+                      <div className="contact-info-item">
+                        <Mail size={16} />
+                        <span>{selectedNotification.contactInfo.email}</span>
+                      </div>
+                    )}
+                    {selectedNotification.contactInfo.phone && (
+                      <div className="contact-info-item">
+                        <svg
+                          width="16"
+                          height="16"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                          />
+                        </svg>
+                        <span>{selectedNotification.contactInfo.phone}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
           </div>
         ) : (
           <div className="notification-detail-empty">
@@ -1227,9 +1539,18 @@ const NotificationComponent = () => {
       {isDeleting && <Loader />}
 
       {showSuccessModal && (
-        <div className="success-modal-overlay" onClick={() => setShowSuccessModal(false)}>
-          <div className="success-modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="success-modal-close" onClick={() => setShowSuccessModal(false)}>
+        <div
+          className="success-modal-overlay"
+          onClick={() => setShowSuccessModal(false)}
+        >
+          <div
+            className="success-modal-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="success-modal-close"
+              onClick={() => setShowSuccessModal(false)}
+            >
               <X size={20} color="#9ca3af" />
             </button>
             <div className="success-modal-icon">
@@ -1244,7 +1565,9 @@ const NotificationComponent = () => {
               </div>
             </div>
             <h3 className="success-modal-title">{successMessage.title}</h3>
-            <p className="success-modal-description">{successMessage.description}</p>
+            <p className="success-modal-description">
+              {successMessage.description}
+            </p>
             <button
               className="success-modal-button"
               onClick={() => setShowSuccessModal(false)}
@@ -1261,7 +1584,6 @@ const NotificationComponent = () => {
           background-color: #f9fafb;
           min-height: 100vh;
           font-family: 'Barlow', sans-serif;
-          border-radius: 8px;
         }
 
         .notification-header {
@@ -2374,6 +2696,6 @@ const NotificationComponent = () => {
       `}</style>
     </div>
   );
-}
+};
 
 export default NotificationComponent;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Calendar, Mail, Bell, User, Droplet } from "lucide-react";
+import { Calendar, Mail, Bell, User, Droplet, RefreshCw, CheckCircle } from "lucide-react";
 import SidePanel from "../../components/SidePanel";
 
 import MailComponent from "./(tabs)/mail";
@@ -1466,6 +1466,26 @@ const LogoutDialog = ({ isOpen, onConfirm, onCancel }) => {
           }
         }
 
+        @keyframes dropdownFadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(-8px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes spin {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
+          }
+        }
+
         .close-button:hover {
           background-color: #f3f4f6;
         }
@@ -1500,6 +1520,9 @@ const Dashboard = () => {
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [userPermissions, setUserPermissions] = useState(null);
+  const [partnershipRequests, setPartnershipRequests] = useState([]);
+  const [isLoadingMail, setIsLoadingMail] = useState(false);
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const navigate = useNavigate();
   const styles = {
     dashboardContainer: {
@@ -1572,15 +1595,15 @@ const Dashboard = () => {
     dropdownMenu: {
       position: "absolute",
       right: 0,
-      top: "100%",
-      marginTop: "0.5rem",
+      top: "calc(100% + 8px)",
       backgroundColor: "white",
-      borderRadius: "0.5rem",
+      borderRadius: "8px",
       boxShadow:
         "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
       border: "1px solid #e5e7eb",
       zIndex: 50,
       overflow: "hidden",
+      animation: "dropdownFadeIn 0.2s ease-out",
     },
     requestsDropdown: {
       width: "320px",
@@ -1605,6 +1628,41 @@ const Dashboard = () => {
       letterSpacing: "0.05em",
       color: "white",
       margin: 0,
+    },
+    notificationHeaderContent: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      width: "100%",
+    },
+    notificationHeaderActions: {
+      display: "flex",
+      gap: "8px",
+      alignItems: "center",
+    },
+    refreshButton: {
+      background: "none",
+      border: "none",
+      cursor: "pointer",
+      padding: "4px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: "4px",
+      transition: "background-color 0.2s",
+      color: "white",
+    },
+    markAllReadButton: {
+      background: "none",
+      border: "none",
+      cursor: "pointer",
+      padding: "4px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: "4px",
+      transition: "background-color 0.2s",
+      color: "white",
     },
     dropdownContent: {
       maxHeight: "300px",
@@ -1761,20 +1819,42 @@ const Dashboard = () => {
     },
   };
 
+  // Load partnership requests
+  const loadPartnershipRequests = async () => {
+    try {
+      setIsLoadingMail(true);
+      if (window.electronAPI) {
+        const requests = await window.electronAPI.getAllPartnershipRequests('pending');
+        setPartnershipRequests(requests.slice(0, 3)); // Show only first 3 in dropdown
+      }
+    } catch (error) {
+      console.error("Error loading partnership requests:", error);
+    } finally {
+      setIsLoadingMail(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPartnershipRequests();
+    // Refresh every 30 seconds
+    const interval = setInterval(loadPartnershipRequests, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Load current user and permissions
   useEffect(() => {
     const loadCurrentUser = async () => {
       try {
         const userStr = localStorage.getItem("user");
-        
+
         if (userStr) {
           const user = JSON.parse(userStr);
-          
+
           // Check if electronAPI exists and has the getUserById method
           if (user.id && window.electronAPI && typeof window.electronAPI.getUserById === 'function') {
             try {
               const freshUserData = await window.electronAPI.getUserById(user.id);
-              
+
               if (freshUserData) {
                 setCurrentUser(freshUserData);
                 setUserPermissions(freshUserData.permissions);
@@ -2148,57 +2228,57 @@ const handleNavigate = (screen) => {
                     }}
                   >
                     <div style={styles.dropdownHeader}>
-                      <h3 style={styles.dropdownTitle}>MESSAGES</h3>
+                      <div style={styles.notificationHeaderContent}>
+                        <h3 style={styles.dropdownTitle}>PARTNERSHIP REQUESTS</h3>
+                        <div style={styles.notificationHeaderActions}>
+                          <button
+                            style={styles.refreshButton}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              loadPartnershipRequests();
+                            }}
+                            disabled={isLoadingMail}
+                            title="Refresh partnership requests"
+                          >
+                            <RefreshCw size={14} style={{
+                              animation: isLoadingMail ? "spin 1s linear infinite" : "none"
+                            }} />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                     <div style={styles.dropdownContent}>
-                      <div style={styles.dropdownItem}>
-                        <div
-                          style={{
-                            ...styles.messageAvatar,
-                            ...styles.blueAvatar,
-                          }}
-                        >
-                          JS
+                      {partnershipRequests.length > 0 ? (
+                        partnershipRequests.map((request) => {
+                          const avatar = request.organization_name
+                            ? request.organization_name.split(' ').map(word => word[0]).join('').substring(0, 2).toUpperCase()
+                            : 'OR';
+                          return (
+                            <div key={request.id} style={styles.dropdownItem}>
+                              <div
+                                style={{
+                                  ...styles.messageAvatar,
+                                  ...styles.blueAvatar,
+                                }}
+                              >
+                                {avatar}
+                              </div>
+                              <div style={styles.requestDetails}>
+                                <p style={styles.requestTitle}>{request.organization_name}</p>
+                                <p style={styles.requestSubtitle}>
+                                  Blood Drive Partnership - {new Date(request.event_date).toLocaleDateString()}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div style={styles.dropdownItem}>
+                          <div style={styles.requestDetails}>
+                            <p style={styles.requestSubtitle}>No pending partnership requests</p>
+                          </div>
                         </div>
-                        <div style={styles.requestDetails}>
-                          <p style={styles.requestTitle}>John Smith</p>
-                          <p style={styles.requestSubtitle}>
-                            Thank you for the quick response regarding...
-                          </p>
-                        </div>
-                      </div>
-                      <div style={styles.dropdownItem}>
-                        <div
-                          style={{
-                            ...styles.messageAvatar,
-                            ...styles.greenAvatar,
-                          }}
-                        >
-                          MH
-                        </div>
-                        <div style={styles.requestDetails}>
-                          <p style={styles.requestTitle}>Metro Hospital</p>
-                          <p style={styles.requestSubtitle}>
-                            Urgent blood request for emergency surgery...
-                          </p>
-                        </div>
-                      </div>
-                      <div style={styles.dropdownItem}>
-                        <div
-                          style={{
-                            ...styles.messageAvatar,
-                            ...styles.purpleAvatar,
-                          }}
-                        >
-                          DR
-                        </div>
-                        <div style={styles.requestDetails}>
-                          <p style={styles.requestTitle}>Dr. Rodriguez</p>
-                          <p style={styles.requestSubtitle}>
-                            Weekly blood inventory report is ready...
-                          </p>
-                        </div>
-                      </div>
+                      )}
                     </div>
                     <div style={styles.dropdownFooter}>
                       <button
@@ -2234,7 +2314,36 @@ const handleNavigate = (screen) => {
                     }}
                   >
                     <div style={styles.dropdownHeader}>
-                      <h3 style={styles.dropdownTitle}>NOTIFICATIONS</h3>
+                      <div style={styles.notificationHeaderContent}>
+                        <h3 style={styles.dropdownTitle}>NOTIFICATIONS</h3>
+                        <div style={styles.notificationHeaderActions}>
+                          <button
+                            style={styles.refreshButton}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Refresh notifications - placeholder for now
+                              console.log("Refresh notifications clicked");
+                            }}
+                            disabled={isLoadingNotifications}
+                            title="Refresh notifications"
+                          >
+                            <RefreshCw size={14} style={{
+                              animation: isLoadingNotifications ? "spin 1s linear infinite" : "none"
+                            }} />
+                          </button>
+                          <button
+                            style={styles.markAllReadButton}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Mark all as read - placeholder for now
+                              console.log("Mark all as read clicked");
+                            }}
+                            title="Mark all as read"
+                          >
+                            <CheckCircle size={14} />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                     <div style={styles.dropdownContent}>
                       <div style={styles.dropdownItem}>
