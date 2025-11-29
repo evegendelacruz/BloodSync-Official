@@ -210,21 +210,25 @@ Builds are created in the `dist/` directory:
 ## 📁 Project Structure
 ```
 BloodSync-Official/
-├── 📂 src/
-│   ├── 📂 main/              # Electron main process
-│   │   ├── index.js          # Main entry point
-│   │   └── preload.js        # Preload scripts
-│   ├── 📂 renderer/          # React application
-│   │   ├── components/       # React components
-│   │   ├── pages/            # Application pages
-│   │   ├── services/         # API services
-│   │   └── utils/            # Utility functions
-│   └── 📂 shared/            # Shared code
-├── 📂 assets/                # Static assets
-├── 📂 database/              # Migrations & seeds
-├── 📂 dist/                  # Built application
-├── 📄 .env                   # Environment variables
-├── 📄 package.json
+├── 📂 backend/             # Backend folder for database scripts
+│   ├── 📄 db.js            # Main database connection
+│   └── 📄 db_org.js        # Organization-specific database connection
+├── 📂 public/              # Public static files
+├── 📂 src/                 # Source files for the app
+│   ├── 📂 app/             # Main application logic
+│   ├── 📂 assets/          # Images, icons, and other assets
+│   ├── 📂 components/      # React components
+│   ├── 📄 main.js          # Electron main process entry
+│   ├── 📄 preload.js       # Preload scripts for renderer
+│   └── 📄 renderer.jsx     # React renderer entry point
+├── 📄 .gitignore           # Git ignore rules
+├── 📄 forge.config.js      # Electron Forge configuration
+├── 📄 index.html           # HTML template for renderer
+├── 📄 package-lock.json    # Package lock file
+├── 📄 package.json         # Project dependencies and scripts
+├── 📄 vite.main.config.js      # Vite config for main process
+├── 📄 vite.preload.config.js   # Vite config for preload scripts
+└── 📄 vite.renderer.config.js  # Vite config for renderer
 └── 📄 README.md
 ```
 
