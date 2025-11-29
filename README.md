@@ -2,7 +2,7 @@
 
 # 🩸 BloodSync
 
-### A Smart Donor Management and Blood Stock Monitoring System with Barcode Integration
+### BLOODSYNC: A SMART DONOR MANAGEMENT AND BLOOD STOCK MONITORING SYSTEM WITH BARCODE INTEGRATION FOR RECORDING AND RELEASING
 
 [![Electron](https://img.shields.io/badge/Electron-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
