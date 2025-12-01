@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
 import { fileURLToPath } from "node:url";
-
+const schedule = require('node-schedule');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -1831,27 +1831,105 @@ const setupIpcHandlers = () => {
     }
   });
 
-  ipcMain.handle(
-    "createSyncRequest",
-    async (
-      event,
-      sourceOrganization,
-      sourceUserName,
-      sourceUserId,
-      donorIds
-    ) => {
-      return await dbOrgService.createSyncRequest(
+  // Sync request handlers (supporting both naming conventions for compatibility)
+  const handleCreateSyncRequest = async (event, sourceOrganization, sourceUserName, sourceUserId, donorIds) => {
+    try {
+      console.log("[IPC] Creating sync request:", {
+        sourceOrganization,
+        sourceUserName,
+        sourceUserId,
+        donorCount: donorIds.length,
+      });
+
+      const result = await dbOrgService.createSyncRequest(
         sourceOrganization,
         sourceUserName,
         sourceUserId,
         donorIds
       );
+
+      console.log("[IPC] Sync request created successfully:", result);
+      return result;
+    } catch (error) {
+      console.error("[IPC] Error creating sync request:", error);
+      throw error;
     }
-  );
+  };
+
+  ipcMain.handle("create-sync-request", handleCreateSyncRequest);
+  ipcMain.handle("createSyncRequest", handleCreateSyncRequest);
 
   ipcMain.handle("getPendingSyncRequests", async () => {
     return await dbOrgService.getPendingSyncRequests();
   });
+
+  //================DOH NOTIFICATIONS AND MAILS=====================
+ 
+  ipcMain.handle('checkAndCreateStockAlerts', async () => {
+    return await dbService.checkAndCreateStockAlerts();
+  });
+
+  ipcMain.handle('getStockAlerts', async () => {
+    return await dbService.getStockAlerts();
+  });
+
+  ipcMain.handle('getUnreadNotificationCount', async () => {
+    return await dbService.getUnreadNotificationCount();
+});
+
+ipcMain.handle('mark-partnership-request-viewed', async (event, requestId) => {
+  try {
+    // Use dbService instead of opening a new database connection
+    await dbService.markPartnershipRequestAsViewed(requestId);
+    return { success: true };
+  } catch (error) {
+    console.error('Error marking partnership request as viewed:', error);
+    throw error;
+  }
+});
+
+//================ORGANIZATION SYNC REQUEST HANDLERS=====================
+ipcMain.handle("db:approveSyncRequest", async (_event, requestId, approvedBy) => {
+  try {
+    return await dbService.approveSyncRequest(requestId, approvedBy);
+  } catch (error) {
+    console.error("IPC Error - approveSyncRequest:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("get-pending-temp-donor-records", async () => {
+  try {
+    return await dbOrgService.getPendingTempDonorRecords();
+  } catch (error) {
+    console.error("Error in get-pending-temp-donor-records:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("approve-temp-donor-records", async (event, tdrIds, approvedBy) => {
+  try {
+    return await dbOrgService.approveTempDonorRecords(tdrIds, approvedBy);
+  } catch (error) {
+    console.error("Error in approve-temp-donor-records:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("decline-temp-donor-records", async (event, tdrIds, declinedBy, reason) => {
+  try {
+    return await dbOrgService.declineTempDonorRecords(tdrIds, declinedBy, reason);
+  } catch (error) {
+    console.error("Error in decline-temp-donor-records:", error);
+    throw error;
+  }
+});
+
+
+
+
+
+
 };
 
 // Electron app lifecycle

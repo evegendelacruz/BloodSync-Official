@@ -18,9 +18,9 @@ const pool = new Pool({
 const orgPool = new Pool({
   user: "postgres",
   host: "localhost",
-  database: "postgres",
-  password: "root",
-  port: 5433,
+  database: "bloodsync_db",
+  password: "bloodsync",
+  port: 5432,
   connectionTimeoutMillis: 5000,
   idleTimeoutMillis: 30000,
   max: 20,
@@ -8148,111 +8148,149 @@ const dbService = {
 
   //======================PARTNERSHIP EVENTS========================
   async createPartnershipRequest(requestData) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
 
-      const query = `
+    console.log("📝 Creating partnership request with data:", {
+      organizationName: requestData.organizationName,
+      organizationBarangay: requestData.organizationBarangay,
+      contactName: requestData.contactName,
+      profilePhoto: requestData.profilePhoto ? 'Present' : 'None'
+    });
+
+    // FIXED: Properly determine organization_name
+    let organizationName = null;
+    let organizationBarangay = null;
+
+    // Priority 1: If there's an organizationBarangay (Barangay category)
+    if (requestData.organizationBarangay && 
+        requestData.organizationBarangay.trim() !== '' &&
+        requestData.organizationBarangay !== 'N/A') {
+      organizationBarangay = requestData.organizationBarangay.trim();
+      organizationName = organizationBarangay; // Use barangay as organization_name
+    }
+    // Priority 2: If there's an organizationName (Organization category)
+    else if (requestData.organizationName && 
+             requestData.organizationName.trim() !== '' &&
+             requestData.organizationName !== 'N/A') {
+      organizationName = requestData.organizationName.trim();
+    }
+    // Fallback: Use contact name if nothing else is available
+    else {
+      organizationName = requestData.contactName || 'Unknown Organization';
+    }
+
+    const query = `
       INSERT INTO partnership_requests (
         organization_name, organization_barangay, contact_name, contact_email, contact_phone, 
-        event_date, event_time, event_address, appointment_id,
+        event_date, event_time, event_address, appointment_id, profile_photo,
         status, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NOW(), NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', NOW(), NOW())
       RETURNING *
     `;
 
-      const values = [
-        requestData.organizationName,
-        requestData.organizationBarangay || "N/A",
-        requestData.contactName,
-        requestData.contactEmail,
-        requestData.contactPhone,
-        requestData.eventDate,
-        requestData.eventTime,
-        requestData.eventAddress,
-        requestData.appointmentId,
-      ];
+    const values = [
+      organizationName,          // Never null
+      organizationBarangay,      // Can be null
+      requestData.contactName,
+      requestData.contactEmail,
+      requestData.contactPhone,
+      requestData.eventDate,
+      requestData.eventTime,
+      requestData.eventAddress,
+      requestData.appointmentId,
+      requestData.profilePhoto,
+    ];
 
-      const result = await client.query(query, values);
+    const result = await client.query(query, values);
+    const partnershipRequest = result.rows[0];
 
-      // Optional: Create a notification for the RBC Admin
-      try {
-        const notifQuery = `
-        INSERT INTO notifications (
-          notification_type, title, description,
-          related_entity_type, related_entity_id, link_to,
-          status, priority, is_read, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-      `;
-        await client.query(notifQuery, [
-          "partnership_request",
-          "New Partnership Request",
-          `${requestData.organizationName} requested a blood drive on ${requestData.eventDate}`,
-          "partnership_requests",
-          result.rows[0].id,
-          "mail",
-          "unread",
-          "high",
-          false,
-        ]);
-      } catch (notifError) {
-        console.error(
-          "Failed to create notification (non-critical):",
-          notifError
-        );
-      }
+    console.log("✅ Partnership request created:", {
+      id: partnershipRequest.id,
+      organization_name: partnershipRequest.organization_name,
+      organization_barangay: partnershipRequest.organization_barangay,
+      profile_photo: partnershipRequest.profile_photo ? 'Saved' : 'None'
+    });
 
-      await client.query("COMMIT");
-      return result.rows[0];
-    } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("[DB] Error creating partnership request:", error);
-      throw error;
-    } finally {
-      client.release();
-    }
-  },
-
-  // Get all partnership requests
-  async getAllPartnershipRequests(status = null) {
+    // Create notification for the RBC Admin
     try {
-      let query = `
+      const displayName = requestData.organizationBarangay 
+        ? `${requestData.organizationBarangay} (Barangay)`
+        : requestData.organizationName;
+
+      const notifQuery = `
+      INSERT INTO notifications (
+        notification_type, title, description,
+        related_entity_type, related_entity_id, link_to,
+        status, priority, is_read, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+    `;
+      await client.query(notifQuery, [
+        "partnership_request",
+        "New Partnership Request",
+        `${displayName} requested a blood drive on ${requestData.eventDate}`,
+        "partnership_requests",
+        partnershipRequest.id,
+        "mail",
+        "unread",
+        "high",
+        false,
+      ]);
+      console.log("✅ Notification created for partnership request");
+    } catch (notifError) {
+      console.error(
+        "⚠️ Failed to create notification (non-critical):",
+        notifError
+      );
+    }
+
+    await client.query("COMMIT");
+    return partnershipRequest;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("[DB] ❌ Error creating partnership request:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
+// Get all partnership requests
+async getAllPartnershipRequests(status = null) {
+  try {
+    let query = `
       SELECT *
       FROM partnership_requests
     `;
 
-      const params = [];
-      if (status) {
-        query += ` WHERE status = $1`;
-        params.push(status);
-      }
-
-      query += ` ORDER BY created_at DESC`;
-
-      const result = await pool.query(query, params);
-      return result.rows;
-    } catch (error) {
-      console.error("[DB] Error getting partnership requests:", error);
-      throw error;
+    const params = [];
+    if (status) {
+      query += ` WHERE status = $1`;
+      params.push(status);
     }
-  },
 
-  // Get partnership request by ID
-  async getPartnershipRequestById(requestId) {
-    try {
-      const result = await pool.query(
-        `
-      SELECT * FROM partnership_requests WHERE id = $1
-    `,
-        [requestId]
-      );
+    query += ` ORDER BY created_at DESC`;
 
-      return result.rows[0];
-    } catch (error) {
-      console.error("[DB] Error getting partnership request:", error);
-      throw error;
-    }
-  },
+    const result = await pool.query(query, params);
+    
+    // Map rows to ensure all fields are present with proper fallbacks
+    return result.rows.map(row => {
+      return {
+        ...row,
+        // Ensure fields are never undefined
+        organization_name: row.organization_name || null,
+        organization_barangay: row.organization_barangay || null,
+        contact_name: row.contact_name || null,
+        profile_photo: row.profile_photo || null,
+        is_viewed: row.is_viewed !== undefined ? row.is_viewed : false
+      };
+    });
+  } catch (error) {
+    console.error("[DB] Error getting partnership requests:", error);
+    throw error;
+  }
+},
 
   // Update partnership request status
   async updatePartnershipRequestStatus(requestId, status, approvedBy = null, declineReason = null) {
@@ -8378,286 +8416,366 @@ const dbService = {
     }
   },
 
+    // Add this method to your dbService object
+async markPartnershipRequestAsViewed(requestId) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    
+    const query = `
+      UPDATE partnership_requests
+      SET is_viewed = true,
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, organization_name, organization_barangay, is_viewed
+    `;
+    
+    const result = await client.query(query, [requestId]);
+    
+    if (result.rows.length === 0) {
+      throw new Error(`Partnership request not found: ${requestId}`);
+    }
+    
+    await client.query("COMMIT");
+    
+    console.log('✅ Partnership request marked as viewed in DB:', result.rows[0]);
+    return result.rows[0];
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error('❌ Error marking partnership request as viewed:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
   // ========== TEMP DONOR RECORDS (SYNC REQUESTS) METHODS ==========
 
-  // Get all pending temp donor records (sync requests)
-  async getPendingTempDonorRecords() {
-    try {
-      const query = `
-        SELECT * FROM temp_donor_records
-        WHERE tdr_sync_status = 'pending'
-        ORDER BY tdr_created_at DESC
-      `;
-      const result = await pool.query(query);
-      return result.rows;
-    } catch (error) {
-      console.error("[DB] Error getting pending temp donor records:", error);
-      throw error;
+// REPLACE the getPendingTempDonorRecords method in db.js:
+
+async getPendingTempDonorRecords() {
+  try {
+    const query = `
+      SELECT 
+        tdr_id,
+        tdr_donor_id,
+        tdr_first_name,
+        tdr_middle_name,
+        tdr_last_name,
+        tdr_gender,
+        TO_CHAR(tdr_birthdate, 'YYYY-MM-DD') as tdr_birthdate,
+        tdr_age,
+        tdr_blood_type,
+        tdr_rh_factor,
+        tdr_contact_number,
+        tdr_address,
+        tdr_source_user_id,
+        tdr_source_user_name,
+        tdr_sync_status,
+        TO_CHAR(tdr_created_at, 'YYYY-MM-DD HH24:MI:SS') as tdr_created_at
+      FROM temp_donor_records
+      WHERE tdr_sync_status = 'pending'
+      ORDER BY tdr_created_at DESC
+    `;
+
+    const result = await pool.query(query);
+    console.log(`✅ Found ${result.rows.length} pending temp donor records`);
+    return result.rows;
+  } catch (error) {
+    console.error("❌ Error getting pending temp donor records:", error);
+    throw error;
+  }
+},
+
+// REPLACE the approveTempDonorRecords method in db.js:
+
+async approveTempDonorRecords(tdrIds, approvedBy) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    console.log(`📋 Processing ${tdrIds.length} temp donor records...`);
+
+    // Get the temp donor records
+    const getTempRecordsQuery = `
+      SELECT * FROM temp_donor_records
+      WHERE tdr_id = ANY($1) AND tdr_sync_status = 'pending'
+    `;
+    const tempRecords = await client.query(getTempRecordsQuery, [tdrIds]);
+
+    if (tempRecords.rows.length === 0) {
+      throw new Error("No pending temp donor records found");
     }
-  },
 
-  // Get pending temp donor records count
-  async getPendingTempDonorRecordsCount() {
-    try {
-      const result = await pool.query(`
-        SELECT COUNT(*) as count FROM temp_donor_records WHERE tdr_sync_status = 'pending'
-      `);
-      return parseInt(result.rows[0].count, 10);
-    } catch (error) {
-      console.error("[DB] Error getting pending temp donor records count:", error);
-      throw error;
-    }
-  },
+    const sourceOrganization = tempRecords.rows[0].tdr_source_organization;
+    const sourceUserName = tempRecords.rows[0].tdr_source_user_name;
 
-  // Approve temp donor records - move them to main donor_records table
-  async approveTempDonorRecords(tdrIds, approvedBy) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
+    let insertedCount = 0;
+    let updatedCount = 0;
 
-      // Get the temp donor records
-      const getTempRecordsQuery = `
-        SELECT * FROM temp_donor_records
-        WHERE tdr_id = ANY($1) AND tdr_sync_status = 'pending'
+    // Process each temp donor record
+    for (const record of tempRecords.rows) {
+      console.log(`\n🔄 Processing: ${record.tdr_first_name} ${record.tdr_last_name}`);
+      
+      // Check if a donor with the same full name already exists (case-insensitive, trimmed)
+      const checkDuplicateQuery = `
+        SELECT dr_id, dr_donor_id, dr_recent_donation, dr_donation_count
+        FROM donor_records
+        WHERE LOWER(TRIM(dr_first_name)) = LOWER(TRIM($1))
+          AND LOWER(TRIM(COALESCE(dr_middle_name, ''))) = LOWER(TRIM(COALESCE($2, '')))
+          AND LOWER(TRIM(dr_last_name)) = LOWER(TRIM($3))
+        LIMIT 1
       `;
-      const tempRecords = await client.query(getTempRecordsQuery, [tdrIds]);
 
-      if (tempRecords.rows.length === 0) {
-        throw new Error("No pending temp donor records found");
-      }
-
-      const sourceOrganization = tempRecords.rows[0].tdr_source_organization;
-      const sourceUserName = tempRecords.rows[0].tdr_source_user_name;
-
-      // Insert into main donor_records table with duplicate full name checking
-      const insertPromises = tempRecords.rows.map(async (record) => {
-        // Check if a donor with the same full name already exists
-        const checkDuplicateQuery = `
-          SELECT dr_id, dr_recent_donation, dr_donation_count
-          FROM donor_records
-          WHERE LOWER(TRIM(dr_first_name)) = LOWER(TRIM($1))
-            AND LOWER(TRIM(dr_middle_name)) = LOWER(TRIM($2))
-            AND LOWER(TRIM(dr_last_name)) = LOWER(TRIM($3))
-          LIMIT 1
-        `;
-
-        const duplicateCheck = await client.query(checkDuplicateQuery, [
-          record.tdr_first_name,
-          record.tdr_middle_name || '',
-          record.tdr_last_name
-        ]);
-
-        if (duplicateCheck.rows.length > 0) {
-          // Duplicate found - only update recent_donation and donation_count
-          const existingRecord = duplicateCheck.rows[0];
-          const updateQuery = `
-            UPDATE donor_records
-            SET dr_recent_donation = NOW(),
-                dr_donation_count = COALESCE(dr_donation_count, 0) + 1
-            WHERE dr_id = $1
-            RETURNING *
-          `;
-          return client.query(updateQuery, [existingRecord.dr_id]);
-        } else {
-          // No duplicate - insert new record
-          const insertQuery = `
-            INSERT INTO donor_records (
-              dr_donor_id,
-              dr_first_name,
-              dr_middle_name,
-              dr_last_name,
-              dr_gender,
-              dr_birthdate,
-              dr_age,
-              dr_blood_type,
-              dr_rh_factor,
-              dr_contact_number,
-              dr_address,
-              dr_source_organization,
-              dr_source,
-              dr_created_at,
-              dr_recent_donation,
-              dr_donation_count
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'Synced', NOW(), NOW(), 1)
-            RETURNING *
-          `;
-
-          const values = [
-            record.tdr_donor_id,
-            record.tdr_first_name,
-            record.tdr_middle_name,
-            record.tdr_last_name,
-            record.tdr_gender,
-            record.tdr_birthdate,
-            record.tdr_age,
-            record.tdr_blood_type,
-            record.tdr_rh_factor,
-            record.tdr_contact_number,
-            record.tdr_address,
-            record.tdr_source_organization,
-          ];
-
-          return client.query(insertQuery, values);
-        }
-      });
-
-      await Promise.all(insertPromises);
-
-      // Update temp_donor_records status to 'approved'
-      const updateQuery = `
-        UPDATE temp_donor_records
-        SET tdr_sync_status = 'approved',
-            tdr_approved_by = $1,
-            tdr_approved_at = NOW()
-        WHERE tdr_id = ANY($2)
-        RETURNING *
-      `;
-      const updatedRecords = await client.query(updateQuery, [approvedBy, tdrIds]);
-
-      // Create mail notification for the organization
-      try {
-        const mailId = `MAIL-SYNC-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const subject = `Donor Record Sync Approved - ${tempRecords.rows.length} Record(s)`;
-        const preview = `Your sync request for ${tempRecords.rows.length} donor record(s) has been approved.`;
-        const body = `Dear ${sourceOrganization},\n\nWe are pleased to inform you that your donor record sync request has been APPROVED by the Regional Blood Center.\n\nSync Details:\n- Organization: ${sourceOrganization}\n- Requestor: ${sourceUserName}\n- Records Approved: ${tempRecords.rows.length}\n- Approved By: ${approvedBy}\n- Date: ${new Date().toLocaleDateString()}\n\nThe donor records have been successfully added to the Regional Blood Center database.\n\nThank you for your partnership!\n\nBest regards,\nRegional Blood Center Team`;
-
-        const insertMailQuery = `
-          INSERT INTO mails (
-            mail_id, from_name, from_email, subject, preview, body,
-            status, request_title, requestor, request_organization,
-            date_submitted, organization_type, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
-        `;
-
-        await orgPool.query(insertMailQuery, [
-          mailId,
-          'Regional Blood Center',
-          'admin@regionalbloodcenter.org',
-          subject,
-          preview,
-          body,
-          'approved',
-          `Donor Record Sync - ${sourceOrganization}`,
-          approvedBy,
-          sourceOrganization,
-          tempRecords.rows[0].tdr_created_at,
-          'organization'
-        ]);
-
-        console.log(`[DB] Approval mail sent to ${sourceOrganization}`);
-      } catch (mailError) {
-        console.error('[DB] Error creating approval mail:', mailError);
-        // Don't fail the transaction if mail creation fails
-      }
-
-      await client.query("COMMIT");
-
-      console.log(`[DB] Approved ${tempRecords.rows.length} temp donor records from ${sourceOrganization}`);
-
-      return {
-        success: true,
-        count: tempRecords.rows.length,
-        records: updatedRecords.rows,
-      };
-    } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("[DB] Error approving temp donor records:", error);
-      throw error;
-    } finally {
-      client.release();
-    }
-  },
-
-  // Decline temp donor records with reason
-  async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-
-      // Get the temp donor records before updating
-      const getTempRecordsQuery = `
-        SELECT * FROM temp_donor_records
-        WHERE tdr_id = ANY($1) AND tdr_sync_status = 'pending'
-      `;
-      const tempRecords = await client.query(getTempRecordsQuery, [tdrIds]);
-
-      if (tempRecords.rows.length === 0) {
-        throw new Error("No pending temp donor records found");
-      }
-
-      const sourceOrganization = tempRecords.rows[0].tdr_source_organization;
-      const sourceUserName = tempRecords.rows[0].tdr_source_user_name;
-
-      // Update temp_donor_records status to 'declined'
-      const updateQuery = `
-        UPDATE temp_donor_records
-        SET tdr_sync_status = 'declined',
-            tdr_approved_by = $1,
-            tdr_approved_at = NOW(),
-            tdr_decline_reason = $2
-        WHERE tdr_id = ANY($3)
-        RETURNING *
-      `;
-      const updatedRecords = await client.query(updateQuery, [
-        declinedBy,
-        declineReason,
-        tdrIds,
+      const duplicateCheck = await client.query(checkDuplicateQuery, [
+        record.tdr_first_name,
+        record.tdr_middle_name || '',
+        record.tdr_last_name
       ]);
 
-      // Create mail notification for the organization
-      try {
-        const mailId = `MAIL-SYNC-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const subject = `Donor Record Sync Declined - ${tempRecords.rows.length} Record(s)`;
-        const preview = `Your sync request for ${tempRecords.rows.length} donor record(s) has been declined.`;
-        const body = `Dear ${sourceOrganization},\n\nWe regret to inform you that your donor record sync request has been DECLINED by the Regional Blood Center.\n\nSync Details:\n- Organization: ${sourceOrganization}\n- Requestor: ${sourceUserName}\n- Records Declined: ${tempRecords.rows.length}\n- Declined By: ${declinedBy}\n- Date: ${new Date().toLocaleDateString()}\n\nReason for Decline:\n${declineReason}\n\nIf you have any questions or would like to discuss this decision, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team`;
+      if (duplicateCheck.rows.length > 0) {
+        // ✅ Duplicate found - ONLY update recent_donation and donation_count
+        // ⭐ PRESERVE the DOH donor_id and all other fields
+        const existingRecord = duplicateCheck.rows[0];
+        
+        const updateQuery = `
+          UPDATE donor_records
+          SET dr_recent_donation = NOW(),
+              dr_donation_count = COALESCE(dr_donation_count, 0) + 1,
+              dr_modified_at = NOW()
+          WHERE dr_id = $1
+          RETURNING dr_id, dr_donor_id, dr_first_name, dr_last_name
+        `;
+        
+        const updateResult = await client.query(updateQuery, [existingRecord.dr_id]);
+        updatedCount++;
+        
+        console.log(`✅ Updated existing donor: ${updateResult.rows[0].dr_donor_id} - ${updateResult.rows[0].dr_first_name} ${updateResult.rows[0].dr_last_name}`);
+      } else {
+        // ✅ No duplicate - insert new record with DOH-generated ID
+        // ⭐ Generate new DOH donor ID (DNR-XXXXXXX format)
+        const generateIdQuery = `
+          SELECT 
+            'DNR-' || LPAD(
+              (COALESCE(
+                (SELECT CAST(SUBSTRING(MAX(dr_donor_id) FROM 5) AS INTEGER) 
+                 FROM donor_records 
+                 WHERE dr_donor_id LIKE 'DNR-%'), 
+                0
+              ) + 1)::TEXT, 
+              7, 
+              '0'
+            ) as new_id
+        `;
+        
+        const idResult = await client.query(generateIdQuery);
+        const newDohDonorId = idResult.rows[0].new_id;
 
-        const insertMailQuery = `
-          INSERT INTO mails (
-            mail_id, from_name, from_email, subject, preview, body,
-            status, decline_reason, request_title, requestor, request_organization,
-            date_submitted, organization_type, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+        console.log(`🆔 Generated new DOH ID: ${newDohDonorId}`);
+
+        // ⭐ FIXED: Removed dr_source from INSERT query
+        const insertQuery = `
+          INSERT INTO donor_records (
+            dr_donor_id,
+            dr_first_name,
+            dr_middle_name,
+            dr_last_name,
+            dr_gender,
+            dr_birthdate,
+            dr_age,
+            dr_blood_type,
+            dr_rh_factor,
+            dr_contact_number,
+            dr_address,
+            dr_status,
+            dr_recent_donation,
+            dr_donation_count,
+            dr_created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), 1, NOW())
+          RETURNING dr_id, dr_donor_id, dr_first_name, dr_last_name
         `;
 
-        await orgPool.query(insertMailQuery, [
-          mailId,
-          'Regional Blood Center',
-          'admin@regionalbloodcenter.org',
-          subject,
-          preview,
-          body,
-          'declined',
-          declineReason,
-          `Donor Record Sync - ${sourceOrganization}`,
-          declinedBy,
-          sourceOrganization,
-          tempRecords.rows[0].tdr_created_at,
-          'organization'
-        ]);
+        const values = [
+          newDohDonorId,              // ⭐ Use DOH-generated ID, NOT org ID
+          record.tdr_first_name,
+          record.tdr_middle_name || null,
+          record.tdr_last_name,
+          record.tdr_gender,
+          record.tdr_birthdate,
+          record.tdr_age,
+          record.tdr_blood_type,
+          record.tdr_rh_factor,
+          record.tdr_contact_number,
+          record.tdr_address,
+          'Non-Reactive',             
+        ];
 
-        console.log(`[DB] Decline mail sent to ${sourceOrganization}`);
-      } catch (mailError) {
-        console.error('[DB] Error creating decline mail:', mailError);
-        // Don't fail the transaction if mail creation fails
+        const insertResult = await client.query(insertQuery, values);
+        insertedCount++;
+        
+        console.log(`✅ Inserted new donor: ${insertResult.rows[0].dr_donor_id} - ${insertResult.rows[0].dr_first_name} ${insertResult.rows[0].dr_last_name}`);
       }
-
-      await client.query("COMMIT");
-
-      console.log(`[DB] Declined ${tempRecords.rows.length} temp donor records from ${sourceOrganization}`);
-
-      return {
-        success: true,
-        count: tempRecords.rows.length,
-        records: updatedRecords.rows,
-      };
-    } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("[DB] Error declining temp donor records:", error);
-      throw error;
-    } finally {
-      client.release();
     }
-  },
+
+    // Update temp_donor_records status to 'approved'
+    const updateTempQuery = `
+      UPDATE temp_donor_records
+      SET tdr_sync_status = 'approved',
+          tdr_approved_by = $1,
+          tdr_approved_at = NOW()
+      WHERE tdr_id = ANY($2)
+      RETURNING *
+    `;
+    await client.query(updateTempQuery, [approvedBy, tdrIds]);
+
+    // Create mail notification for the organization
+    try {
+      const mailId = `MAIL-SYNC-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const subject = `Donor Record Sync Approved - ${tempRecords.rows.length} Record(s)`;
+      const preview = `Your sync request for ${tempRecords.rows.length} donor record(s) has been approved.`;
+      const body = `Dear ${sourceOrganization},\n\nWe are pleased to inform you that your donor record sync request has been APPROVED by the Regional Blood Center.\n\nSync Details:\n- Organization: ${sourceOrganization}\n- Requestor: ${sourceUserName}\n- Records Processed: ${tempRecords.rows.length}\n- New Donors Added: ${insertedCount}\n- Existing Donors Updated: ${updatedCount}\n- Approved By: ${approvedBy}\n- Date: ${new Date().toLocaleDateString()}\n\nThe donor records have been successfully synced to the Regional Blood Center database with DOH-generated IDs.\n\nThank you for your partnership!\n\nBest regards,\nRegional Blood Center Team`;
+
+      const insertMailQuery = `
+        INSERT INTO mails (
+          mail_id, from_name, from_email, subject, preview, body,
+          status, request_title, requestor, request_organization,
+          date_submitted, organization_type, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+      `;
+
+      await orgPool.query(insertMailQuery, [
+        mailId,
+        'Regional Blood Center',
+        'admin@regionalbloodcenter.org',
+        subject,
+        preview,
+        body,
+        'approved',
+        `Donor Record Sync - ${sourceOrganization}`,
+        approvedBy,
+        sourceOrganization,
+        tempRecords.rows[0].tdr_created_at,
+        'organization'
+      ]);
+
+      console.log(`📧 Approval mail sent to ${sourceOrganization}`);
+    } catch (mailError) {
+      console.error('⚠️ Error creating approval mail:', mailError);
+    }
+
+    await client.query("COMMIT");
+
+    console.log(`\n✅ SYNC COMPLETE:`);
+    console.log(`   - Organization: ${sourceOrganization}`);
+    console.log(`   - Total Processed: ${tempRecords.rows.length}`);
+    console.log(`   - New Donors: ${insertedCount}`);
+    console.log(`   - Updated Donors: ${updatedCount}`);
+
+    return {
+      success: true,
+      count: tempRecords.rows.length,
+      insertedCount: insertedCount,
+      updatedCount: updatedCount,
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("❌ Error approving temp donor records:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
+// Decline temp donor records with reason
+async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Get the temp donor records before updating
+    const getTempRecordsQuery = `
+      SELECT * FROM temp_donor_records
+      WHERE tdr_id = ANY($1) AND tdr_sync_status = 'pending'
+    `;
+    const tempRecords = await client.query(getTempRecordsQuery, [tdrIds]);
+
+    if (tempRecords.rows.length === 0) {
+      throw new Error("No pending temp donor records found");
+    }
+
+    const sourceOrganization = tempRecords.rows[0].tdr_source_organization;
+    const sourceUserName = tempRecords.rows[0].tdr_source_user_name;
+
+    // Update temp_donor_records status to 'declined'
+    const updateQuery = `
+      UPDATE temp_donor_records
+      SET tdr_sync_status = 'declined',
+          tdr_approved_by = $1,
+          tdr_approved_at = NOW(),
+          tdr_decline_reason = $2
+      WHERE tdr_id = ANY($3)
+      RETURNING *
+    `;
+    const updatedRecords = await client.query(updateQuery, [
+      declinedBy,
+      declineReason,
+      tdrIds,
+    ]);
+
+    // Create mail notification for the organization
+    try {
+      const mailId = `MAIL-SYNC-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const subject = `Donor Record Sync Declined - ${tempRecords.rows.length} Record(s)`;
+      const preview = `Your sync request for ${tempRecords.rows.length} donor record(s) has been declined.`;
+      const body = `Dear ${sourceOrganization},\n\nWe regret to inform you that your donor record sync request has been DECLINED by the Regional Blood Center.\n\nSync Details:\n- Organization: ${sourceOrganization}\n- Requestor: ${sourceUserName}\n- Records Declined: ${tempRecords.rows.length}\n- Declined By: ${declinedBy}\n- Date: ${new Date().toLocaleDateString()}\n\nReason for Decline:\n${declineReason}\n\nIf you have any questions or would like to discuss this decision, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team`;
+
+      const insertMailQuery = `
+        INSERT INTO mails (
+          mail_id, from_name, from_email, subject, preview, body,
+          status, decline_reason, request_title, requestor, request_organization,
+          date_submitted, organization_type, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+      `;
+
+      await orgPool.query(insertMailQuery, [
+        mailId,
+        'Regional Blood Center',
+        'admin@regionalbloodcenter.org',
+        subject,
+        preview,
+        body,
+        'declined',
+        declineReason,
+        `Donor Record Sync - ${sourceOrganization}`,
+        declinedBy,
+        sourceOrganization,
+        tempRecords.rows[0].tdr_created_at,
+        'organization'
+      ]);
+
+      console.log(`[DB] Decline mail sent to ${sourceOrganization}`);
+    } catch (mailError) {
+      console.error('[DB] Error creating decline mail:', mailError);
+      // Don't fail the transaction if mail creation fails
+    }
+
+    await client.query("COMMIT");
+
+    console.log(`[DB] Declined ${tempRecords.rows.length} temp donor records from ${sourceOrganization}`);
+
+    return {
+      success: true,
+      count: tempRecords.rows.length,
+      records: updatedRecords.rows,
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("[DB] Error declining temp donor records:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
 
   // ========== RECENT ACTIVITY METHODS ==========
 
@@ -8894,6 +9012,392 @@ const dbService = {
     client.release();
   }
 },
+
+// ========== STOCK ALERT NOTIFICATION METHODS ==========
+
+async checkAndCreateStockAlerts() {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // ===== CHECK FOR EXPIRING BLOOD (within 7 days) =====
+    const expiringQuery = `
+      SELECT 
+        bs_blood_type || bs_rh_factor as blood_type,
+        bs_category as category,
+        bs_serial_id as serial_id,
+        bs_expiration_date as expiration_date,
+        bs_source as source,
+        EXTRACT(DAY FROM (bs_expiration_date::timestamp - CURRENT_DATE::timestamp)) as days_until_expiry
+      FROM blood_stock
+      WHERE bs_status = 'Stored'
+        AND bs_expiration_date::date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'
+      ORDER BY bs_expiration_date ASC
+    `;
+
+    const expiringResult = await client.query(expiringQuery);
+
+    // ===== CHECK FOR LOW STOCK BY BLOOD TYPE (20 or below per type) =====
+    const lowStockQuery = `
+      SELECT 
+        bs_blood_type || bs_rh_factor as blood_type,
+        bs_category as category,
+        COUNT(*) as stock_count
+      FROM blood_stock
+      WHERE bs_status = 'Stored'
+      GROUP BY bs_blood_type, bs_rh_factor, bs_category
+      HAVING COUNT(*) <= 20
+    `;
+
+    const lowStockResult = await client.query(lowStockQuery);
+    
+    let alertsCreated = 0;
+
+    // ===== CREATE EXPIRATION ALERTS =====
+    for (const item of expiringResult.rows) {
+      const { blood_type, category, serial_id, expiration_date, source, days_until_expiry } = item;
+      
+      // Convert days_until_expiry to number and handle null
+      const daysRemaining = days_until_expiry ? Number(days_until_expiry) : 0;
+      
+      let priority = 'high';
+      let status = 'STOCK ALERT';
+      let notificationType = 'stock_expiring_soon';
+      
+      if (daysRemaining <= 0) {
+        priority = 'critical';
+        status = 'CRITICAL';
+        notificationType = 'stock_expired';
+      } else if (daysRemaining <= 3) {
+        priority = 'urgent';
+        status = 'URGENT';
+        notificationType = 'stock_expiring_urgent';
+      }
+
+      const title = daysRemaining <= 0 
+        ? `Blood Expired - ${blood_type} (${serial_id})`
+        : `Blood Expiring Soon - ${blood_type} (${serial_id})`;
+        
+      const message = daysRemaining <= 0
+        ? `CRITICAL: ${blood_type} blood unit ${serial_id} has expired! Immediate action required. Category: ${category}, Source: ${source}`
+        : `Alert: ${blood_type} blood unit ${serial_id} expires in ${Math.floor(daysRemaining)} day(s). Category: ${category}, Source: ${source}`;
+
+      // Check if alert already exists for this serial ID today
+      const checkExistingQuery = `
+        SELECT notification_id 
+        FROM notifications
+        WHERE type IN ('stock_expiring_soon', 'stock_expiring_urgent', 'stock_expired')
+          AND link_to LIKE $1
+          AND DATE(created_at) = CURRENT_DATE
+        LIMIT 1
+      `;
+      
+      const existingAlert = await client.query(checkExistingQuery, [`%${serial_id}%`]);
+      
+      if (existingAlert.rows.length > 0) {
+        continue;
+      }
+
+      // Create notification
+      const notificationId = `NOTIF-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      const stockData = JSON.stringify({
+        category: category,
+        bloodType: blood_type,
+        serialId: serial_id,
+        expirationDate: expiration_date,
+        daysUntilExpiry: Math.floor(daysRemaining),
+        source: source
+      });
+
+      const insertQuery = `
+        INSERT INTO notifications (
+          notification_id,
+          type,
+          title,
+          message,
+          requestor,
+          status,
+          priority,
+          is_read,
+          link_to,
+          created_at,
+          updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, false, $8, NOW(), NOW())
+        RETURNING notification_id
+      `;
+
+      const values = [
+        notificationId,
+        notificationType,
+        title,
+        message,
+        'System Monitor',
+        status,
+        priority,
+        stockData
+      ];
+
+      await client.query(insertQuery, values);
+      alertsCreated++;
+    }
+
+    // ===== CREATE LOW STOCK ALERTS (per blood type) =====
+    for (const stock of lowStockResult.rows) {
+      const { blood_type, category, stock_count } = stock;
+      
+      // Convert to number
+      const count = Number(stock_count);
+      
+      let priority = 'high';
+      let status = 'STOCK ALERT';
+      
+      if (count <= 5) {
+        priority = 'critical';
+        status = 'CRITICAL';
+      } else if (count <= 10) {
+        priority = 'urgent';
+        status = 'URGENT';
+      }
+
+      const title = `Low Stock Alert - ${blood_type} Blood`;
+      const message = `Critical: Only ${count} unit(s) of ${blood_type} blood remaining in ${category}. Immediate action required to maintain adequate supply levels.`;
+
+      // Check if alert already exists for this blood type today
+      const checkExistingQuery = `
+        SELECT notification_id 
+        FROM notifications
+        WHERE type = 'stock_low'
+          AND title = $1
+          AND DATE(created_at) = CURRENT_DATE
+        LIMIT 1
+      `;
+      
+      const existingAlert = await client.query(checkExistingQuery, [title]);
+      
+      if (existingAlert.rows.length > 0) {
+        continue;
+      }
+
+      // Create notification
+      const notificationId = `NOTIF-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      const stockData = JSON.stringify({
+        category: category,
+        bloodType: blood_type,
+        stockCount: count,
+        threshold: 20
+      });
+
+      const insertQuery = `
+        INSERT INTO notifications (
+          notification_id,
+          type,
+          title,
+          message,
+          requestor,
+          status,
+          priority,
+          is_read,
+          link_to,
+          created_at,
+          updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, false, $8, NOW(), NOW())
+        RETURNING notification_id
+      `;
+
+      const values = [
+        notificationId,
+        'stock_low',
+        title,
+        message,
+        'System Monitor',
+        status,
+        priority,
+        stockData
+      ];
+
+      await client.query(insertQuery, values);
+      alertsCreated++;
+    }
+
+    await client.query("COMMIT");
+    
+    console.log(`✅ Stock alerts check completed: ${alertsCreated} alerts created`);
+    
+    return { 
+      success: true, 
+      alertsCreated,
+      expiringItems: expiringResult.rows.length,
+      lowStockTypes: lowStockResult.rows.length
+    };
+
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error checking and creating stock alerts:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
+// ========== NOTIFICATION COUNT AND STOCK ALERTS METHODS ==========
+
+  // Get unread notification count
+  async getUnreadNotificationCount() {
+    try {
+      const query = `
+        SELECT COUNT(*) as count 
+        FROM notifications 
+        WHERE is_read = false OR is_read IS NULL
+      `;
+      const result = await pool.query(query);
+      return parseInt(result.rows[0].count, 10) || 0;
+    } catch (error) {
+      console.error("Error getting unread notification count:", error);
+      return 0;
+    }
+  },
+
+  // Get stock alerts (unread notifications of type stock_expiring, stock_expired, or stock_low)
+  async getStockAlerts() {
+    try {
+      const query = `
+        SELECT 
+          notification_id,
+          type as notification_type,
+          title,
+          message,
+          status,
+          priority,
+          link_to,
+          requestor,
+          is_read,
+          created_at,
+          updated_at
+        FROM notifications
+        WHERE (
+          type IN (
+            'stock_expiring_soon', 
+            'stock_expiring_urgent', 
+            'stock_expired', 
+            'stock_low',
+            'stock_out',
+            'expiration_warning'
+          )
+          OR status IN ('CRITICAL', 'URGENT', 'STOCK ALERT')
+        )
+        AND (is_read = false OR is_read IS NULL)
+        ORDER BY 
+          CASE priority
+            WHEN 'critical' THEN 1
+            WHEN 'urgent' THEN 2
+            WHEN 'high' THEN 3
+            ELSE 4
+          END,
+          created_at DESC
+      `;
+      
+      const result = await pool.query(query);
+      return result.rows;
+    } catch (error) {
+      console.error("Error getting stock alerts:", error);
+      return [];
+    }
+  },
+
+  // Mark all notifications as read
+  async markAllNotificationsAsRead() {
+    try {
+      const query = `
+        UPDATE notifications 
+        SET is_read = true, 
+            updated_at = NOW()
+        WHERE is_read = false OR is_read IS NULL
+      `;
+      await pool.query(query);
+      return { success: true };
+    } catch (error) {
+      console.error("Error marking all notifications as read:", error);
+      throw error;
+    }
+  },
+
+  // Get all notifications
+  async getAllNotifications() {
+    try {
+      const query = `
+        SELECT 
+          id,
+          notification_id,
+          type as notification_type,
+          title,
+          message,
+          description,
+          status,
+          priority,
+          link_to,
+          requestor,
+          is_read,
+          appointment_id,
+          decline_reason,
+          contact_email,
+          contact_phone,
+          contact_address,
+          contact_type,
+          created_at,
+          updated_at
+        FROM notifications
+        ORDER BY 
+          is_read ASC,
+          created_at DESC
+      `;
+      
+      const result = await pool.query(query);
+      return result.rows;
+    } catch (error) {
+      console.error("Error getting all notifications:", error);
+      return [];
+    }
+  },
+
+  // Delete notification
+  async deleteNotification(notificationId) {
+    try {
+      const query = `
+        DELETE FROM notifications 
+        WHERE id = $1 OR notification_id = $1
+      `;
+      await pool.query(query, [notificationId]);
+      return { success: true };
+    } catch (error) {
+      console.error("Error deleting notification:", error);
+      throw error;
+    }
+  },
+
+  // Update notification status
+  async updateNotificationStatus(notificationId, newStatus, updatedBy) {
+    try {
+      const query = `
+        UPDATE notifications 
+        SET status = $1,
+            updated_at = NOW(),
+            is_read = true
+        WHERE notification_id = $2 OR id = $2
+        RETURNING *
+      `;
+      
+      const result = await pool.query(query, [newStatus, notificationId]);
+      return result.rows[0];
+    } catch (error) {
+      console.error("Error updating notification status:", error);
+      throw error;
+    }
+  },
 };
 
 module.exports = dbService;

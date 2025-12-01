@@ -48,131 +48,182 @@ const MailOrg = () => {
   }, []);
 
   const loadMails = async () => {
-    try {
-      setIsLoading(true);
+  try {
+    setIsLoading(true);
 
-      if (typeof window !== "undefined" && window.electronAPI) {
-        // Load mails from mail table
-        console.log("[MAIL_ORG] Loading mails...");
-        const mailData = await window.electronAPI.getAllMails();
-        console.log("[MAIL_ORG] Loaded mails:", mailData);
+    if (typeof window !== "undefined" && window.electronAPI) {
+      console.log("[MAIL_ORG] Loading mails...");
+      
+      // Load partnership requests from DOH database
+      const requests = await window.electronAPI.getAllPartnershipRequests();
+      console.log("[MAIL_ORG] Partnership requests:", requests);
 
-        // Transform mail data into display format
-        const transformedMails = mailData.map((mail) => {
-          const avatar = "RBC"; // Regional Blood Center
+      // Transform partnership requests into mail format
+      const transformedMails = requests.map((r) => {
+        const avatar = r.contact_name
+          ? r.contact_name
+              .split(" ")
+              .map((name) => name[0])
+              .join("")
+              .substring(0, 2)
+              .toUpperCase()
+          : "RBC";
 
-          return {
-            id: mail.id,
-            mailId: mail.mail_id,
-            from: mail.from_name || "Regional Blood Center",
-            fromEmail: mail.from_email || "admin@regionalbloodcenter.org",
-            avatar: avatar,
-            avatarColor: "#165C3C",
-            subject: mail.subject,
-            preview: mail.preview,
-            body: mail.body,
-            timestamp: new Date(mail.created_at),
-            read: mail.read || false,
-            starred: mail.starred || false,
-            category: mail.category || "inbox",
-            attachments: [],
-            appointmentId: mail.appointment_id,
-            status: mail.status,
-            declineReason: mail.decline_reason || null,
-            requestInfo: {
-              title: mail.request_title,
-              requestor: mail.requestor,
-              organization: mail.request_organization,
-              dateSubmitted: mail.date_submitted,
-              contactInfo: {
-                name: mail.contact_name,
-                email: mail.contact_email,
-                phone: mail.contact_phone,
-                address: mail.event_address,
-                type: mail.organization_type || "organization",
-              },
+        const orgType = r.organization_type || 
+          (r.contact_name && r.contact_name.toLowerCase().includes("barangay")
+            ? "barangay"
+            : "organization");
+
+        const displayName = r.organization_barangay && r.organization_barangay !== "N/A"
+          ? `${r.contact_name} (${r.organization_barangay})`
+          : r.contact_name || "Regional Blood Center";
+
+        // Build email body based on status
+        const statusMessage = {
+          approved: "We are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center.",
+          declined: "We regret to inform you that your partnership request has been DECLINED by the Regional Blood Center.",
+          pending: "Your partnership request is currently UNDER REVIEW by the Regional Blood Center. We will notify you once a decision has been made.",
+        };
+
+        const bodyLines = [
+          "Dear Partner,",
+          "",
+          statusMessage[r.status] || "This is an update regarding your partnership request.",
+          "",
+        ];
+
+        if (r.status === "approved") {
+          bodyLines.push("Next Steps:");
+          bodyLines.push("- Our team will contact you shortly to coordinate the blood drive details.");
+          bodyLines.push("- Please prepare the necessary documentation and venue arrangements.");
+          bodyLines.push("- Check your calendar for the scheduled appointment.");
+          bodyLines.push("");
+        }
+
+        bodyLines.push("If you have any questions, please contact us at admin@regionalbloodcenter.org");
+        bodyLines.push("");
+        bodyLines.push("Best regards,");
+        bodyLines.push("Regional Blood Center Team");
+
+        const body = bodyLines.join("\n");
+
+        return {
+          id: r.id,
+          mailId: r.id,
+          from: displayName,
+          fromEmail: r.contact_email || "admin@regionalbloodcenter.org",
+          avatar: avatar,
+          avatarColor: "#165C3C",
+          profilePhoto: r.profile_photo || null,
+          subject: getSubjectByStatus(r.status, r.appointment_title || "Blood Drive Partnership Request"),
+          preview: `${displayName} - Partnership request ${r.status}. Event: ${new Date(r.event_date).toLocaleDateString()}`,
+          body: body,
+          timestamp: new Date(r.created_at),
+          read: r.status !== "pending",
+          starred: false,
+          category: "inbox",
+          attachments: [],
+          appointmentId: r.appointment_id,
+          status: r.status,
+          declineReason: r.decline_reason || null,
+          requestInfo: {
+            title: r.appointment_title || "Blood Drive Partnership Request",
+            requestor: r.contact_name,
+            organization: r.organization_barangay || r.organization_name,
+            dateSubmitted: r.created_at,
+            contactInfo: {
+              name: r.contact_name,
+              email: r.contact_email,
+              phone: r.contact_phone,
+              address: r.event_address,
+              type: orgType,
             },
-          };
-        });
+          },
+        };
+      });
 
-        try {
-          const prevIds = new Set(mails.map((m) => m.id || m.mailId));
-          const newArrivals = transformedMails.some(
-            (m) => !prevIds.has(m.id || m.mailId)
-          );
-          if (newArrivals) {
-            new Audio("/assets/message.mp3").play();
-          }
-        } catch (_) {}
-        setMails(transformedMails);
-      } else {
-        // Fallback sample data
-        setMails([
-          {
-            id: 1,
-            from: "Regional Blood Center",
-            fromEmail: "admin@regionalbloodcenter.org",
-            avatar: "RBC",
-            avatarColor: "#165C3C",
-            subject:
-              "Partnership Request Approved - Blood Drive at Community Center",
-            preview:
-              "Your partnership request has been approved by the Regional Blood Center...",
-            body: "Dear Partner,\n\nWe are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center.\n\nNext Steps:\n- Our team will contact you shortly to coordinate the blood drive details.\n- Please prepare the necessary documentation and venue arrangements.\n- Check your calendar for the scheduled appointment.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team",
-            timestamp: new Date(Date.now() - 2 * 60 * 60000),
-            read: false,
-            starred: false,
-            category: "inbox",
-            attachments: [],
-            status: "approved",
-            appointmentId: "APT001",
-          },
-          {
-            id: 2,
-            from: "Regional Blood Center",
-            fromEmail: "admin@regionalbloodcenter.org",
-            avatar: "RBC",
-            avatarColor: "#165C3C",
-            subject: "Partnership Request Declined - Blood Drive at School",
-            preview:
-              "Your partnership request has been declined by the Regional Blood Center...",
-            body: "Dear Partner,\n\nWe regret to inform you that your partnership request has been DECLINED by the Regional Blood Center.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team",
-            timestamp: new Date(Date.now() - 1 * 24 * 60 * 60000),
-            read: true,
-            starred: false,
-            category: "inbox",
-            attachments: [],
-            status: "declined",
-            declineReason:
-              "The proposed venue does not meet our safety and accessibility standards. Additionally, the requested date conflicts with another scheduled event in the area.",
-            appointmentId: "APT002",
-          },
-          {
-            id: 3,
-            from: "Regional Blood Center",
-            fromEmail: "admin@regionalbloodcenter.org",
-            avatar: "RBC",
-            avatarColor: "#165C3C",
-            subject: "Partnership Request Under Review - Company Blood Drive",
-            preview:
-              "Your partnership request is under review by the Regional Blood Center...",
-            body: "Dear Partner,\n\nYour partnership request is currently UNDER REVIEW by the Regional Blood Center. We will notify you once a decision has been made.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team",
-            timestamp: new Date(Date.now() - 30 * 60000),
-            read: false,
-            starred: true,
-            category: "inbox",
-            attachments: [],
-            status: "pending",
-            appointmentId: "APT003",
-          },
-        ]);
-      }
-    } catch (error) {
-      console.error("Error loading mails:", error);
-    } finally {
-      setIsLoading(false);
+      // Play notification sound for new mails
+      try {
+        const prevIds = new Set(mails.map((m) => m.id || m.mailId));
+        const newArrivals = transformedMails.some(
+          (m) => !prevIds.has(m.id || m.mailId)
+        );
+        if (newArrivals) {
+          const audio = new Audio("/assets/message.mp3");
+          audio.volume = 0.5;
+          audio.play().catch(e => console.log("Audio play failed:", e));
+        }
+      } catch (_) {}
+
+      setMails(transformedMails);
+    } else {
+      // Fallback sample data
+      setMails([
+        {
+          id: 1,
+          from: "Regional Blood Center",
+          fromEmail: "admin@regionalbloodcenter.org",
+          avatar: "RBC",
+          avatarColor: "#165C3C",
+          subject:
+            "Partnership Request Approved - Blood Drive at Community Center",
+          preview:
+            "Your partnership request has been approved by the Regional Blood Center...",
+          body: "Dear Partner,\n\nWe are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center.\n\nNext Steps:\n- Our team will contact you shortly to coordinate the blood drive details.\n- Please prepare the necessary documentation and venue arrangements.\n- Check your calendar for the scheduled appointment.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team",
+          timestamp: new Date(Date.now() - 2 * 60 * 60000),
+          read: false,
+          starred: false,
+          category: "inbox",
+          attachments: [],
+          status: "approved",
+          appointmentId: "APT001",
+        },
+        {
+          id: 2,
+          from: "Regional Blood Center",
+          fromEmail: "admin@regionalbloodcenter.org",
+          avatar: "RBC",
+          avatarColor: "#165C3C",
+          subject: "Partnership Request Declined - Blood Drive at School",
+          preview:
+            "Your partnership request has been declined by the Regional Blood Center...",
+          body: "Dear Partner,\n\nWe regret to inform you that your partnership request has been DECLINED by the Regional Blood Center.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team",
+          timestamp: new Date(Date.now() - 1 * 24 * 60 * 60000),
+          read: true,
+          starred: false,
+          category: "inbox",
+          attachments: [],
+          status: "declined",
+          declineReason:
+            "The proposed venue does not meet our safety and accessibility standards. Additionally, the requested date conflicts with another scheduled event in the area.",
+          appointmentId: "APT002",
+        },
+        {
+          id: 3,
+          from: "Regional Blood Center",
+          fromEmail: "admin@regionalbloodcenter.org",
+          avatar: "RBC",
+          avatarColor: "#165C3C",
+          subject: "Partnership Request Under Review - Company Blood Drive",
+          preview:
+            "Your partnership request is under review by the Regional Blood Center...",
+          body: "Dear Partner,\n\nYour partnership request is currently UNDER REVIEW by the Regional Blood Center. We will notify you once a decision has been made.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team",
+          timestamp: new Date(Date.now() - 30 * 60000),
+          read: false,
+          starred: true,
+          category: "inbox",
+          attachments: [],
+          status: "pending",
+          appointmentId: "APT003",
+        },
+      ]);
     }
-  };
+  } catch (error) {
+    console.error("Error loading mails:", error);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const getSubjectByStatus = (status, title) => {
     switch (status) {

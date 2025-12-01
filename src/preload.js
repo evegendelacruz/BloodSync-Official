@@ -1286,6 +1286,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
       throw error;
     }
   },
+
+  //=======================DOH NOTIFICATION METHODS=======================
+    checkAndCreateStockAlerts: () => ipcRenderer.invoke('checkAndCreateStockAlerts'),
+    getStockAlerts: () => ipcRenderer.invoke('getStockAlerts'),
+    getUnreadNotificationCount: () => ipcRenderer.invoke('getUnreadNotificationCount'),
+
+  //=======================PARTNERSHIP REQUEST METHODS=======================
+   markPartnershipRequestAsViewed: (requestId) =>
+  ipcRenderer.invoke('mark-partnership-request-viewed', requestId),
+  getPendingSyncRequests: () => 
+    ipcRenderer.invoke('get-pending-sync-requests'),
+  getPendingTempDonorRecords: () => 
+    ipcRenderer.invoke('get-pending-temp-donor-records'),
+  approveTempDonorRecords: (tdrIds, approvedBy) => 
+    ipcRenderer.invoke('approve-temp-donor-records', tdrIds, approvedBy),
+  declineTempDonorRecords: (tdrIds, declinedBy, reason) => 
+    ipcRenderer.invoke('decline-temp-donor-records', tdrIds, declinedBy, reason),
 });
 
 console.log("electronAPI exposed successfully");

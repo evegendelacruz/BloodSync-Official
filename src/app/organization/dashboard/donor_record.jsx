@@ -3766,6 +3766,7 @@ const DonorRecordOrg = () => {
                         height: "100%",
                         objectFit: "cover",
                         borderRadius: "50%",
+                        border: "1px solid #059669",
                       }}
                     />
                   ) : (
@@ -4336,14 +4337,17 @@ const DonorRecordOrg = () => {
           align-items: center;
           justify-content: center;
           transition: background-color 0.2s;
+          border: "1px solid #059669",
         }
 
         .user-avatar:hover {
           background-color: #9ca3af;
+          border: "1px solid #059669",
         }
 
         .user-avatar-active {
           background-color: #059669 !important;
+          border: "1px solid #059669",
         }
 
         .user-avatar-active:hover {
