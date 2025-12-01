@@ -281,21 +281,24 @@ const NewAppointmentForm = ({
           const orgInfo = getOrgInfo();
 
           // Send Request to Main Server
-          const requestData = {
-            appointmentId: localAppointment.id,
-            organizationName: orgInfo.name,
-            organizationBarangay: "N/A",
-            contactName: appointmentData.contactInfo.lastName || "N/A",
-            contactEmail: appointmentData.contactInfo.email || "",
-            contactPhone: appointmentData.contactInfo.phone || "",
-            eventDate: appointmentData.date,
-            eventTime: appointmentData.time,
-            eventAddress: appointmentData.contactInfo.address || "",
-            profilePhoto: orgInfo.photo,
-          };
+        const requestData = {
+          appointmentId: localAppointment.id,
+          // FIXED: Always send organization name (required field), never null
+          organizationName: orgInfo.name || orgInfo.organizationName || orgInfo.barangay || appointmentData.contactInfo.lastName || "Unknown Organization",
+          // Only set barangay if it's actually a Barangay category
+          organizationBarangay: orgInfo.category === 'Barangay' ? (orgInfo.name || orgInfo.barangay) : null,
+          contactName: appointmentData.contactInfo.lastName || orgInfo.contactName || "Contact Person",
+          contactEmail: appointmentData.contactInfo.email || "",
+          contactPhone: appointmentData.contactInfo.phone || "",
+          eventDate: appointmentData.date,
+          eventTime: appointmentData.time,
+          eventAddress: appointmentData.contactInfo.address || "",
+          profilePhoto: orgInfo.photo || null,
+        };
 
-          const serverResult =
-            await window.electronAPI.createPartnershipRequest(requestData);
+        console.log('📤 Sending partnership request:', requestData);
+
+        const serverResult = await window.electronAPI.createPartnershipRequest(requestData);
 
           if (!serverResult || !serverResult.id) {
             throw new Error(
@@ -1402,18 +1405,16 @@ const NewAppointmentForm = ({
                 We look forward to assisting you.
               </p>
               <button className="new-btn-close" onClick={handleClose}>
-                <X size={16} /> Close
+               Close
               </button>
             </div>
           )}
-          {/* --- ADD THIS BLOCK --- */}
           {isLoading && (
             <div className="saving-overlay">
               <div className="saving-spinner"></div>
               <div className="saving-text">Submitting Appointment...</div>
             </div>
           )}
-          {/* --- END OF BLOCK --- */}
         </div>
       </div>
     </>

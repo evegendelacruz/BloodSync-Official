@@ -15,12 +15,16 @@ import {
   Check,
   X,
   AlertTriangle,
+  AlertOctagon,
 } from "lucide-react";
 import StockExpirationModal from "../../../components/StockExpirationModal";
 import DeleteConfirmationModal from "../../../components/DeleteConfirmationModal";
 import Loader from "../../../components/Loader";
+import { useNavigate } from "react-router-dom";
+import RedBloodCell from "../blood_stock/rbc";
 
 const NotificationComponent = () => {
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -34,6 +38,7 @@ const NotificationComponent = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [notificationToDelete, setNotificationToDelete] = useState(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [stockAlertNotification, setStockAlertNotification] = useState(null);
   const [successMessage, setSuccessMessage] = useState({
     title: "",
     description: "",
@@ -42,6 +47,43 @@ const NotificationComponent = () => {
 
   const filterDropdownRef = useRef(null);
   const notificationMenuRef = useRef(null);
+
+  // Add this function to check blood stock levels
+const checkBloodStockLevels = async () => {
+  try {
+    if (typeof window !== "undefined" && window.electronAPI) {
+      // Check and create alerts
+      await window.electronAPI.checkAndCreateStockAlerts();
+    }
+  } catch (error) {
+    console.error("Error checking blood stock levels:", error);
+  }
+};
+
+// Add this useEffect to check on component mount and daily
+useEffect(() => {
+  checkBloodStockLevels();
+
+  // Check every 24 hours
+  const dailyCheckInterval = setInterval(() => {
+    checkBloodStockLevels();
+  }, 24 * 60 * 60 * 1000);
+
+  return () => {
+    clearInterval(dailyCheckInterval);
+  };
+}, []);
+
+// Add this useEffect to check on login
+useEffect(() => {
+  const checkOnLogin = async () => {
+    await checkBloodStockLevels();
+    // Refresh notifications after checking
+    await loadNotifications();
+  };
+  
+  checkOnLogin();
+}, []);
 
   useEffect(() => {
     loadNotifications();
@@ -87,110 +129,115 @@ const NotificationComponent = () => {
     };
   }, []);
 
-  const loadNotifications = async () => {
-    try {
-      if (!isRefreshing) {
-        setIsLoading(true);
-      }
-
-      if (typeof window !== "undefined" && window.electronAPI) {
-        // Only load notifications table data
-        const notificationsData =
-          await window.electronAPI.getAllNotifications();
-        const readLocalIds = JSON.parse(
-          localStorage.getItem("rbcPageReadNotificationIds") || "[]"
-        );
-        const transformedNotifications = notificationsData
-          .map((n) => {
-            let stockData = null;
-            let expirationDate = null;
-            let serialId = null;
-            if (n.link_to) {
-              try {
-                if (n.link_to.trim().startsWith("{")) {
-                  stockData = JSON.parse(n.link_to);
-                  expirationDate = stockData.expirationDate;
-                  serialId = stockData.serialId;
-                }
-              } catch (e) {}
-            }
-
-            // Map priority to status for expiration notifications
-            let displayStatus = n.status;
-            const notifType = n.notification_type || n.type;
-            if (notifType === "stock_expired" || notifType === "stock_out") {
-              displayStatus =
-                n.priority === "critical" ? "CRITICAL" : displayStatus;
-            } else if (notifType === "stock_expiring_urgent") {
-              displayStatus =
-                n.priority === "urgent" ? "URGENT" : displayStatus;
-            } else if (
-              notifType === "stock_expiring_soon" ||
-              notifType === "expiration_warning" ||
-              notifType === "stock_low"
-            ) {
-              displayStatus =
-                n.priority === "high" ? "STOCK ALERT" : displayStatus;
-            }
-
-            // Filter out donor records sync request approval notification
-            if (
-              n.title?.includes("Donor Records Sync Request Approval") ||
-              n.message?.includes("requested to sync") ||
-              n.message?.includes("Please review and approve the sync request")
-            ) {
-              return null;
-            }
-            return {
-              id: n.id,
-              notificationId: n.notification_id,
-              type: notifType || "partnership_request",
-              status: displayStatus,
-              priority: n.priority,
-              title: n.title,
-              message: n.message || n.description,
-              requestor: n.requestor || "System",
-              timestamp: new Date(n.updated_at || n.created_at),
-              read:
-                n.read ||
-                n.is_read ||
-                false ||
-                readLocalIds.includes(n.notification_id) ||
-                readLocalIds.includes(n.id),
-              appointmentId: n.appointment_id,
-              declineReason: n.decline_reason,
-              cancellationReason: n.cancellation_reason || n.decline_reason, // Unified reason field
-              expirationDate: expirationDate,
-              serialId: serialId,
-              stockData: stockData,
-              contactInfo: {
-                email: n.contact_email,
-                phone: n.contact_phone,
-                address: n.contact_address,
-                type: n.contact_type,
-              },
-            };
-          })
-          .filter(Boolean);
-        // Sort by unread first, then by timestamp
-        const allNotifications = transformedNotifications.sort((a, b) => {
-          if (a.read !== b.read) {
-            return a.read ? 1 : -1;
-          }
-          return new Date(b.timestamp) - new Date(a.timestamp);
-        });
-        setNotifications(allNotifications);
-      } else {
-        setNotifications([]);
-      }
-    } catch (error) {
-      console.error("Error loading notifications:", error);
-      setNotifications([]);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+ const loadNotifications = async () => {
+  try {
+    if (!isRefreshing) {
+      setIsLoading(true);
     }
-  };
+
+    if (typeof window !== "undefined" && window.electronAPI) {
+      // Load stock alerts AND other notification types
+      const stockAlerts = await window.electronAPI.getStockAlerts();
+      
+      const readLocalIds = JSON.parse(
+        localStorage.getItem("rbcPageReadNotificationIds") || "[]"
+      );
+      
+      const transformedNotifications = stockAlerts
+        .map((n) => {
+          let stockData = null;
+          let expirationDate = null;
+          let serialId = null;
+          if (n.link_to) {
+            try {
+              if (n.link_to.trim().startsWith("{")) {
+                stockData = JSON.parse(n.link_to);
+                expirationDate = stockData.expirationDate;
+                serialId = stockData.serialId;
+              }
+            } catch (e) {}
+          }
+
+          // Map priority to status for expiration notifications
+          let displayStatus = n.status;
+          const notifType = n.notification_type || n.type;
+          if (notifType === "stock_expired" || notifType === "stock_out") {
+            displayStatus =
+              n.priority === "critical" ? "CRITICAL" : displayStatus;
+          } else if (notifType === "stock_expiring_urgent") {
+            displayStatus =
+              n.priority === "urgent" ? "URGENT" : displayStatus;
+          } else if (
+            notifType === "stock_expiring_soon" ||
+            notifType === "expiration_warning" ||
+            notifType === "stock_low"
+          ) {
+            displayStatus =
+              n.priority === "high" ? "STOCK ALERT" : displayStatus;
+          }
+
+          // Filter out donor records sync request approval notification
+          if (
+            n.title?.includes("Donor Records Sync Request Approval") ||
+            n.message?.includes("requested to sync") ||
+            n.message?.includes("Please review and approve the sync request")
+          ) {
+            return null;
+          }
+          
+          return {
+            id: n.id || n.notification_id, // Use notification_id as fallback if id is undefined
+            notificationId: n.notification_id,
+            type: notifType || "stock_alert",
+            status: displayStatus,
+            priority: n.priority,
+            title: n.title,
+            message: n.message || n.description,
+            requestor: n.requestor || "System",
+            timestamp: new Date(n.updated_at || n.created_at),
+            read:
+              n.read ||
+              n.is_read ||
+              false ||
+              readLocalIds.includes(n.notification_id) ||
+              readLocalIds.includes(n.id),
+            appointmentId: n.appointment_id,
+            declineReason: n.decline_reason,
+            cancellationReason: n.cancellation_reason || n.decline_reason,
+            expirationDate: expirationDate,
+            serialId: serialId,
+            stockData: stockData,
+            contactInfo: {
+              email: n.contact_email,
+              phone: n.contact_phone,
+              address: n.contact_address,
+              type: n.contact_type,
+            },
+          };
+        })
+        .filter(Boolean);
+      
+      // Sort by unread first, then by timestamp
+      const allNotifications = transformedNotifications.sort((a, b) => {
+        if (a.read !== b.read) {
+          return a.read ? 1 : -1;
+        }
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      });
+      
+      setNotifications(allNotifications);
+    } else {
+      setNotifications([]);
+    }
+  } catch (error) {
+    console.error("Error loading notifications:", error);
+    setNotifications([]);
+  } finally {
+    setIsLoading(false);
+    setIsRefreshing(false);
+  }
+};
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await loadNotifications();
@@ -330,9 +377,9 @@ const NotificationComponent = () => {
       case "URGENT":
         return { bg: "#fef3c7", border: "#f59e0b", text: "#d97706" };
       case "STOCK ALERT":
-        return { bg: "#fff7ed", border: "#fb923c", text: "#ea580c" };
+        return { bg: "#fee2e2", border: "#dc2626", text: "#dc2626" };
       default:
-        return { bg: "#f3f4f6", border: "#6b7280", text: "#4b5563" };
+        return { bg: "#fee2e2", border: "#6b7280", text: "#4b5563" };
     }
   };
 
@@ -382,83 +429,157 @@ const NotificationComponent = () => {
     }
   };
 
-  // Get the main notification icon (the big circle icon on the left)
   const getNotificationMainIcon = (notification) => {
-    const type = notification.type;
+  const type = notification.type;
+  const priority = notification.priority;
 
-    // Stock EXPIRED notifications (critical)
-    if (type === "stock_expired") {
-      return (
-        <img
-          src="/assets/expired-blood.png"
-          alt="Expired Blood"
-          style={{ width: "24px", height: "24px" }}
-        />
-      );
-    }
+  // Stock EXPIRED notifications (critical)
+  if (type === "stock_expired") {
+    return (
+      <div style={{
+        width: '32px',
+        height: '32px',
+        borderRadius: '50%',
+        backgroundColor: 'transparent',
 
-    // Stock OUT notifications (critical)
-    if (type === "stock_out") {
-      return (
-        <img
-          src="/assets/expired-blood.png"
-          alt="Out of Stock"
-          style={{ width: "24px", height: "24px" }}
-        />
-      );
-    }
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <svg 
+          width="16" 
+          height="16" 
+          viewBox="0 0 24 24" 
+          fill="none" 
+          stroke="#ef4444"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </div>
+    );
+  }
 
-    // Stock LOW and expiration warnings (urgent and alerts)
-    if (
-      type === "stock_low" ||
-      type === "expiration_warning" ||
-      type === "stock_expiring_soon" ||
-      type === "stock_expiring_urgent"
-    ) {
-      return (
-        <img
-          src="/assets/urgent-blood.png"
-          alt="Blood Alert"
-          style={{ width: "24px", height: "24px" }}
-        />
-      );
-    }
+  // Stock OUT notifications (critical)
+  if (type === "stock_out") {
+    return (
+      <div style={{
+        width: '32px',
+        height: '32px',
+        borderRadius: '50%',
+        backgroundColor: 'transparent',
+        border: '2px solid #ef4444',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <svg 
+          width="16" 
+          height="16" 
+          viewBox="0 0 24 24" 
+          fill="none" 
+          stroke="#ef4444"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </div>
+    );
+  }
 
-    // Blood operation confirmations
-    if (
-      type === "blood_release" ||
-      type === "blood_adding" ||
-      type === "blood_restoring" ||
-      type === "blood_discarding" ||
-      type === "nonconforming_adding"
-    ) {
-      return (
-        <img
-          src="/assets/release-done.png"
-          alt="Confirmation"
-          style={{ width: "24px", height: "24px" }}
-        />
-      );
-    }
+  // Stock LOW and expiration warnings (urgent and alerts)
+  if (
+    type === "stock_low" ||
+    type === "expiration_warning" ||
+    type === "stock_expiring_soon" ||
+    type === "stock_expiring_urgent"
+  ) {
+    const iconColor = priority === 'urgent' ? '#dc2626' : '#dc2626';
+    return (
+      <div style={{
+        width: '32px',
+        height: '32px',
+        borderRadius: '50%',
+        backgroundColor: 'transparent',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <svg 
+          width="16" 
+          height="16" 
+          viewBox="0 0 24 24" 
+          fill="none" 
+          stroke={iconColor}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </div>
+    );
+  }
 
-    // Stock update notifications
-    if (
-      type === "blood_stock_update" ||
-      type === "nonconforming_update" ||
-      type === "released_update"
-    ) {
-      return (
-        <img
-          src="/assets/blood-update.png"
-          alt="Stock Update"
-          style={{ width: "24px", height: "24px" }}
-        />
-      );
-    }
+  // Blood operation confirmations
+  if (
+    type === "blood_release" ||
+    type === "blood_adding" ||
+    type === "blood_restoring" ||
+    type === "blood_discarding" ||
+    type === "nonconforming_adding"
+  ) {
+    return (
+      <div style={{
+        width: '32px',
+        height: '32px',
+        borderRadius: '50%',
+        backgroundColor: 'transparent',
+        border: '2px solid #10b981',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <CheckCircle size={16} color="#10b981" />
+      </div>
+    );
+  }
 
-    // Default to status icon for other notifications
-    return getStatusIcon(notification.status);
-  };
+  // Stock update notifications
+  if (
+    type === "blood_stock_update" ||
+    type === "nonconforming_update" ||
+    type === "released_update"
+  ) {
+    return (
+      <div style={{
+        width: '32px',
+        height: '32px',
+        borderRadius: '50%',
+        backgroundColor: 'transparent',
+        border: '2px solid #3b82f6',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <Bell size={16} color="#3b82f6" />
+      </div>
+    );
+  }
+
+  // Default to status icon for other notifications
+  return getStatusIcon(notification.status);
+};
 
   const getTypeIcon = (type) => {
     switch (type) {
@@ -542,7 +663,22 @@ const NotificationComponent = () => {
       if (typeof window !== "undefined" && window.electronAPI) {
         const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id);
         if (unreadIds.length > 0) {
-          await window.electronAPI.markAllNotificationsAsRead();
+          // Check if the function exists, otherwise manually update each notification
+          if (typeof window.electronAPI.markAllNotificationsAsRead === 'function') {
+            await window.electronAPI.markAllNotificationsAsRead();
+          } else {
+            // Fallback: mark each notification as read individually
+            for (const notification of notifications.filter((n) => !n.read)) {
+              if (notification.notificationId && typeof window.electronAPI.updateNotificationStatus === 'function') {
+                await window.electronAPI.updateNotificationStatus(
+                  notification.notificationId,
+                  'read',
+                  'System'
+                );
+              }
+            }
+          }
+          
           try {
             const key = "rbcPageReadNotificationIds";
             const existing = JSON.parse(localStorage.getItem(key) || "[]");
@@ -649,98 +785,124 @@ const NotificationComponent = () => {
   };
 
   const getFilteredNotifications = () => {
-    let filtered = notifications;
-    // Unified filter for expiration statuses
-    if (activeFilter === "stock_expiration") {
+  let filtered = [...notifications];
+  
+  if (activeFilter === "stock_expiration") {
+    filtered = filtered.filter(
+      (n) =>
+        n.status === "STOCK ALERT" ||
+        n.status === "URGENT" ||
+        n.status === "CRITICAL" ||
+        n.type === "expiration_warning" ||
+        n.type === "stock_expiring_soon" ||
+        n.type === "stock_expiring_urgent" ||
+        n.type === "stock_expired" ||
+        n.type === "stock_low" ||
+        n.type === "stock_out"
+    );
+  } else if (activeFilter !== "all") {
+    if (activeFilter === "unread") {
+      filtered = filtered.filter((n) => !n.read);
+    } else if (activeFilter === "partnership_request") {
+      filtered = filtered.filter((n) => n.type === "partnership_request");
+    } else if (activeFilter === "upcoming_event") {
       filtered = filtered.filter(
-        (n) =>
-          n.status === "STOCK ALERT" ||
-          n.status === "URGENT" ||
-          n.status === "CRITICAL" ||
-          n.type === "expiration_warning" ||
-          n.type === "stock_expiring_soon" ||
-          n.type === "stock_expiring_urgent" ||
-          n.type === "stock_expired"
-      );
-    } else if (activeFilter !== "all") {
-      if (activeFilter === "unread") {
-        filtered = filtered.filter((n) => !n.read);
-      } else if (activeFilter === "partnership_request") {
-        filtered = filtered.filter((n) => n.type === "partnership_request");
-      } else if (activeFilter === "upcoming_event") {
-        filtered = filtered.filter(
-          (n) => n.type === "upcoming_event" || n.type === "event_finished"
-        );
-      } else if (activeFilter === "blood_operations") {
-        filtered = filtered.filter(
-          (n) =>
-            n.type === "blood_release" ||
-            n.type === "blood_adding" ||
-            n.type === "blood_restoring" ||
-            n.type === "blood_discarding" ||
-            n.type === "nonconforming_adding"
-        );
-      } else if (activeFilter === "stock_updates") {
-        filtered = filtered.filter(
-          (n) =>
-            n.type === "blood_stock_update" ||
-            n.type === "nonconforming_update" ||
-            n.type === "released_update"
-        );
-      } else {
-        filtered = filtered.filter((n) => n.status === activeFilter);
-      }
-    }
-    if (searchQuery) {
-      filtered = filtered.filter(
-        (n) =>
-          (n.title &&
-            n.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
-          (n.message &&
-            n.message.toLowerCase().includes(searchQuery.toLowerCase())) ||
-          (n.requestor &&
-            n.requestor.toLowerCase().includes(searchQuery.toLowerCase()))
-      );
-    }
-    return filtered;
-  };
-
-  const getCounts = () => {
-    return {
-      all: notifications.length,
-      unread: notifications.filter((n) => !n.read).length,
-      approved: notifications.filter((n) => n.status === "approved").length,
-      declined: notifications.filter((n) => n.status === "declined").length,
-      pending: notifications.filter((n) => n.status === "pending").length,
-      partnership_request: notifications.filter(
-        (n) => n.type === "partnership_request"
-      ).length,
-      upcoming_event: notifications.filter(
         (n) => n.type === "upcoming_event" || n.type === "event_finished"
-      ).length,
-      stock_expiration: notifications.filter(
-        (n) =>
-          n.type === "expiration_warning" ||
-          n.type === "stock_expiring_soon" ||
-          n.type === "stock_expiring_urgent" ||
-          n.type === "stock_expired"
-      ).length,
-      blood_operations: notifications.filter(
+      );
+    } else if (activeFilter === "blood_operations") {
+      filtered = filtered.filter(
         (n) =>
           n.type === "blood_release" ||
           n.type === "blood_adding" ||
           n.type === "blood_restoring" ||
           n.type === "blood_discarding" ||
           n.type === "nonconforming_adding"
-      ).length,
-      stock_updates: notifications.filter(
+      );
+    } else if (activeFilter === "stock_updates") {
+      filtered = filtered.filter(
         (n) =>
           n.type === "blood_stock_update" ||
           n.type === "nonconforming_update" ||
-          n.type === "released_update"
-      ).length,
-    };
+          n.type === "released_update" ||
+          n.type === "stock_low" ||
+          n.type === "stock_out"
+      );
+    } else {
+      filtered = filtered.filter((n) => n.status === activeFilter);
+    }
+  }
+  
+  if (searchQuery) {
+    filtered = filtered.filter(
+      (n) =>
+        (n.title &&
+          n.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (n.message &&
+          n.message.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (n.requestor &&
+          n.requestor.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+  }
+  return filtered;
+};
+
+  const getCounts = () => {
+  const baseCounts = {
+    all: notifications.length,
+    unread: notifications.filter((n) => !n.read).length,
+    approved: notifications.filter((n) => n.status === "approved").length,
+    declined: notifications.filter((n) => n.status === "declined").length,
+    pending: notifications.filter((n) => n.status === "pending").length,
+    partnership_request: notifications.filter(
+      (n) => n.type === "partnership_request"
+    ).length,
+    upcoming_event: notifications.filter(
+      (n) => n.type === "upcoming_event" || n.type === "event_finished"
+    ).length,
+    // Separate stock_low and stock_out from expiration alerts
+    stock_low: notifications.filter(
+      (n) => n.type === "stock_low" || n.type === "stock_out"
+    ).length,
+    // Only count expiration-related notifications
+    stock_expiring: notifications.filter(
+      (n) =>
+        n.type === "expiration_warning" ||
+        n.type === "stock_expiring_soon" ||
+        n.type === "stock_expiring_urgent" ||
+        n.type === "stock_expired"
+    ).length,
+    // Keep stock_expiration for filter (includes both low stock and expiration)
+    stock_expiration: notifications.filter(
+      (n) =>
+        n.type === "expiration_warning" ||
+        n.type === "stock_expiring_soon" ||
+        n.type === "stock_expiring_urgent" ||
+        n.type === "stock_expired" ||
+        n.type === "stock_low" ||
+        n.type === "stock_out"
+    ).length,
+    blood_operations: notifications.filter(
+      (n) =>
+        n.type === "blood_release" ||
+        n.type === "blood_adding" ||
+        n.type === "blood_restoring" ||
+        n.type === "blood_discarding" ||
+        n.type === "nonconforming_adding"
+    ).length,
+    stock_updates: notifications.filter(
+      (n) =>
+        n.type === "blood_stock_update" ||
+        n.type === "nonconforming_update" ||
+        n.type === "released_update"
+    ).length,
   };
+  
+  return baseCounts;
+};
+
+const dismissStockAlert = () => {
+  setStockAlertNotification(null);
+};
 
   const getFilterLabel = (filter) => {
     const labels = {
@@ -792,6 +954,7 @@ const NotificationComponent = () => {
             background-color: #f9fafb;
             min-height: 100vh;
             font-family: 'Barlow', sans-serif;
+            border-radius: 8px;
           }
 
           .loading-state {
@@ -830,49 +993,49 @@ const NotificationComponent = () => {
     <div className="notification-content">
       {/* Header */}
       <div className="notification-header">
-        <h1 className="notification-title">Regional Blood Center</h1>
-        <p className="notification-subtitle">Notifications</p>
+        <h1 className="notification-title">Notifications</h1>
+        <p className="notification-subtitle">Blood Expiration and Low Stock Alert</p>
       </div>
 
       {/* Stats Cards */}
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: "#dbeafe" }}>
-            <Bell size={20} color="#2563eb" />
+        <div className="stats-grid">
+          <div className="stat-card">
+            <div className="stat-icon" style={{ backgroundColor: "#dbeafe" }}>
+              <Bell size={20} color="#2563eb" />
+            </div>
+            <div className="stat-info">
+              <div className="stat-label">Total</div>
+              <div className="stat-value">{counts.all}</div>
+            </div>
           </div>
-          <div className="stat-info">
-            <div className="stat-label">Total</div>
-            <div className="stat-value">{counts.all}</div>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ backgroundColor: "#fef3c7" }}>
+              <Mail size={20} color="#d97706" />
+            </div>
+            <div className="stat-info">
+              <div className="stat-label">Unread</div>
+              <div className="stat-value">{counts.unread}</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ backgroundColor: "#fef2f2" }}>
+              <AlertTriangle size={20} color="#dc2626" />
+            </div>
+            <div className="stat-info">
+              <div className="stat-label">Low Stock Alerts</div>
+              <div className="stat-value">{counts.stock_low}</div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ backgroundColor: "#fef2f2" }}>
+              <AlertOctagon size={20} color="#dc2626" />
+            </div>
+            <div className="stat-info">
+              <div className="stat-label">Expiration Alert</div>
+              <div className="stat-value">{counts.stock_expiring}</div>
+            </div>
           </div>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: "#fef3c7" }}>
-            <Mail size={20} color="#d97706" />
-          </div>
-          <div className="stat-info">
-            <div className="stat-label">Unread</div>
-            <div className="stat-value">{counts.unread}</div>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: "#fef2f2" }}>
-            <AlertTriangle size={20} color="#dc2626" />
-          </div>
-          <div className="stat-info">
-            <div className="stat-label">Stock Alerts</div>
-            <div className="stat-value">{counts.stock_expiration}</div>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: "#dbeafe" }}>
-            <Calendar size={20} color="#2563eb" />
-          </div>
-          <div className="stat-info">
-            <div className="stat-label">Events</div>
-            <div className="stat-value">{counts.upcoming_event}</div>
-          </div>
-        </div>
-      </div>
 
       {/* Controls Bar */}
       <div className="controls-bar">
@@ -1054,13 +1217,15 @@ const NotificationComponent = () => {
           ) : (
             <div className="notifications-list">
               {filteredNotifications.map((notification) => {
-                const colors = getNotificationIconColor(notification);
-                return (
-                  <div
-                    key={notification.id}
-                    className={`notification-item ${!notification.read ? "unread" : ""} ${selectedNotification && selectedNotification.id === notification.id ? "selected" : ""}`}
-                    onClick={() => handleNotificationClick(notification)}
-                  >
+                    const colors = getNotificationIconColor(notification);
+                    const isSelected = selectedNotification?.id === notification.id;
+                    
+                    return (
+                      <div
+                        key={`notification-${notification.id}`}
+                        className={`notification-item ${!notification.read ? "unread" : ""} ${isSelected ? "selected" : ""}`}
+                        onClick={() => handleNotificationClick(notification)}
+                      >
                     <div
                       className="notification-icon"
                       style={{
@@ -1080,14 +1245,16 @@ const NotificationComponent = () => {
                           <span>
                             {notification.type === "partnership_request"
                               ? "Request"
-                              : "Event"}
+                              : "Alert"}
                           </span>
                         </div>
                         <span className="notification-time">
                           {getTimeAgo(notification.timestamp)}
                         </span>
                       </div>
-                      <div className="notification-title">
+                      <div className="notification-title-row" style={{
+                        fontWeight: !notification.read ? 700 : 500
+                      }}>
                         {notification.title}
                       </div>
                       <div className="notification-preview">
@@ -1416,9 +1583,12 @@ const NotificationComponent = () => {
                       "Red Blood Cell" && (
                       <button
                         className="view-stock-details-button"
-                        onClick={() =>
-                          (window.location.hash = "#/dashboard/blood_stock/rbc")
-                        }
+                        onClick={() => {
+                          // Navigate to the red-blood-cell screen in Dashboard
+                          window.dispatchEvent(new CustomEvent('navigate-to-screen', { 
+                            detail: 'red-blood-cell' 
+                          }));
+                        }}
                         style={{ flex: 1 }}
                       >
                         <AlertTriangle size={16} />
@@ -1428,10 +1598,11 @@ const NotificationComponent = () => {
                     {selectedNotification.stockData.category === "Plasma" && (
                       <button
                         className="view-stock-details-button"
-                        onClick={() =>
-                          (window.location.hash =
-                            "#/dashboard/blood_stock/plasma")
-                        }
+                        onClick={() => {
+                          window.dispatchEvent(new CustomEvent('navigate-to-screen', { 
+                            detail: 'plasma' 
+                          }));
+                        }}
                         style={{ flex: 1 }}
                       >
                         <AlertTriangle size={16} />
@@ -1441,10 +1612,11 @@ const NotificationComponent = () => {
                     {selectedNotification.stockData.category === "Platelet" && (
                       <button
                         className="view-stock-details-button"
-                        onClick={() =>
-                          (window.location.hash =
-                            "#/dashboard/blood_stock/platelet")
-                        }
+                        onClick={() => {
+                          window.dispatchEvent(new CustomEvent('navigate-to-screen', { 
+                            detail: 'platelet' 
+                          }));
+                        }}
                         style={{ flex: 1 }}
                       >
                         <AlertTriangle size={16} />
@@ -1584,6 +1756,7 @@ const NotificationComponent = () => {
           background-color: #f9fafb;
           min-height: 100vh;
           font-family: 'Barlow', sans-serif;
+          border-radius: 8px;
         }
 
         .notification-header {
@@ -1915,11 +2088,16 @@ const NotificationComponent = () => {
         }
 
         .notification-item.selected {
-          background-color: #e8f5e8;
+          background-color: #e8f5e9;
+          border-left: 4px solid #165C3C;
         }
 
         .notification-item.unread {
           background-color: #fefffe;
+        }
+
+        .notification-item.unread.selected {
+          background-color: #e8f5e9;
         }
 
         .notification-icon {
@@ -1931,6 +2109,7 @@ const NotificationComponent = () => {
           justify-content: center;
           border: 2px solid;
           flex-shrink: 0;
+          background-color: white;
         }
 
         .notification-item-content {
@@ -1963,12 +2142,19 @@ const NotificationComponent = () => {
         }
 
         .notification-title {
-          font-size: 14px;
-          font-weight: 600;
-          color: #111827;
-          margin-bottom: 4px;
-          font-family: 'Barlow', sans-serif;
-          line-height: 1.4;
+          font-size: 24px;
+          font-weight: 700;
+          color: #165C3C;
+          margin: 0 0 4px 0;
+          font-family: 'Barlow Semi Condensed', 'Barlow', sans-serif;
+        }
+        
+        .notification-title-row {
+          font-size: 16px;
+          font-weight: 700;
+          color: #165C3C;
+          margin: 0 0 4px 0;
+          font-family: 'Barlow Semi Condensed', 'Barlow', sans-serif;
         }
 
         .notification-preview {
@@ -2100,6 +2286,7 @@ const NotificationComponent = () => {
           justify-content: center;
           border: 2px solid;
           flex-shrink: 0;
+          background-color: white; 
         }
 
         .notification-detail-actions {
@@ -2129,7 +2316,7 @@ const NotificationComponent = () => {
         }
 
         .notification-detail-title {
-          font-size: 20px;
+          font-size: 21px;
           font-weight: 700;
           color: #111827;
           margin-bottom: 16px;
