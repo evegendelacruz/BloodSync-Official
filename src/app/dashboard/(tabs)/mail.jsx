@@ -55,187 +55,190 @@ const MailComponent = ({ onNavigate }) => {
   }, []);
 
   const loadMails = async () => {
-    try {
-      setIsLoading(true);
+  try {
+    setIsLoading(true);
 
-      if (typeof window !== "undefined" && window.electronAPI) {
-        // Load partnership requests from the database
-        const requests = await window.electronAPI.getAllPartnershipRequests();
-        console.log("Partnership requests from DB:", requests);
+    if (typeof window !== "undefined" && window.electronAPI) {
+      // Load partnership requests from the database
+      const requests = await window.electronAPI.getAllPartnershipRequests();
+      console.log("Partnership requests from DB:", requests);
 
-        // Load sync requests from the database (temp_donor_records)
-        const syncRequests = await window.electronAPI.getPendingTempDonorRecords();
-        console.log("Sync requests from DB:", syncRequests);
+      // Load sync requests from the database (temp_donor_records)
+      const syncRequests = await window.electronAPI.getPendingTempDonorRecords();
+      console.log("Sync requests from DB:", syncRequests);
 
-        // Group sync requests by source organization and user
-        const groupedSyncRequests = syncRequests.reduce((acc, record) => {
-          // Use fallback values if organization or user name is missing
-          const organization = record.tdr_source_organization || "Unknown Organization";
-          const userName = record.tdr_source_user_name || "Unknown User";
-          const key = `${organization}-${record.tdr_source_user_id}`;
+      // Group sync requests by source organization and user
+      const groupedSyncRequests = syncRequests.reduce((acc, record) => {
+        const organization = record.tdr_source_organization || "Unknown Organization";
+        const userName = record.tdr_source_user_name || "Unknown User";
+        const key = `${organization}-${record.tdr_source_user_id}`;
 
-          if (!acc[key]) {
-            acc[key] = {
-              source_organization: organization,
-              source_user_name: userName,
-              sync_requested_at: record.tdr_created_at,
-              donors: [],
-            };
-          }
-          acc[key].donors.push(record);
-          return acc;
-        }, {});
-        console.log("Grouped sync requests:", groupedSyncRequests);
-
-        // Transform partnership requests into mail format
-        const mailsFromRequests = requests.map((r) => {
-          const avatar = r.organization_name
-            ? r.organization_name
-                .split(" ")
-                .map((name) => name[0])
-                .join("")
-                .substring(0, 2)
-                .toUpperCase()
-            : "UN";
-
-          // Determine organization type based on organization name or barangay
-          const orgType =
-            r.organization_type ||
-            (r.organization_name &&
-            r.organization_name.toLowerCase().includes("barangay")
-              ? "barangay"
-              : "organization");
-
-          return {
-            id: r.id,
-            requestId: r.id,
-            type: "partnership",
-            from: `${r.organization_name} (${r.organization_barangay})`,
-            fromEmail: r.contact_email,
-            avatar: avatar,
-            avatarColor: getAvatarColor(avatar),
-            profilePhoto: r.profile_photo || null,
-            subject: r.appointment_title || `Blood Drive Partnership Request`,
-            preview: `${r.organization_name} has requested a blood drive partnership for ${new Date(r.event_date).toLocaleDateString()} at ${r.event_time}.`,
-            body: buildPartnershipRequestBody(r),
-            timestamp: new Date(r.created_at),
-            read: r.status !== "pending",
-            starred: false,
-            category: "inbox",
-            attachments: [],
-            appointmentId: r.appointment_id,
-            status: r.status,
-            declineReason: null,
-            requestInfo: {
-              organizationName: r.organization_name,
-              organizationBarangay: r.organization_barangay,
-              contactName: r.contact_name,
-              contactEmail: r.contact_email,
-              contactPhone: r.contact_phone,
-              eventDate: r.event_date,
-              eventTime: r.event_time,
-              eventAddress: r.event_address,
-              appointmentTitle: r.appointment_title || "Blood Drive Partnership Request",
-              contactInfo: {
-                name: r.contact_name,
-                email: r.contact_email,
-                phone: r.contact_phone,
-                address: r.event_address,
-                type: orgType,
-              },
-            },
+        if (!acc[key]) {
+          acc[key] = {
+            source_organization: organization,
+            source_user_name: userName,
+            sync_requested_at: record.tdr_created_at,
+            donors: [],
           };
-        });
+        }
+        acc[key].donors.push(record);
+        return acc;
+      }, {});
 
-        // Transform sync requests into mail format
-        const mailsFromSyncRequests = Object.values(groupedSyncRequests).map(
-          (group, index) => {
-            const orgType = group.source_organization
-              .toLowerCase()
-              .includes("barangay")
-              ? "Barangay"
-              : "Organization";
-            const avatar = group.source_user_name
+      // Transform partnership requests into mail format
+      const mailsFromRequests = requests.map((r) => {
+        // Generate avatar from organization name
+        const avatar = r.contact_name
+          ? r.contact_name
               .split(" ")
               .map((name) => name[0])
               .join("")
               .substring(0, 2)
-              .toUpperCase();
+              .toUpperCase()
+          : "UN";
 
-            return {
-              id: `sync-${group.source_organization}-${group.source_user_name}-${index}`,
-              requestId: `sync-${group.source_organization}-${group.source_user_name}`,
-              type: "sync",
-              from: `${group.source_user_name} (${orgType})`,
-              fromEmail: "",
-              avatar: avatar,
-              avatarColor: getAvatarColor(avatar),
-              subject: `Incoming Record Sync Request`,
-              preview: `${group.source_user_name} would like to approve ${group.donors.length} pending donor record${group.donors.length > 1 ? "s" : ""}.`,
-              body: buildSyncRequestBody(group),
-              timestamp: new Date(group.sync_requested_at),
-              read: false,
-              starred: false,
-              category: "inbox",
-              attachments: [],
-              status: "pending",
-              syncInfo: {
-                userName: group.source_user_name,
-                organization: group.source_organization,
-                organizationType: orgType,
-                donorCount: group.donors.length,
-                donors: group.donors,
-              },
-            };
-          }
-        );
-        console.log("Mails from sync requests:", mailsFromSyncRequests);
+        // Determine organization type
+        const orgType = r.organization_type || 
+          (r.contact_name && r.contact_name.toLowerCase().includes("barangay")
+            ? "barangay"
+            : "organization");
 
-        // Combine and sort by timestamp
-        const allMails = [...mailsFromRequests, ...mailsFromSyncRequests].sort(
-          (a, b) => b.timestamp - a.timestamp
-        );
+        // Build proper display name
+        const displayName = r.organization_barangay && r.organization_barangay !== "N/A"
+          ? `${r.contact_name} (${r.organization_barangay})`
+          : r.contact_name;
 
-        try {
-          const prevIds = new Set(mails.map((m) => m.id || m.mailId));
-          const newArrivals = allMails.some(
-            (m) => !prevIds.has(m.id || m.mailId)
-          );
-          if (newArrivals) {
-            new Audio("/assets/message.mp3").play();
-          }
-        } catch (_) {}
+        return {
+          id: r.id,
+          requestId: r.id,
+          type: "partnership",
+          from: displayName,
+          fromEmail: r.contact_email,
+          avatar: avatar,
+          avatarColor: getAvatarColor(avatar),
+          profilePhoto: r.profile_photo || null,
+          subject: r.appointment_title || `Blood Drive Partnership Request`,
+          preview: `${r.contact_name} has requested a blood drive partnership for ${new Date(r.event_date).toLocaleDateString()} at ${r.event_time}.`,
+          body: buildPartnershipRequestBody(r),
+          timestamp: new Date(r.created_at),
+          read: r.status !== "pending",
+          starred: false,
+          category: "inbox",
+          attachments: [],
+          appointmentId: r.appointment_id,
+          status: r.status,
+          declineReason: r.decline_reason || null,
+          requestInfo: {
+            organizationName: r.contact_name,
+            organizationBarangay: r.organization_barangay,
+            contactName: r.contact_name,
+            contactEmail: r.contact_email,
+            contactPhone: r.contact_phone,
+            eventDate: r.event_date,
+            eventTime: r.event_time,
+            eventAddress: r.event_address,
+            appointmentTitle: r.appointment_title || "Blood Drive Partnership Request",
+            contactInfo: {
+              name: r.contact_name,
+              email: r.contact_email,
+              phone: r.contact_phone,
+              address: r.event_address,
+              type: orgType,
+            },
+          },
+        };
+      });
 
-        setMails(allMails);
-      } else {
-        // Fallback sample data
-        setMails([
-          {
-            id: 1,
-            from: "John Smith",
-            fromEmail: "john.smith@hospital.com",
-            avatar: "JS",
-            avatarColor: "#3b82f6",
-            subject: "Partnership Request - Blood Drive at Community Center",
-            preview:
-              "We would like to request a partnership for a blood drive event...",
-            body: "Dear Regional Blood Center,\n\nWe would like to request a partnership for a blood drive event at our Community Center.\n\nContact Information:\nName: John Smith\nEmail: john.smith@hospital.com\nPhone: (555) 123-4567\nType: Organization\n\nBest regards,\nJohn Smith",
-            timestamp: new Date(Date.now() - 2 * 60 * 60000),
+      // Transform sync requests into mail format
+      const mailsFromSyncRequests = Object.values(groupedSyncRequests).map(
+        (group, index) => {
+          const orgType = group.source_organization
+            .toLowerCase()
+            .includes("barangay")
+            ? "Barangay"
+            : "Organization";
+          const avatar = group.source_user_name
+            .split(" ")
+            .map((name) => name[0])
+            .join("")
+            .substring(0, 2)
+            .toUpperCase();
+
+          return {
+            id: `sync-${group.source_organization}-${group.source_user_name}-${index}`,
+            requestId: `sync-${group.source_organization}-${group.source_user_name}`,
+            type: "sync",
+            from: `${group.source_user_name} (${orgType})`,
+            fromEmail: "",
+            avatar: avatar,
+            avatarColor: getAvatarColor(avatar),
+            subject: `Incoming Record Sync Request`,
+            preview: `${group.source_user_name} would like to approve ${group.donors.length} pending donor record${group.donors.length > 1 ? "s" : ""}.`,
+            body: buildSyncRequestBody(group),
+            timestamp: new Date(group.sync_requested_at),
             read: false,
-            starred: true,
+            starred: false,
             category: "inbox",
             attachments: [],
             status: "pending",
-            appointmentId: "APT001",
-          },
-        ]);
-      }
-    } catch (error) {
-      console.error("Error loading mails:", error);
-    } finally {
-      setIsLoading(false);
+            syncInfo: {
+              userName: group.source_user_name,
+              organization: group.source_organization,
+              organizationType: orgType,
+              donorCount: group.donors.length,
+              donors: group.donors,
+            },
+          };
+        }
+      );
+
+      // Combine and sort by timestamp
+      const allMails = [...mailsFromRequests, ...mailsFromSyncRequests].sort(
+        (a, b) => b.timestamp - a.timestamp
+      );
+
+      // Play notification sound for new mails
+      try {
+        const prevIds = new Set(mails.map((m) => m.id || m.mailId));
+        const newArrivals = allMails.some(
+          (m) => !prevIds.has(m.id || m.mailId)
+        );
+        if (newArrivals) {
+          const audio = new Audio("/assets/message.mp3");
+          audio.volume = 0.5;
+          audio.play().catch(e => console.log("Audio play failed:", e));
+        }
+      } catch (_) {}
+
+      setMails(allMails);
+    } else {
+      // Fallback sample data
+      setMails([
+        {
+          id: 1,
+          from: "Sample Organization (Barangay San Roque)",
+          fromEmail: "contact@sample.org",
+          avatar: "SO",
+          avatarColor: "#3b82f6",
+          subject: "Partnership Request - Blood Drive",
+          preview: "We would like to request a partnership...",
+          body: "Sample partnership request body",
+          timestamp: new Date(Date.now() - 2 * 60 * 60000),
+          read: false,
+          starred: false,
+          category: "inbox",
+          attachments: [],
+          status: "pending",
+          appointmentId: "APT001",
+        },
+      ]);
     }
-  };
+  } catch (error) {
+    console.error("Error loading mails:", error);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const getSubjectByStatus = (status, title) => {
     switch (status) {
@@ -268,7 +271,7 @@ const MailComponent = ({ onNavigate }) => {
     // This body is now clean and not redundant.
     // The details will be shown in the new "Request Details" box.
     const lines = [
-      `${request.organization_name} has requested a blood drive partnership.`,
+      `${request.contact_name} has requested a blood drive partnership.`,
       "This partnership request is awaiting your review.",
     ];
 
@@ -508,11 +511,6 @@ const MailComponent = ({ onNavigate }) => {
     }
   };
 
-  const handleDeclineSyncRequest = (mail) => {
-    setMailToDecline(mail);
-    setShowDeclineModal(true);
-    setDeclineReason("");
-  };
 
   const handleConfirmDeclineSyncRequest = async () => {
     if (!declineReason.trim()) {
@@ -586,56 +584,36 @@ const MailComponent = ({ onNavigate }) => {
     }
   };
 
-  const handleAcceptSyncRequest = async (mail) => {
-    try {
-      if (typeof window !== "undefined" && window.electronAPI) {
-        // Get current user
-        const user = JSON.parse(localStorage.getItem("currentUser"));
-        const approvedBy = user?.fullName || "RBC Admin";
+  const handleAcceptSyncRequest = async () => {
+  setIsAccepting(true);
+  try {
+    const tdrIds = selectedMail.requestIds || [selectedMail.id];
+    const approvedBy = userData?.fullName || 'Admin';
+    
+    const response = await window.electronAPI.approveTempDonorRecords(tdrIds, approvedBy);
 
-        // Update sync request status to approved in database
-        // Note: updateSyncRequestStatus expects (organization, userName, status, by, reason)
-        await window.electronAPI.updateSyncRequestStatus(
-          mail.syncInfo.organization,
-          mail.syncInfo.userName,
-          "approved",
-          approvedBy,
-          null
-        );
-
-        // Note: Notification to organization will be handled through their system
-        console.log("[APPROVAL SYNC] Sync request approved successfully");
-        console.log("[APPROVAL SYNC] Approved by:", approvedBy);
-        console.log("[APPROVAL SYNC] Organization:", mail.syncInfo.organization);
-        console.log("[APPROVAL SYNC] Donor count:", mail.syncInfo.donorCount);
-
-        // Update local state
-        setMails((prev) =>
-          prev.map((m) =>
-            m.id === mail.id ? { ...m, read: true, status: "approved" } : m
-          )
-        );
-
-        if (selectedMail && selectedMail.id === mail.id) {
-          setSelectedMail({ ...selectedMail, read: true, status: "approved" });
-        }
-
-        // Show custom success modal
-        setSuccessMessage({
-          title: "SYNC APPROVED",
-          description:
-            "The sync request has been approved and donor records have been updated.",
-        });
-        setShowSuccessModal(true);
-
-        // Reload mails to get fresh data
-        await loadMails();
-      }
-    } catch (error) {
-      console.error("Error accepting sync request:", error);
-      alert("Failed to accept sync request. Please try again.");
+    if (response.success) {
+      showNotification('Sync request accepted successfully', 'success');
+      
+      // Update local state
+      setMails(prevMails =>
+        prevMails.map(mail =>
+          mail.id === selectedMail.id
+            ? { ...mail, status: 'approved', read: true }
+            : mail
+        )
+      );
+      
+      setSelectedMail(prev => ({ ...prev, status: 'approved', read: true }));
+      setShowAcceptModal(false);
     }
-  };
+  } catch (error) {
+    console.error('Error accepting sync request:', error);
+    showNotification('Failed to accept sync request: ' + error.message, 'error');
+  } finally {
+    setIsAccepting(false);
+  }
+};
 
   const handleAcceptRequest = async (mail) => {
     if (!confirm(`Accept partnership request from ${mail.from}?`)) {
@@ -687,89 +665,51 @@ const MailComponent = ({ onNavigate }) => {
     }
   };
 
-  const handleDeclineRequest = (mail) => {
-    setMailToDecline(mail);
-    setShowDeclineModal(true);
-    setDeclineReason("");
-  };
+  const handleDeclineSyncRequest = async () => {
+  if (!declineReason.trim()) {
+    showNotification('Please provide a reason for declining', 'error');
+    return;
+  }
 
-  const handleConfirmDecline = async () => {
-    if (!declineReason.trim()) {
-      alert("Please provide a reason for declining this request.");
-      return;
+  setIsDeclining(true);
+  try {
+    const tdrIds = selectedMail.requestIds || [selectedMail.id];
+    const declinedBy = userData?.fullName || 'Admin';
+    
+    const response = await window.electronAPI.declineTempDonorRecords(
+      tdrIds, 
+      declinedBy, 
+      declineReason
+    );
+
+    if (response.success) {
+      showNotification('Sync request declined successfully', 'success');
+      
+      setMails(prevMails =>
+        prevMails.map(mail =>
+          mail.id === selectedMail.id
+            ? { ...mail, status: 'declined', decline_reason: declineReason, read: true }
+            : mail
+        )
+      );
+      
+      setSelectedMail(prev => ({ 
+        ...prev, 
+        status: 'declined', 
+        decline_reason: declineReason, 
+        read: true 
+      }));
+      
+      setShowDeclineModal(false);
+      setDeclineReason('');
     }
-
-    const mail = mailToDecline;
-
-    try {
-      if (typeof window !== "undefined" && window.electronAPI) {
-        // Get current user
-        const user = JSON.parse(localStorage.getItem("currentUser"));
-        const declinedBy = user?.fullName || "RBC Admin";
-
-        // Update partnership request status
-        await window.electronAPI.updatePartnershipRequestStatus(
-          mail.requestId,
-          "declined", // Make sure this matches the constraint
-          declinedBy,
-          declineReason // Pass the decline reason
-        );
-
-        // ADD THIS LINE TO UPDATE THE LOCAL CALENDAR
-        await window.electronAPI.updateAppointmentStatus(
-          mail.appointmentId,
-          "declined"
-        );
-
-        // Note: Notification to organization will be handled through their system
-        console.log("[DECLINE] Partnership request declined successfully");
-        console.log("[DECLINE] Decline reason:", declineReason);
-        console.log("[DECLINE] Declined by:", declinedBy);
-        console.log("[DECLINE] Appointment ID:", mail.appointmentId);
-
-        // Update local state
-        setMails((prev) =>
-          prev.map((m) =>
-            m.id === mail.id
-              ? {
-                  ...m,
-                  read: true,
-                  status: "declined",
-                  declineReason: declineReason,
-                }
-              : m
-          )
-        );
-
-        if (selectedMail && selectedMail.id === mail.id) {
-          setSelectedMail({
-            ...selectedMail,
-            read: true,
-            status: "declined",
-            declineReason: declineReason,
-          });
-        }
-
-        // Show custom success modal
-        setSuccessMessage({
-          title: "PARTNERSHIP DECLINED",
-          description:
-            "The partnership request has been successfully declined.",
-        });
-        setShowSuccessModal(true);
-
-        // Reload mails to get fresh data
-        await loadMails();
-        setShowDeclineModal(false);
-        setMailToDecline(null);
-        setDeclineReason("");
-        loadMails(); // Reload to get fresh data
-      }
-    } catch (error) {
-      console.error("Error declining request:", error);
-      alert("Failed to decline request. Please try again.");
-    }
-  };
+  } catch (error) {
+    console.error('Error declining sync request:', error);
+    showNotification('Failed to decline sync request: ' + error.message, 'error');
+  } finally {
+    setIsDeclining(false);
+  }
+};
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -868,8 +808,8 @@ const MailComponent = ({ onNavigate }) => {
     <div className="mail-content">
       {/* Header */}
       <div className="mail-header">
-        <h1 className="mail-title">Partnership Requests</h1>
-        <p className="mail-subtitle">Messages from partner organizations</p>
+        <h1 className="mail-title">Regional Blood Center Mail</h1>
+        <p className="mail-subtitle">Blood Drive Partnerships and Sync Requests Messages</p>
       </div>
 
       {/* Controls Bar */}

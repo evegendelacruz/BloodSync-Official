@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Calendar, Mail, Bell, User, Droplet, RefreshCw, CheckCircle } from "lucide-react";
+import { Calendar, Mail, Bell, User, Droplet, RefreshCw, CheckCircle, Clock, MapPin, Users } from "lucide-react";
 import SidePanel from "../../components/SidePanel";
 
 import MailComponent from "./(tabs)/mail";
@@ -49,6 +49,7 @@ const DashboardContent = () => {
     mobileQuarterlyDonations: [0, 0, 0, 0],
   });
   const [loading, setLoading] = useState(true);
+  const [upcomingDrives, setUpcomingDrives] = useState([]);
   const [error, setError] = useState(null);
   const extractMonthFromDate = (dateString) => {
     if (!dateString) return null;
@@ -65,6 +66,60 @@ const DashboardContent = () => {
     const [year, month, day] = dateString.split("-").map(num => parseInt(num, 10));
     return year;
   };
+
+  useEffect(() => {
+  fetchUpcomingDrive();
+}, []);
+
+const fetchUpcomingDrive = async () => {
+  try {
+    if (window.electronAPI) {
+      const appointments = await window.electronAPI.getAllAppointments();
+      const partnershipRequests = await window.electronAPI.getAllPartnershipRequests(null);
+      
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const upcomingAppointments = appointments
+        .filter(apt => {
+          const eventDate = new Date(apt.date + 'T00:00:00');
+          return (apt.status === 'approved' || apt.status === 'confirmed' || apt.status === 'scheduled') 
+            && eventDate >= today;
+        })
+        .map(apt => ({
+          title: apt.title || 'Blood Drive Event',
+          date: apt.date,
+          time: apt.time,
+          location: apt.contactInfo?.address || 'Location TBD',
+          organization: apt.contactInfo?.lastName || 'Unknown Organization',
+        }));
+      
+      const upcomingPartnerships = partnershipRequests
+        .filter(req => {
+          const eventDate = new Date(req.event_date + 'T00:00:00');
+          return (req.status === 'approved' || req.status === 'confirmed' || req.status === 'scheduled') 
+            && eventDate >= today;
+        })
+        .map(req => ({
+          title: `Blood Drive Partnership - ${req.contact_name}`,
+          date: req.event_date,
+          time: req.event_time,
+          location: req.event_address || 'Location TBD',
+          organization: req.contact_name,
+        }));
+      
+      const allUpcoming = [...upcomingAppointments, ...upcomingPartnerships]
+        .sort((a, b) => new Date(a.date) - new Date(b.date))
+        .slice(0, 2); // Get top 2
+      
+      setUpcomingDrives(allUpcoming);
+    }
+  } catch (error) {
+    console.error('Error fetching upcoming drives:', error);
+    setUpcomingDrives([]);
+  }
+};
+
 
   useEffect(() => {
     fetchDashboardData();
@@ -1219,16 +1274,71 @@ const DashboardContent = () => {
             </div>
           </div>
 
-          {/* Upcoming Drive - Placeholder */}
+          {/* Upcoming Drives */}
           <div style={styles.dashboardCard}>
-            <h3 style={styles.cardTitle}>Upcoming Drive</h3>
+            <h3 style={styles.cardTitle}>Upcoming Drives</h3>
             <p style={styles.cardSubtitle}>
               {new Date().toLocaleString("en-US", {
                 month: "long",
                 year: "numeric",
               })}
             </p>
-            <div style={styles.noDataText}>No upcoming drives scheduled</div>
+            {upcomingDrives.length > 0 ? (
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '10px',
+                padding: '12px 0',
+                maxHeight: '280px',
+                overflowY: 'auto'
+              }}>
+                {upcomingDrives.map((drive, index) => (
+                  <div key={index} style={{ 
+                    backgroundColor: '#f0f9ff', 
+                    padding: '14px', 
+                    borderRadius: '8px',
+                    borderLeft: '4px solid #3b82f6',
+                    minHeight: '120px'
+                  }}>
+                    <h4 style={{ 
+                      fontSize: '13px', 
+                      fontWeight: '600', 
+                      color: '#111827', 
+                      margin: '0 0 10px 0',
+                      fontFamily: 'Barlow, sans-serif',
+                      lineHeight: '1.3'
+                    }}>
+                      {drive.title}
+                    </h4>
+                    <div style={{ fontSize: '11px', color: '#6b7280', lineHeight: '1.5', fontFamily: 'Arial, sans-serif' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                        <Calendar size={14} style={{ color: '#3b82f6', flexShrink: 0 }} />
+                        <span>{new Date(drive.date).toLocaleDateString('en-US', { 
+                          weekday: 'short', 
+                          year: 'numeric', 
+                          month: 'short', 
+                          day: 'numeric' 
+                        })}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                        <Clock size={14} style={{ color: '#3b82f6', flexShrink: 0 }} />
+                        <span>{drive.time}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '6px' }}>
+                        <MapPin size={14} style={{ color: '#3b82f6', flexShrink: 0, marginTop: '2px' }} />
+                        <span style={{ flex: 1 }}>{drive.location}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Users size={14} style={{ color: '#3b82f6', flexShrink: 0 }} />
+                        <span>{drive.organization}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={styles.noDataText}>No upcoming drives scheduled</div>
+            )}
           </div>
         </div>
       </div>
@@ -1523,7 +1633,46 @@ const Dashboard = () => {
   const [partnershipRequests, setPartnershipRequests] = useState([]);
   const [isLoadingMail, setIsLoadingMail] = useState(false);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0);
+  const [stockAlerts, setStockAlerts] = useState([]);
+  const [hasNewNotifications, setHasNewNotifications] = useState(false);
+  const [lastAlertCount, setLastAlertCount] = useState(0);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const navigate = useNavigate();
+  const [lastCheckedAlerts, setLastCheckedAlerts] = useState(new Set());
+  const [notificationsViewed, setNotificationsViewed] = useState(false);
+  const [lastCheckedMails, setLastCheckedMails] = useState(new Set());
+  const [mailsViewed, setMailsViewed] = useState(false);
+  const [hasNewMails, setHasNewMails] = useState(false);
+  const [lastNotificationCheck, setLastNotificationCheck] = useState(Date.now());
+  const [lastMailCheck, setLastMailCheck] = useState(Date.now());
+  const [calendarEvents, setCalendarEvents] = useState([]);
+  const [isLoadingCalendar, setIsLoadingCalendar] = useState(false);
+  const [hasNewCalendarEvents, setHasNewCalendarEvents] = useState(false);
+  const [lastCheckedEvents, setLastCheckedEvents] = useState(new Set());
+  const [calendarEventsViewed, setCalendarEventsViewed] = useState(false);
+  useEffect(() => {
+    const handleNavigateToScreen = (event) => {
+      const screen = event.detail;
+      handleNavigate(screen);
+    };
+
+    window.addEventListener('navigate-to-screen', handleNavigateToScreen);
+
+    return () => {
+      window.removeEventListener('navigate-to-screen', handleNavigateToScreen);
+    };
+  }, []);
+
+  useEffect(() => {
+  loadCalendarEvents();
+  
+  const interval = setInterval(loadCalendarEvents, 30000); 
+  
+  return () => clearInterval(interval);
+}, []);
+
+  
   const styles = {
     dashboardContainer: {
       minHeight: "100vh",
@@ -1623,11 +1772,12 @@ const Dashboard = () => {
       color: "white",
     },
     dropdownTitle: {
-      fontSize: "0.75rem",
+      fontSize: "14px",
       fontWeight: 600,
       letterSpacing: "0.05em",
       color: "white",
       margin: 0,
+      fontFamily: "Barlow, sans-serif",
     },
     notificationHeaderContent: {
       display: "flex",
@@ -1703,9 +1853,9 @@ const Dashboard = () => {
       color: "white",
     },
     orangeBg: {
-      backgroundColor: "#f97316",
-      color: "white",
-    },
+    backgroundColor: "#f97316",
+    color: "white",
+  },
     iconText: {
       fontSize: "0.875rem",
     },
@@ -1725,6 +1875,7 @@ const Dashboard = () => {
       color: "#6b7280",
       margin: 0,
       lineHeight: 1.33,
+      fontFamily: "Arial, sans-serif",
     },
     messageAvatar: {
       width: "32px",
@@ -1819,27 +1970,474 @@ const Dashboard = () => {
     },
   };
 
-  // Load partnership requests
-  const loadPartnershipRequests = async () => {
+
+  const loadCalendarEvents = async () => {
+  try {
+    setIsLoadingCalendar(true);
+    if (window.electronAPI) {
+      const appointments = await window.electronAPI.getAllAppointments();
+      const partnershipRequests = await window.electronAPI.getAllPartnershipRequests(null);
+      
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      // Get upcoming approved/confirmed/scheduled appointments
+      const upcomingAppointments = appointments
+        .filter(apt => {
+          const eventDate = new Date(apt.date + 'T00:00:00');
+          return (apt.status === 'approved' || apt.status === 'confirmed' || apt.status === 'scheduled') 
+            && eventDate >= today;
+        })
+        .map(apt => ({
+          id: apt.appointmentId || apt.id,
+          title: apt.title || 'Blood Drive Event',
+          date: apt.date,
+          time: apt.time,
+          location: apt.contactInfo?.address || 'Location TBD',
+          organization: apt.contactInfo?.lastName || 'Unknown Organization',
+          type: 'appointment',
+          is_viewed: apt.is_viewed || false
+        }));
+      
+      // Get upcoming approved/confirmed/scheduled partnerships
+      const upcomingPartnerships = partnershipRequests
+        .filter(req => {
+          const eventDate = new Date(req.event_date + 'T00:00:00');
+          return (req.status === 'approved' || req.status === 'confirmed' || req.status === 'scheduled') 
+            && eventDate >= today;
+        })
+        .map(req => ({
+          id: req.id,
+          title: `Blood Drive Partnership - ${req.contact_name}`,
+          date: req.event_date,
+          time: req.event_time,
+          location: req.event_address || 'Location TBD',
+          organization: req.contact_name,
+          type: 'partnership',
+          is_viewed: req.is_viewed || false
+        }));
+      
+      const allUpcoming = [...upcomingAppointments, ...upcomingPartnerships]
+        .sort((a, b) => new Date(a.date) - new Date(b.date))
+        .slice(0, 5); // Get top 5
+      
+      // Check for new events
+      const unreadEvents = allUpcoming.filter(evt => !evt.is_viewed);
+      const currentEventIds = new Set(unreadEvents.map(e => `${e.type}-${e.id}`));
+      
+      const newEventsSinceLastCheck = Array.from(currentEventIds).filter(id => !lastCheckedEvents.has(id));
+      
+      setLastCheckedEvents(currentEventIds);
+      
+      if (newEventsSinceLastCheck.length > 0 && !isCalendarDropdownOpen) {
+        setHasNewCalendarEvents(true);
+        console.log(`📅 ${newEventsSinceLastCheck.length} new calendar event(s) detected`);
+      } else if (unreadEvents.length === 0) {
+        setHasNewCalendarEvents(false);
+      }
+      
+      setCalendarEvents(allUpcoming);
+      console.log(`📅 Loaded ${allUpcoming.length} upcoming calendar events (${unreadEvents.length} unread)`);
+    }
+  } catch (error) {
+    console.error('Error loading calendar events:', error);
+    setCalendarEvents([]);
+  } finally {
+    setIsLoadingCalendar(false);
+  }
+};
+
+const handleCalendarDropdownClick = async () => {
+  const wasOpen = isCalendarDropdownOpen;
+  
+  // Close other dropdowns first
+  setIsProfileDropdownOpen(false);
+  setIsMailDropdownOpen(false);
+  setIsNotificationDropdownOpen(false);
+  
+  // Toggle the calendar dropdown
+  setIsCalendarDropdownOpen(!wasOpen);
+  
+  if (!wasOpen) {
+    console.log('📅 Opening calendar dropdown');
+    setHasNewCalendarEvents(false);
+    setCalendarEventsViewed(true);
+    
+    // Mark all visible events as viewed
+    if (window.electronAPI) {
+      try {
+        for (const event of calendarEvents) {
+          if (!event.is_viewed) {
+            // Mark as viewed in localStorage as fallback
+            const viewedIds = JSON.parse(localStorage.getItem('viewedCalendarEventIds') || '[]');
+            const eventKey = `${event.type}-${event.id}`;
+            if (!viewedIds.includes(eventKey)) {
+              viewedIds.push(eventKey);
+              localStorage.setItem('viewedCalendarEventIds', JSON.stringify(viewedIds));
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not mark calendar events as viewed:', err.message);
+      }
+    }
+    
+    // Reload events to get fresh data
+    await loadCalendarEvents();
+  }
+};
+
+const handleCalendarItemClick = async (event) => {
+  try {
+    const eventKey = `${event.type}-${event.id}`;
+    const viewedIds = JSON.parse(localStorage.getItem('viewedCalendarEventIds') || '[]');
+    if (!viewedIds.includes(eventKey)) {
+      viewedIds.push(eventKey);
+      localStorage.setItem('viewedCalendarEventIds', JSON.stringify(viewedIds));
+    }
+    await loadCalendarEvents();
+  } catch (error) {
+    console.error('Error marking calendar event as viewed:', error);
+  }
+};
+
+// Replace the loadNotificationCount function (around line 600)
+const loadNotificationCount = async () => {
+  try {
+    if (window.electronAPI) {
+      const count = await window.electronAPI.getUnreadNotificationCount();
+      console.log('📊 Notification count loaded:', count);
+      
+      const currentTime = Date.now();
+      const countIncreased = !isInitialLoad && count > lastAlertCount && count > 0;
+      
+      setNotificationCount(count);
+    
+      if (count > 0 && !isNotificationDropdownOpen) {
+        if (countIncreased || currentTime > lastNotificationCheck) {
+          setHasNewNotifications(true);
+          
+          // Play sound only when count increases
+          if (countIncreased) {
+            console.log('🔊 Playing alert sound for new notifications');
+            playAlertSound();
+          }
+        }
+      } else if (count === 0) {
+        setHasNewNotifications(false);
+      }
+      
+      setLastAlertCount(count);
+      setIsInitialLoad(false);
+    }
+  } catch (error) {
+    console.error('Error loading notification count:', error);
+  }
+};
+
+// Load stock alerts for dropdown
+const loadStockAlerts = async () => {
+  try {
+    if (window.electronAPI) {
+      const alerts = await window.electronAPI.getStockAlerts();
+      console.log('🔔 Stock alerts loaded:', alerts.length);
+      
+      // Check for new alerts and play sound for each new one
+      if (!isInitialLoad && alerts.length > 0) {
+        const currentAlertIds = new Set(alerts.map(a => a.notification_id));
+        const newAlerts = alerts.filter(a => !lastCheckedAlerts.has(a.notification_id));
+        
+        // Play sound for each new alert
+        if (newAlerts.length > 0 && !isNotificationDropdownOpen) {
+          console.log(`🔊 ${newAlerts.length} new alert(s) detected`);
+          playAlertSound();
+        }
+        
+        setLastCheckedAlerts(currentAlertIds);
+      } else if (isInitialLoad && alerts.length > 0) {
+        setLastCheckedAlerts(new Set(alerts.map(a => a.notification_id)));
+      }
+      
+      setStockAlerts(alerts.slice(0, 5));
+    }
+  } catch (error) {
+    console.error('Error loading stock alerts:', error);
+  }
+};
+// Handle notification dropdown click
+const handleNotificationDropdownClick = async () => {
+  const wasOpen = isNotificationDropdownOpen;
+  
+  // Close other dropdowns first
+  setIsProfileDropdownOpen(false);
+  setIsCalendarDropdownOpen(false);
+  setIsMailDropdownOpen(false);
+  
+  // Toggle the notification dropdown
+  setIsNotificationDropdownOpen(!wasOpen);
+  
+  if (!wasOpen) {
+    // Opening dropdown - mark current time as last check and hide badge
+    console.log('🔔 Opening notification dropdown - marking as viewed');
+    setHasNewNotifications(false);
+    setNotificationsViewed(true);
+    setLastNotificationCheck(Date.now());
+    
+    // Reload counts and alerts
+    await loadNotificationCount();
+    await loadStockAlerts();
+  }
+};
+
+
+const handleMailDropdownClick = async () => {
+  const wasOpen = isMailDropdownOpen;
+  
+  // Close other dropdowns first
+  setIsProfileDropdownOpen(false);
+  setIsCalendarDropdownOpen(false);
+  setIsNotificationDropdownOpen(false);
+  
+  // Toggle the mail dropdown
+  setIsMailDropdownOpen(!wasOpen);
+  
+  if (!wasOpen) {
+    console.log('📧 Opening mail dropdown');
+    setHasNewMails(false);
+    setMailsViewed(true);
+    setLastMailCheck(Date.now());
+    
+    // Try to mark all visible items as viewed with better error handling
+    if (window.electronAPI) {
+      try {
+        const unreadRequests = partnershipRequests.filter(req => !req.is_viewed);
+        
+        // Check if the handler exists before trying to use it
+        if (typeof window.electronAPI.markPartnershipRequestAsViewed === 'function') {
+          for (const request of unreadRequests) {
+            try {
+              await window.electronAPI.markPartnershipRequestAsViewed(request.id);
+            } catch (err) {
+              // Only log once instead of for each request
+              if (err.message.includes('No handler registered')) {
+                console.warn('⚠️ Backend handler not available, using fallback');
+                break; // Stop trying after first failure
+              }
+            }
+          }
+        } else {
+          console.warn('⚠️ markPartnershipRequestAsViewed function not available');
+        }
+        
+        // Always use localStorage fallback
+        const unreadIds = unreadRequests.map(req => req.id);
+        const viewedIds = JSON.parse(localStorage.getItem('viewedMailIds') || '[]');
+        const updatedViewedIds = [...new Set([...viewedIds, ...unreadIds])];
+        localStorage.setItem('viewedMailIds', JSON.stringify(updatedViewedIds));
+        
+        console.log(`✅ Marked ${unreadIds.length} requests as viewed (localStorage)`);
+      } catch (error) {
+        console.warn('Error marking mails as viewed:', error.message);
+        // Fallback: just track in frontend state
+        const unreadIds = partnershipRequests
+          .filter(req => !req.is_viewed)
+          .map(req => req.id);
+        
+        const viewedIds = JSON.parse(localStorage.getItem('viewedMailIds') || '[]');
+        const updatedViewedIds = [...new Set([...viewedIds, ...unreadIds])];
+        localStorage.setItem('viewedMailIds', JSON.stringify(updatedViewedIds));
+      }
+    }
+    
+    // Reload mail to get fresh data
+    await loadPartnershipRequests();
+  }
+};
+
+const handleMailItemClick = async (mailId) => {
+  try {
+    // Try backend first if available
+    if (window.electronAPI && typeof window.electronAPI.markPartnershipRequestAsViewed === 'function') {
+      try {
+        await window.electronAPI.markPartnershipRequestAsViewed(mailId);
+        await loadPartnershipRequests();
+        return;
+      } catch (err) {
+        if (err.message.includes('No handler registered')) {
+          console.warn('Backend handler not available, using localStorage fallback');
+        } else {
+          throw err;
+        }
+      }
+    }
+    
+    // Fallback to localStorage
+    const viewedIds = JSON.parse(localStorage.getItem('viewedMailIds') || '[]');
+    if (!viewedIds.includes(mailId)) {
+      viewedIds.push(mailId);
+      localStorage.setItem('viewedMailIds', JSON.stringify(viewedIds));
+    }
+    await loadPartnershipRequests();
+  } catch (error) {
+    console.error('Error marking mail as viewed:', error);
+  }
+};
+
+useEffect(() => {
+  if (!isNotificationDropdownOpen && notificationCount > 0) {
+    // Only show badge if there are truly NEW notifications after dropdown was closed
+    const checkForNewNotifications = async () => {
+      const currentCount = await window.electronAPI?.getUnreadNotificationCount();
+      if (currentCount > lastAlertCount) {
+        setHasNewNotifications(true);
+      }
+    };
+    checkForNewNotifications();
+  }
+}, [isNotificationDropdownOpen]);
+
+// Check stock alerts on mount and periodically
+useEffect(() => {
+  const checkStockAlerts = async () => {
     try {
-      setIsLoadingMail(true);
+      console.log('🔍 Checking stock alerts...');
       if (window.electronAPI) {
-        const requests = await window.electronAPI.getAllPartnershipRequests('pending');
-        setPartnershipRequests(requests.slice(0, 3)); // Show only first 3 in dropdown
+        const result = await window.electronAPI.checkAndCreateStockAlerts();
+        console.log('✅ Stock alerts check result:', result);
+        
+        await loadNotificationCount();
+        await loadStockAlerts();
       }
     } catch (error) {
-      console.error("Error loading partnership requests:", error);
-    } finally {
-      setIsLoadingMail(false);
+      console.error('Error checking stock alerts:', error);
     }
   };
 
+  const initialCheck = setTimeout(() => {
+    console.log('🚀 Initial stock alert check on login...');
+    checkStockAlerts();
+  }, 500);
+
+  const interval = setInterval(() => {
+    console.log('⏰ Periodic stock alert check...');
+    checkStockAlerts();
+  }, 5 * 60 * 1000);
+
+  return () => {
+    clearTimeout(initialCheck);
+    clearInterval(interval);
+  };
+}, []);
+
+// Play alert sound
+const playAlertSound = () => {
+  try {
+    const audio = new Audio('/assets/alert-notification.mp3');
+    audio.volume = 0.5;
+    audio.play().catch(e => console.log("Audio play failed:", e));
+  } catch (error) {
+    console.log("Could not play alert sound:", error);
+  }
+};
+
+// Replace the loadPartnershipRequests function
+const loadPartnershipRequests = async () => {
+  try {
+    setIsLoadingMail(true);
+    if (window.electronAPI) {
+      const requests = await window.electronAPI.getAllPartnershipRequests(null);
+      
+      // Get viewed IDs from localStorage as fallback
+      const viewedIdsFromStorage = JSON.parse(localStorage.getItem('viewedMailIds') || '[]');
+      
+      const mappedRequests = requests.map(req => {
+        let displayName = 'Unknown Organization';
+        let organizationType = 'organization';
+        
+        if (req.contact_name && 
+            req.contact_name.trim() !== '' && 
+            req.contact_name !== 'N/A' &&
+            req.contact_name.toLowerCase() !== 'null') {
+          displayName = req.contact_name;
+          organizationType = 'organization';
+        } 
+        else if (req.organization_barangay && 
+                 req.organization_barangay.trim() !== '' && 
+                 req.organization_barangay !== 'N/A' &&
+                 req.organization_barangay.toLowerCase() !== 'null') {
+          displayName = req.organization_barangay;
+          organizationType = 'barangay';
+        } 
+        else if (req.contact_name && req.contact_name.trim() !== '') {
+          displayName = req.contact_name;
+          organizationType = 'individual';
+        }
+        
+        // Check both database flag and localStorage fallback
+        const isViewedInStorage = viewedIdsFromStorage.includes(req.id);
+        const isViewed = req.is_viewed || isViewedInStorage;
+        
+        return {
+          ...req,
+          displayName: displayName,
+          displayTitle: `Blood Drive Partnership - ${displayName}`,
+          organizationType: organizationType,
+          profile_photo: req.profile_photo || null,
+          is_viewed: isViewed // Use combined viewed status
+        };
+      });
+      
+      // Count truly unread mails
+      const unreadMails = mappedRequests.filter(req => !req.is_viewed);
+      const currentMailIds = new Set(unreadMails.map(m => m.id));
+      
+      // Detect NEW mails
+      const newMailsSinceLastCheck = Array.from(currentMailIds).filter(id => !lastCheckedMails.has(id));
+      
+      setLastCheckedMails(currentMailIds);
+      
+      // Show badge ONLY for NEW unread mails
+      if (newMailsSinceLastCheck.length > 0 && !isMailDropdownOpen) {
+        setHasNewMails(true);
+        console.log(`📬 ${newMailsSinceLastCheck.length} new mail(s) detected`);
+      } else if (unreadMails.length === 0) {
+        setHasNewMails(false);
+        console.log('📭 No unread mails');
+      }
+      
+      setPartnershipRequests(mappedRequests.slice(0, 5));
+      
+      console.log(`📊 Loaded ${mappedRequests.length} partnership requests (${unreadMails.length} unread)`);
+    }
+  } catch (error) {
+    console.error("Error loading partnership requests:", error);
+  } finally {
+    setIsLoadingMail(false);
+  }
+};
+
+
+
   useEffect(() => {
-    loadPartnershipRequests();
-    // Refresh every 30 seconds
-    const interval = setInterval(loadPartnershipRequests, 30000);
-    return () => clearInterval(interval);
+  loadPartnershipRequests();
+  
+  const interval = setInterval(loadPartnershipRequests, 5000);
+  
+  return () => clearInterval(interval);
   }, []);
+
+useEffect(() => {
+  if (!isMailDropdownOpen && partnershipRequests.filter(req => !req.is_viewed).length > 0) {
+    // Only show badge if there are truly NEW mails after dropdown was closed
+    const unreadCount = partnershipRequests.filter(req => !req.is_viewed).length;
+    const currentMailIds = new Set(partnershipRequests.filter(req => !req.is_viewed).map(m => m.id));
+    const hasNewItems = Array.from(currentMailIds).some(id => !lastCheckedMails.has(id));
+    
+    if (hasNewItems) {
+      setHasNewMails(true);
+    }
+  }
+}, [isMailDropdownOpen]);
 
   // Load current user and permissions
   useEffect(() => {
@@ -1986,12 +2584,16 @@ const handleNavigate = (screen) => {
         }
       }
     }
-    
-    setActiveScreen(screen);
-    setIsCalendarDropdownOpen(false);
-    setIsMailDropdownOpen(false);
-    setIsNotificationDropdownOpen(false);
-    setIsProfileDropdownOpen(false);
+   setActiveScreen(screen);
+  setIsCalendarDropdownOpen(false);
+  setIsMailDropdownOpen(false);
+  setIsNotificationDropdownOpen(false);
+  setIsProfileDropdownOpen(false);
+
+  // If closing notification dropdown while navigating, ensure badge stays hidden
+  if (isNotificationDropdownOpen && notificationsViewed) {
+    setHasNewNotifications(false);
+  }
   };
 
   const toggleSidePanel = () => {
@@ -2013,11 +2615,8 @@ const handleNavigate = (screen) => {
   };
 
   const toggleNotificationDropdown = () => {
-    setIsNotificationDropdownOpen(!isNotificationDropdownOpen);
-    setIsProfileDropdownOpen(false);
-    setIsCalendarDropdownOpen(false);
-    setIsMailDropdownOpen(false);
-  };
+  handleNotificationDropdownClick();
+};
 
   const toggleProfileDropdown = () => {
     setIsProfileDropdownOpen(!isProfileDropdownOpen);
@@ -2106,119 +2705,195 @@ const handleNavigate = (screen) => {
 
             <div style={styles.navRight}>
               {/* Calendar Button with Dropdown */}
-              <div style={styles.dropdownContainer}>
-                <button
-                  style={{
-                    ...styles.navButton,
-                    ...(activeScreen === "calendar"
-                      ? styles.navButtonActive
-                      : {}),
-                  }}
-                  onClick={toggleCalendarDropdown}
-                >
-                  <Calendar className="w-5 h-5 text-gray-600" />
-                </button>
-                {isCalendarDropdownOpen && (
-                  <div
+                <div style={styles.dropdownContainer}>
+                  <button
                     style={{
-                      ...styles.dropdownMenu,
-                      ...styles.requestsDropdown,
+                      ...styles.navButton,
+                      ...(activeScreen === "calendar" ? styles.navButtonActive : {}),
                     }}
+                    onClick={handleCalendarDropdownClick}
                   >
-                    <div style={styles.dropdownHeader}>
-                      <h3 style={styles.dropdownTitle}>REQUESTS</h3>
+                    <Calendar className="w-5 h-5 text-gray-600" />
+                    {!isCalendarDropdownOpen && hasNewCalendarEvents && calendarEvents.filter(evt => !evt.is_viewed).length > 0 && (
+                      <span style={styles.notificationBadge}>
+                        {calendarEvents.filter(evt => !evt.is_viewed).length}
+                      </span>
+                    )}
+                  </button>
+                  {isCalendarDropdownOpen && (
+                    <div
+                      style={{
+                        ...styles.dropdownMenu,
+                        ...styles.requestsDropdown,
+                      }}
+                    >
+                      <div style={styles.dropdownHeader}>
+                        <div style={styles.notificationHeaderContent}>
+                          <h3 style={styles.dropdownTitle}>UPCOMING EVENTS</h3>
+                          <div style={styles.notificationHeaderActions}>
+                            <button
+                              style={styles.refreshButton}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                loadCalendarEvents();
+                              }}
+                              disabled={isLoadingCalendar}
+                              title="Refresh calendar events"
+                            >
+                              <RefreshCw size={14} style={{
+                                animation: isLoadingCalendar ? "spin 1s linear infinite" : "none"
+                              }} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div style={styles.dropdownContent}>
+                        {calendarEvents.length > 0 ? (
+                          calendarEvents.map((event, index) => {
+                            const isUnread = !event.is_viewed;
+                            const eventKey = `${event.type}-${event.id}`;
+                            const viewedIds = JSON.parse(localStorage.getItem('viewedCalendarEventIds') || '[]');
+                            const isViewedInStorage = viewedIds.includes(eventKey);
+                            const actuallyUnread = isUnread && !isViewedInStorage;
+                            
+                            return (
+                              <div 
+                                key={`${event.type}-${event.id}`}
+                                style={{
+                                  ...styles.dropdownItem,
+                                  backgroundColor: actuallyUnread ? '#f0f9ff' : 'white',
+                                  position: 'relative',
+                                  cursor: 'pointer'
+                                }}
+                                onClick={() => handleCalendarItemClick(event)}
+                              >
+                                {/* Icon */}
+                                <div style={{ position: 'relative', flexShrink: 0 }}>
+                                  <div
+                                    style={{
+                                      ...styles.iconCircle,
+                                      backgroundColor: actuallyUnread ? '#3b82f6' : '#e5e7eb',
+                                      border: `2px solid ${actuallyUnread ? '#3b82f6' : '#9ca3af'}`
+                                    }}
+                                  >
+                                    <svg 
+                                      width="16" 
+                                      height="16" 
+                                      viewBox="0 0 24 24" 
+                                      fill="none" 
+                                      stroke={actuallyUnread ? "white" : "#6b7280"}
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    >
+                                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                                      <line x1="16" y1="2" x2="16" y2="6"/>
+                                      <line x1="8" y1="2" x2="8" y2="6"/>
+                                      <line x1="3" y1="10" x2="21" y2="10"/>
+                                    </svg>
+                                  </div>
+                                </div>
+                                
+                                {/* Event Details */}
+                                <div style={{...styles.requestDetails, flex: 1}}>
+                                  <p style={{
+                                    ...styles.requestTitle,
+                                    fontWeight: actuallyUnread ? '600' : '400',
+                                    color: actuallyUnread ? '#111827' : '#6b7280',
+                                    fontFamily: 'Arial, sans-serif'
+                                  }}>
+                                    {event.title}
+                                  </p>
+                                  <p style={{
+                                    ...styles.requestSubtitle,
+                                    color: actuallyUnread ? '#6b7280' : '#9ca3af',
+                                    fontFamily: 'Arial, sans-serif'
+                                  }}>
+                                    {new Date(event.date).toLocaleDateString('en-US', {
+                                      weekday: 'short',
+                                      month: 'short',
+                                      day: 'numeric',
+                                      year: 'numeric'
+                                    })} at {event.time}
+                                  </p>
+                                  {event.location && (
+                                    <p style={{
+                                      ...styles.requestSubtitle,
+                                      fontSize: '11px',
+                                      marginTop: '2px',
+                                      color: actuallyUnread ? '#9ca3af' : '#bababaff',
+                                      fontFamily: 'Arial, sans-serif'
+                                    }}>
+                                      Location: {event.location}
+                                    </p>
+                                  )}
+                                  {event.organization && (
+                                    <p style={{
+                                      ...styles.requestSubtitle,
+                                      fontSize: '11px',
+                                      marginTop: '2px',
+                                      color: actuallyUnread ? '#9ca3af' : '#bababaff',
+                                      fontFamily: 'Arial, sans-serif'
+                                    }}>
+                                      Organizer: {event.organization}
+                                    </p>
+                                  )}
+                                </div>
+                                
+                                {/* Unread indicator (green dot) */}
+                                {actuallyUnread && (
+                                  <div style={{
+                                    width: '8px',
+                                    height: '8px',
+                                    backgroundColor: '#10b981',
+                                    borderRadius: '50%',
+                                    marginLeft: '8px',
+                                    flexShrink: 0
+                                  }} />
+                                )}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div style={styles.dropdownItem}>
+                            <div style={styles.requestDetails}>
+                              <p style={{...styles.requestSubtitle, fontFamily: 'Arial, sans-serif'}}>
+                                No upcoming events
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <div style={styles.dropdownFooter}>
+                        <button
+                          style={styles.footerButton}
+                          onClick={() => {
+                            handleNavigate("calendar");
+                            setIsCalendarDropdownOpen(false);
+                          }}
+                        >
+                          See All Events
+                        </button>
+                      </div>
                     </div>
-                    <div style={styles.dropdownContent}>
-                      <div style={styles.dropdownItem}>
-                        <div>
-                          <div
-                            style={{ ...styles.iconCircle, ...styles.redBg }}
-                          >
-                            <span style={styles.iconText}>🩸</span>
-                          </div>
-                        </div>
-                        <div style={styles.requestDetails}>
-                          <p style={styles.requestTitle}>
-                            Blood letting Drive Partnership Request
-                          </p>
-                          <p style={styles.requestSubtitle}>
-                            Tacloban would like to have a schedule for bl...
-                          </p>
-                        </div>
-                      </div>
-                      <div style={styles.dropdownItem}>
-                        <div>
-                          <div
-                            style={{ ...styles.iconCircle, ...styles.yellowBg }}
-                          >
-                            <span style={styles.iconText}>S</span>
-                          </div>
-                        </div>
-                        <div style={styles.requestDetails}>
-                          <p style={styles.requestTitle}>Request Sync</p>
-                          <p style={styles.requestSubtitle}>
-                            Butuan Tokyo 39.3 would like to request an
-                            appraisal...
-                          </p>
-                        </div>
-                      </div>
-                      <div style={styles.dropdownItem}>
-                        <div>
-                          <div
-                            style={{ ...styles.iconCircle, ...styles.blueBg }}
-                          >
-                            <span style={styles.iconText}>🩸</span>
-                          </div>
-                        </div>
-                        <div style={styles.requestDetails}>
-                          <p style={styles.requestTitle}>
-                            Blood letting Drive Partnership Request
-                          </p>
-                          <p style={styles.requestSubtitle}>
-                            City Government Butuan would like to have a
-                            schedule...
-                          </p>
-                        </div>
-                      </div>
-                      <div style={styles.dropdownItem}>
-                        <div>
-                          <div
-                            style={{ ...styles.iconCircle, ...styles.greenBg }}
-                          >
-                            <span style={styles.iconText}>S</span>
-                          </div>
-                        </div>
-                        <div style={styles.requestDetails}>
-                          <p style={styles.requestTitle}>Request Sync</p>
-                          <p style={styles.requestSubtitle}>
-                            Philippine Eagles would like to request an
-                            approval...
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div style={styles.dropdownFooter}>
-                      <button
-                        style={styles.footerButton}
-                        onClick={() => handleNavigate("calendar")}
-                      >
-                        See All Requests
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
 
-              {/* Mail Button with Dropdown */}
+            {/* Mail Button with Dropdown */}
               <div style={styles.dropdownContainer}>
                 <button
                   style={{
                     ...styles.navButton,
                     ...(activeScreen === "mail" ? styles.navButtonActive : {}),
                   }}
-                  onClick={toggleMailDropdown}
+                  onClick={handleMailDropdownClick}
                 >
                   <Mail className="w-5 h-5 text-gray-600" />
+                  {!isMailDropdownOpen && hasNewMails && partnershipRequests.filter(req => !req.is_viewed).length > 0 && (
+                    <span style={styles.notificationBadge}>
+                      {partnershipRequests.filter(req => !req.is_viewed).length}
+                    </span>
+                  )}
                 </button>
                 {isMailDropdownOpen && (
                   <div
@@ -2249,36 +2924,146 @@ const handleNavigate = (screen) => {
                     </div>
                     <div style={styles.dropdownContent}>
                       {partnershipRequests.length > 0 ? (
-                        partnershipRequests.map((request) => {
-                          const avatar = request.organization_name
-                            ? request.organization_name.split(' ').map(word => word[0]).join('').substring(0, 2).toUpperCase()
-                            : 'OR';
-                          return (
-                            <div key={request.id} style={styles.dropdownItem}>
+                      partnershipRequests.map((request) => {
+                        const displayName = request.displayName;
+                        const organizationType = request.organizationType;
+                        
+                        const avatar = displayName
+                          .split(' ')
+                          .map(word => word[0])
+                          .join('')
+                          .substring(0, 2)
+                          .toUpperCase();
+                        
+                        // Check if this mail is truly unread from database
+                        const isUnread = !request.is_viewed;
+                        
+                        return (
+                          <div 
+                            key={request.id} 
+                            style={{
+                              ...styles.dropdownItem,
+                              backgroundColor: isUnread ? '#f0f9ff' : 'white',
+                              position: 'relative',
+                              cursor: 'pointer'
+                            }}
+                            onClick={async () => {
+                              // Mark as viewed when clicked
+                              if (isUnread) {
+                                try {
+                                  if (window.electronAPI && typeof window.electronAPI.markPartnershipRequestAsViewed === 'function') {
+                                    await window.electronAPI.markPartnershipRequestAsViewed(request.id);
+                                  } else {
+                                    // Fallback: store in localStorage
+                                    const viewedIds = JSON.parse(localStorage.getItem('viewedMailIds') || '[]');
+                                    if (!viewedIds.includes(request.id)) {
+                                      viewedIds.push(request.id);
+                                      localStorage.setItem('viewedMailIds', JSON.stringify(viewedIds));
+                                    }
+                                  }
+                                  await loadPartnershipRequests();
+                                } catch (err) {
+                                  console.warn('Could not mark as viewed:', err.message);
+                                  // Still reload to update UI
+                                  await loadPartnershipRequests();
+                                }
+                              }
+                            }}
+                          >
+                            {/* Avatar/Profile Photo */}
+                            <div style={{ position: 'relative', flexShrink: 0 }}>
+                              {request.profile_photo ? (
+                                <img
+                                  src={request.profile_photo}
+                                  alt={displayName}
+                                  style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '50%',
+                                    objectFit: 'cover',
+                                  }}
+                                  onError={(e) => {
+                                    e.target.style.display = 'none';
+                                    e.target.nextElementSibling.style.display = 'flex';
+                                  }}
+                                />
+                              ) : null}
                               <div
                                 style={{
                                   ...styles.messageAvatar,
                                   ...styles.blueAvatar,
+                                  display: request.profile_photo ? 'none' : 'flex',
+                                  fontFamily: 'Arial, sans-serif', 
+                                  fontWeight: 'bold',
+                                  fontSize: '12px', 
                                 }}
                               >
                                 {avatar}
                               </div>
-                              <div style={styles.requestDetails}>
-                                <p style={styles.requestTitle}>{request.organization_name}</p>
-                                <p style={styles.requestSubtitle}>
-                                  Blood Drive Partnership - {new Date(request.event_date).toLocaleDateString()}
-                                </p>
-                              </div>
                             </div>
-                          );
-                        })
-                      ) : (
-                        <div style={styles.dropdownItem}>
-                          <div style={styles.requestDetails}>
-                            <p style={styles.requestSubtitle}>No pending partnership requests</p>
+                            
+                            {/* Message Details */}
+                            <div style={{...styles.requestDetails, flex: 1}}>
+                              <p style={{
+                                ...styles.requestTitle,
+                                fontWeight: isUnread ? '600' : '400',
+                                color: isUnread ? '#111827' : '#6b7280',
+                                fontFamily: 'Arial, sans-serif'
+                              }}>
+                                {displayName}
+                                {organizationType === 'barangay' && (
+                                  <span style={{ fontSize: '11px', color: '#6b7280', marginLeft: '6px' }}>
+                                    (Barangay)
+                                  </span>
+                                )}
+                              </p>
+                              <p style={{
+                                ...styles.requestSubtitle,
+                                color: isUnread ? '#6b7280' : '#9ca3af',
+                                fontFamily: 'Arial, sans-serif'
+                              }}>
+                                Blood Drive - {new Date(request.event_date).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric'
+                                })}
+                              </p>
+                              {request.event_address && (
+                                <p style={{
+                                  ...styles.requestSubtitle,
+                                  fontSize: '11px',
+                                  marginTop: '2px',
+                                  color: isUnread ? '#9ca3af' : '#d1d5db',
+                                  fontFamily: 'Arial, sans-serif'
+                                }}>
+                                  Organization: {request.event_address}
+                                </p>
+                              )}
+                            </div>
+                            
+                            {/* Unread indicator - only show if truly unread */}
+                            {isUnread && (
+                              <div style={{
+                                width: '8px',
+                                height: '8px',
+                                backgroundColor: '#10b981',
+                                borderRadius: '50%',
+                                marginLeft: '8px',
+                                flexShrink: 0
+                              }} />
+                            )}
                           </div>
+                        );
+                      })
+                    ) : (
+                      <div style={styles.dropdownItem}>
+                        <div style={styles.requestDetails}>
+                          <p style={{...styles.requestSubtitle, fontFamily: 'Arial, sans-serif'}}>
+                            No partnership requests
+                          </p>
                         </div>
-                      )}
+                      </div>
+                    )}
                     </div>
                     <div style={styles.dropdownFooter}>
                       <button
@@ -2291,124 +3076,133 @@ const handleNavigate = (screen) => {
                   </div>
                 )}
               </div>
+          
 
               {/* Notification Button with Dropdown */}
               <div style={styles.dropdownContainer}>
                 <button
                   style={{
                     ...styles.navButton,
-                    ...(activeScreen === "notification"
-                      ? styles.navButtonActive
-                      : {}),
+                    ...(activeScreen === "notification" ? styles.navButtonActive : {}),
                   }}
                   onClick={toggleNotificationDropdown}
                 >
                   <Bell className="w-5 h-5 text-gray-600" />
-                  <span style={styles.notificationBadge}>3</span>
+                  {/* FIXED: Change the condition here */}
+                  {!isNotificationDropdownOpen && hasNewNotifications && notificationCount > 0 && (
+                    <span style={styles.notificationBadge}>
+                      {notificationCount > 99 ? '99+' : notificationCount}
+                    </span>
+                  )}
                 </button>
                 {isNotificationDropdownOpen && (
-                  <div
-                    style={{
-                      ...styles.dropdownMenu,
-                      ...styles.notificationsDropdown,
-                    }}
-                  >
-                    <div style={styles.dropdownHeader}>
-                      <div style={styles.notificationHeaderContent}>
-                        <h3 style={styles.dropdownTitle}>NOTIFICATIONS</h3>
-                        <div style={styles.notificationHeaderActions}>
-                          <button
-                            style={styles.refreshButton}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // Refresh notifications - placeholder for now
-                              console.log("Refresh notifications clicked");
-                            }}
-                            disabled={isLoadingNotifications}
-                            title="Refresh notifications"
-                          >
-                            <RefreshCw size={14} style={{
-                              animation: isLoadingNotifications ? "spin 1s linear infinite" : "none"
-                            }} />
-                          </button>
-                          <button
-                            style={styles.markAllReadButton}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // Mark all as read - placeholder for now
-                              console.log("Mark all as read clicked");
-                            }}
-                            title="Mark all as read"
-                          >
-                            <CheckCircle size={14} />
-                          </button>
-                        </div>
+                <div
+                  style={{
+                    ...styles.dropdownMenu,
+                    ...styles.notificationsDropdown,
+                  }}
+                >
+                  <div style={styles.dropdownHeader}>
+                    <div style={styles.notificationHeaderContent}>
+                      <h3 style={styles.dropdownTitle}>NOTIFICATIONS</h3>
+                      <div style={styles.notificationHeaderActions}>
+                        <button
+                          style={styles.refreshButton}
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            await window.electronAPI.checkAndCreateStockAlerts();
+                            await loadNotificationCount();
+                            await loadStockAlerts();
+                          }}
+                          title="Refresh notifications"
+                        >
+                          <RefreshCw size={14} />
+                        </button>
                       </div>
-                    </div>
-                    <div style={styles.dropdownContent}>
-                      <div style={styles.dropdownItem}>
-                        <div>
-                          <div
-                            style={{ ...styles.iconCircle, ...styles.redBg }}
-                          >
-                            <span style={styles.iconText}>🩸</span>
-                          </div>
-                        </div>
-                        <div style={styles.requestDetails}>
-                          <p style={styles.requestTitle}>Blood Stock Update</p>
-                          <p style={styles.requestSubtitle}>
-                            Current stored blood: 628 units. Updated on March 1,
-                            2025, at 1:00 PM.
-                          </p>
-                        </div>
-                      </div>
-                      <div style={styles.dropdownItem}>
-                        <div>
-                          <div
-                            style={{ ...styles.iconCircle, ...styles.orangeBg }}
-                          >
-                            <span style={styles.iconText}>⚠️</span>
-                          </div>
-                        </div>
-                        <div style={styles.requestDetails}>
-                          <p style={styles.requestTitle}>
-                            Blood Expiration Alert
-                          </p>
-                          <p style={styles.requestSubtitle}>
-                            Warning: 10 units of blood (Type A+) will expire in
-                            3 days.
-                          </p>
-                        </div>
-                      </div>
-                      <div style={styles.dropdownItem}>
-                        <div>
-                          <div
-                            style={{ ...styles.iconCircle, ...styles.greenBg }}
-                          >
-                            <span style={styles.iconText}>✓</span>
-                          </div>
-                        </div>
-                        <div style={styles.requestDetails}>
-                          <p style={styles.requestTitle}>
-                            Blood Release Confirmation
-                          </p>
-                          <p style={styles.requestSubtitle}>
-                            30 units of blood (Type B+) were successfully
-                            released
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div style={styles.dropdownFooter}>
-                      <button
-                        style={styles.footerButton}
-                        onClick={() => handleNavigate("notification")}
-                      >
-                        See All Notifications
-                      </button>
                     </div>
                   </div>
-                )}
+                  <div style={styles.dropdownContent}>
+                    {stockAlerts.length > 0 ? (
+                      stockAlerts.map((alert, index) => {
+                        const iconColor = 
+                          alert.priority === 'critical' ? '#ef4444' :
+                          alert.priority === 'urgent' ? '#eab308' :
+                          '#f97316';
+                        
+                        return (
+                          <div 
+                            key={alert.notification_id || index}
+                            style={{
+                              ...styles.dropdownItem,
+                              backgroundColor: 'white',
+                              cursor: 'pointer',
+                              position: 'relative'
+                            }}
+                            onClick={() => {
+                              handleNavigate('notification');
+                              setIsNotificationDropdownOpen(false);
+                            }}
+                          >
+                            <div>
+                              <div style={{ 
+                                ...styles.iconCircle, 
+                                backgroundColor: 'transparent',
+                                border: `2px solid ${iconColor}`
+                              }}>
+                                <svg 
+                                  width="16" 
+                                  height="16" 
+                                  viewBox="0 0 24 24" 
+                                  fill="none" 
+                                  stroke={iconColor}
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                  <line x1="12" y1="9" x2="12" y2="13"/>
+                                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                </svg>
+                              </div>
+                            </div>
+                            <div style={styles.requestDetails}>
+                              <p style={{
+                                ...styles.requestTitle,
+                                fontFamily: 'Arial, sans-serif'
+                              }}>
+                                {alert.title}
+                              </p>
+                              <p style={{
+                                ...styles.requestSubtitle,
+                                fontFamily: 'Arial, sans-serif'
+                              }}>
+                                {alert.message.substring(0, 50)}...
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div style={styles.dropdownItem}>
+                        <div style={styles.requestDetails}>
+                          <p style={styles.requestSubtitle}>No stock alerts</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div style={styles.dropdownFooter}>
+                    <button
+                      style={styles.footerButton}
+                      onClick={() => {
+                        handleNavigate("notification");
+                        setIsNotificationDropdownOpen(false);
+                      }}
+                    >
+                      See All Notifications ({notificationCount})
+                    </button>
+                  </div>
+                </div>
+              )}
               </div>
 
               {/* User Profile Section - FIXED */}

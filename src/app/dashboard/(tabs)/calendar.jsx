@@ -415,8 +415,8 @@ const CalendarPage = () => {
     <div className="calendar-org-content">
       {/* Header */}
       <div className="calendar-header">
-        <h1 className="calendar-title">Regional Blood Center</h1>
-        <p className="calendar-subtitle">Calendar & Event Scheduling</p>
+        <h1 className="calendar-title">Calendar</h1>
+        <p className="calendar-subtitle">Blood Drive Event Schedules</p>
       </div>
 
       {/* Controls Bar */}

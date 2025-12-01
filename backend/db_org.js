@@ -6,9 +6,9 @@ const crypto = require("crypto");
 const pool = new Pool({
   user: "postgres",
   host: "localhost",
-  database: "postgres",
-  password: "root",
-  port: 5433,
+  database: "bloodsync_db",
+  password: "bloodsync",
+  port: 5432,
   connectionTimeoutMillis: 5000,
   idleTimeoutMillis: 30000,
   max: 20,
@@ -83,76 +83,6 @@ const getAllPartnershipRequests = async (status = null) => {
     return result.rows;
   } catch (error) {
     console.error("[DB_ORG] Error getting partnership requests:", error);
-    throw error;
-  }
-};
-
-// Create a new partnership request - write to DOH database
-const createPartnershipRequest = async (requestData) => {
-  try {
-    const insertQuery = `
-      INSERT INTO partnership_requests (
-        appointment_id, organization_name, organization_barangay, contact_name,
-        contact_email, contact_phone, event_date, event_time, event_address, status, profile_photo
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      RETURNING *
-    `;
-
-    const values = [
-      requestData.appointmentId,
-      requestData.organizationName,
-      requestData.organizationBarangay,
-      requestData.contactName,
-      requestData.contactEmail,
-      requestData.contactPhone,
-      requestData.eventDate,
-      requestData.eventTime,
-      requestData.eventAddress,
-      requestData.status || "pending",
-      requestData.profilePhoto || null,
-    ];
-
-    const result = await dohPool.query(insertQuery, values);
-    console.log(
-      "[DB_ORG] Partnership request created in DOH database:",
-      result.rows[0].id
-    );
-    return result.rows[0];
-  } catch (error) {
-    console.error("[DB_ORG] Error creating partnership request:", error);
-    throw error;
-  }
-};
-
-// Update partnership request status
-const updatePartnershipRequestStatus = async (
-  requestId,
-  status,
-  declineReason = null
-) => {
-  try {
-    const updateQuery = `
-      UPDATE partnership_requests 
-      SET status = $1, decline_reason = $2, updated_at = CURRENT_TIMESTAMP 
-      WHERE id = $3 
-      RETURNING *
-    `;
-
-    const values = [status, declineReason, requestId];
-    const result = await pool.query(updateQuery, values);
-
-    if (result.rows.length === 0) {
-      throw new Error("Partnership request not found");
-    }
-
-    console.log(
-      "[DB_ORG] Partnership request status updated:",
-      requestId,
-      status
-    );
-    return result.rows[0];
-  } catch (error) {
-    console.error("[DB_ORG] Error updating partnership request status:", error);
     throw error;
   }
 };
@@ -888,71 +818,77 @@ const dbOrgService = {
   },
   // ========== PARTNERSHIP REQUEST METHODS ==========
 
-  async createPartnershipRequest(requestData) {
-    const client = await dohPool.connect();
-    try {
-      await client.query("BEGIN");
+ async createPartnershipRequest(requestData) {
+  const client = await dohPool.connect();
+  try {
+    await client.query("BEGIN");
 
-      const query = `
+    // FIXED: Properly determine organization name
+    let organizationName = null;
+    let organizationBarangay = null;
+
+    // If it's a Barangay category, use the barangay name
+    if (requestData.organizationBarangay && 
+        requestData.organizationBarangay.trim() !== '' &&
+        requestData.organizationBarangay !== 'N/A' &&
+        requestData.organizationBarangay.toLowerCase() !== 'null') {
+      organizationBarangay = requestData.organizationBarangay.trim();
+      organizationName = organizationBarangay; // Use barangay as organization_name
+    }
+    // If it's an Organization category, use the organization name
+    else if (requestData.organizationName && 
+             requestData.organizationName.trim() !== '' &&
+             requestData.organizationName !== 'N/A' &&
+             requestData.organizationName.toLowerCase() !== 'null') {
+      organizationName = requestData.organizationName.trim();
+    }
+    // Fallback to contact name
+    else {
+      organizationName = requestData.contactName || 'Unknown Organization';
+    }
+
+    console.log('🏢 Creating Partnership Request:', {
+      organizationName,
+      organizationBarangay,
+      contactName: requestData.contactName,
+      profilePhoto: requestData.profilePhoto ? 'Present' : 'None'
+    });
+
+    const query = `
       INSERT INTO partnership_requests (
         organization_name, organization_barangay, contact_name, contact_email,
         contact_phone, event_date, event_time, event_address, appointment_id,
-        status, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NOW(), NOW())
+        status, profile_photo, is_viewed, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', $10, false, NOW(), NOW())
       RETURNING *
     `;
 
-      const values = [
-        requestData.organizationName,
-        requestData.organizationBarangay || "N/A",
-        requestData.contactName,
-        requestData.contactEmail,
-        requestData.contactPhone,
-        requestData.eventDate,
-        requestData.eventTime,
-        requestData.eventAddress,
-        requestData.appointmentId,
-      ];
+    const values = [
+      organizationName,          // Never null
+      organizationBarangay,      // Can be null
+      requestData.contactName,
+      requestData.contactEmail,
+      requestData.contactPhone,
+      requestData.eventDate,
+      requestData.eventTime,
+      requestData.eventAddress,
+      requestData.appointmentId,
+      requestData.profilePhoto || null,
+    ];
 
-      const result = await client.query(query, values);
+    const result = await client.query(query, values);
 
-      await client.query("COMMIT");
-      console.log(
-        "[DB_ORG] Partnership request created successfully:",
-        result.rows[0].id
-      );
-      return result.rows[0];
-    } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("[DB] Error creating partnership request:", error);
-      throw error;
-    } finally {
-      client.release();
-    }
-  },
-
-  async getAllPartnershipRequests(status = null) {
-    try {
-      let query = `
-      SELECT *
-      FROM partnership_requests
-    `;
-
-      const values = [];
-      if (status) {
-        query += " WHERE status = $1";
-        values.push(status);
-      }
-
-      query += " ORDER BY created_at DESC";
-
-      const result = await dohPool.query(query, values);
-      return result.rows;
-    } catch (error) {
-      console.error("[DB] Error getting partnership requests:", error);
-      throw error;
-    }
-  },
+    await client.query("COMMIT");
+    console.log("✅ Partnership request created:", result.rows[0]);
+    return result.rows[0];
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("❌ Error creating partnership request:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
 
   async getPartnershipRequestById(requestId) {
     try {
@@ -2772,256 +2708,377 @@ const dbOrgService = {
     }
   },
 
-  // Add this new function in the dbOrgService object in db_org.js
-
   // ========== SYNC REQUEST METHODS ==========
-  async createSyncRequest(
-    sourceOrganization,
-    sourceUserName,
-    sourceUserId,
-    donorIds
-  ) {
-    const orgClient = await pool.connect();
-    try {
-      await orgClient.query("BEGIN");
+async createSyncRequest(
+  sourceOrganization,
+  sourceUserName,
+  sourceUserId,
+  donorIds
+) {
+  const orgClient = await pool.connect();
+  const dohClient = await dohPool.connect();
+  
+  try {
+    await orgClient.query("BEGIN");
+    await dohClient.query("BEGIN");
 
-      // Get donor records to sync from organization database
-      const getDonorsQuery = `
-        SELECT * FROM donor_record_org
-        WHERE dr_id = ANY($1) AND dr_source_organization = $2
+    // Get donor records to sync from organization database
+    const getDonorsQuery = `
+      SELECT * FROM donor_record_org
+      WHERE dr_id = ANY($1) AND dr_source_organization = $2
+    `;
+    const donorsResult = await orgClient.query(getDonorsQuery, [
+      donorIds,
+      sourceOrganization,
+    ]);
+
+    if (donorsResult.rows.length === 0) {
+      throw new Error("No donor records found to sync");
+    }
+
+    // Insert into temp_donor_records in DOH database
+    const insertPromises = donorsResult.rows.map((donor) => {
+      const insertQuery = `
+        INSERT INTO temp_donor_records (
+          tdr_donor_id,
+          tdr_first_name,
+          tdr_middle_name,
+          tdr_last_name,
+          tdr_gender,
+          tdr_birthdate,
+          tdr_age,
+          tdr_blood_type,
+          tdr_rh_factor,
+          tdr_contact_number,
+          tdr_address,
+          tdr_source_organization,
+          tdr_source_user_id,
+          tdr_source_user_name,
+          tdr_sync_status,
+          tdr_created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending', NOW())
+        RETURNING *
       `;
-      const donorsResult = await orgClient.query(getDonorsQuery, [
-        donorIds,
+
+      const values = [
+        donor.dr_donor_id,
+        donor.dr_first_name,
+        donor.dr_middle_name,
+        donor.dr_last_name,
+        donor.dr_gender,
+        donor.dr_birthdate,
+        donor.dr_age,
+        donor.dr_blood_type,
+        donor.dr_rh_factor,
+        donor.dr_contact_number,
+        donor.dr_address,
         sourceOrganization,
+        sourceUserId,
+        sourceUserName,
+      ];
+
+      return dohClient.query(insertQuery, values);
+    });
+
+    await Promise.all(insertPromises);
+
+    // Log activity in organization database
+    try {
+      await this.logUserActivity(
+        sourceUserId,
+        "SYNC_REQUEST",
+        `User ${sourceUserName} requested to sync ${donorIds.length} donor record(s) to Regional Blood Center`
+      );
+    } catch (logError) {
+      console.error("Failed to log activity (non-critical):", logError);
+    }
+
+    await orgClient.query("COMMIT");
+    await dohClient.query("COMMIT");
+
+    console.log(`[DB_ORG] Created ${donorsResult.rows.length} temp_donor_records for sync request from ${sourceOrganization}`);
+
+    return {
+      success: true,
+      message: `Sync request sent for ${donorsResult.rows.length} donor(s)`,
+      count: donorsResult.rows.length,
+    };
+  } catch (error) {
+    await orgClient.query("ROLLBACK");
+    await dohClient.query("ROLLBACK");
+    console.error("Error creating sync request:", error);
+    throw error;
+  } finally {
+    orgClient.release();
+    dohClient.release();
+  }
+},
+// Get pending temp donor records from DOH database
+async getPendingTempDonorRecords() {
+  try {
+    const query = `
+      SELECT 
+        tdr_id,
+        tdr_donor_id as donor_id,
+        tdr_first_name as first_name,
+        tdr_middle_name as middle_name,
+        tdr_last_name as last_name,
+        tdr_gender as gender,
+        tdr_birthdate as birthdate,
+        tdr_age as age,
+        tdr_blood_type as blood_type,
+        tdr_rh_factor as rh_factor,
+        tdr_contact_number as contact_number,
+        tdr_address as address,
+        tdr_source_organization,
+        tdr_source_user_id,
+        tdr_source_user_name,
+        tdr_sync_status,
+        tdr_created_at
+      FROM temp_donor_records
+      WHERE tdr_sync_status = 'pending'
+      ORDER BY tdr_created_at DESC
+    `;
+
+    const result = await dohPool.query(query);
+    return result.rows;
+  } catch (error) {
+    console.error("Error getting pending temp donor records:", error);
+    throw error;
+  }
+},
+
+async approveTempDonorRecords(tdrIds, approvedBy) {
+  const dohClient = await dohPool.connect();
+  
+  try {
+    await dohClient.query("BEGIN");
+
+    // Get temp donor records
+    const getTempQuery = `
+      SELECT * FROM temp_donor_records
+      WHERE tdr_id = ANY($1) AND tdr_sync_status = 'pending'
+    `;
+    const tempResult = await dohClient.query(getTempQuery, [tdrIds]);
+
+    if (tempResult.rows.length === 0) {
+      throw new Error("No pending temp donor records found");
+    }
+
+    let insertedCount = 0;
+    let updatedCount = 0;
+
+    // Process each temp donor record
+    for (const tempDonor of tempResult.rows) {
+      // Check if donor already exists (match by first name, middle name, last name)
+      const checkExistingQuery = `
+        SELECT dr_id, dr_donor_id, dr_recent_donation, dr_donation_count
+        FROM donor_records
+        WHERE LOWER(TRIM(dr_first_name)) = LOWER(TRIM($1))
+          AND LOWER(TRIM(COALESCE(dr_middle_name, ''))) = LOWER(TRIM(COALESCE($2, '')))
+          AND LOWER(TRIM(dr_last_name)) = LOWER(TRIM($3))
+        LIMIT 1
+      `;
+      
+      const existingResult = await dohClient.query(checkExistingQuery, [
+        tempDonor.tdr_first_name,
+        tempDonor.tdr_middle_name || '',
+        tempDonor.tdr_last_name,
       ]);
 
-      if (donorsResult.rows.length === 0) {
-        throw new Error("No donor records found to sync");
-      }
+      if (existingResult.rows.length > 0) {
+        // Donor exists - ONLY update recent_donation and donation_count
+        // PRESERVE the DOH donor_id and all other fields
+        const existingRecord = existingResult.rows[0];
+        
+        const updateQuery = `
+          UPDATE donor_records
+          SET dr_recent_donation = NOW(),
+              dr_donation_count = COALESCE(dr_donation_count, 0) + 1,
+              dr_modified_at = NOW()
+          WHERE dr_id = $1
+          RETURNING dr_id, dr_donor_id, dr_first_name, dr_last_name
+        `;
+        
+        const updateResult = await dohClient.query(updateQuery, [existingRecord.dr_id]);
+        updatedCount++;
+        
+        console.log(`[SYNC] Updated existing donor: ${updateResult.rows[0].dr_donor_id} - ${updateResult.rows[0].dr_first_name} ${updateResult.rows[0].dr_last_name}`);
+      } else {
+        // No duplicate - insert new record with DOH-generated ID
+        // Generate new DOH donor ID
+        const generateIdQuery = `SELECT generate_doh_donor_id() as new_id`;
+        const idResult = await dohClient.query(generateIdQuery);
+        const newDohDonorId = idResult.rows[0].new_id;
 
-      // Insert into temp_donor_records in DOH database
-      const insertPromises = donorsResult.rows.map((donor) => {
+        // FIXED: Use only columns that actually exist in donor_records table
         const insertQuery = `
-          INSERT INTO temp_donor_records (
-            tdr_donor_id,
-            tdr_first_name,
-            tdr_middle_name,
-            tdr_last_name,
-            tdr_gender,
-            tdr_birthdate,
-            tdr_age,
-            tdr_blood_type,
-            tdr_rh_factor,
-            tdr_contact_number,
-            tdr_address,
-            tdr_source_organization,
-            tdr_source_user_id,
-            tdr_source_user_name,
-            tdr_sync_status,
-            tdr_created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending', NOW())
-          RETURNING *
+          INSERT INTO donor_records (
+            dr_donor_id,
+            dr_first_name,
+            dr_middle_name,
+            dr_last_name,
+            dr_gender,
+            dr_birthdate,
+            dr_age,
+            dr_blood_type,
+            dr_rh_factor,
+            dr_contact_number,
+            dr_address,
+            dr_status,
+            dr_created_at,
+            dr_recent_donation,
+            dr_donation_count
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW(), 1)
+          RETURNING dr_id, dr_donor_id, dr_first_name, dr_last_name
         `;
 
         const values = [
-          donor.dr_donor_id,
-          donor.dr_first_name,
-          donor.dr_middle_name,
-          donor.dr_last_name,
-          donor.dr_gender,
-          donor.dr_birthdate,
-          donor.dr_age,
-          donor.dr_blood_type,
-          donor.dr_rh_factor,
-          donor.dr_contact_number,
-          donor.dr_address,
-          sourceOrganization,
-          sourceUserId,
-          sourceUserName,
+          newDohDonorId,              // Use DOH-generated ID, not org ID
+          tempDonor.tdr_first_name,
+          tempDonor.tdr_middle_name,
+          tempDonor.tdr_last_name,
+          tempDonor.tdr_gender,
+          tempDonor.tdr_birthdate,
+          tempDonor.tdr_age,
+          tempDonor.tdr_blood_type,
+          tempDonor.tdr_rh_factor,
+          tempDonor.tdr_contact_number,
+          tempDonor.tdr_address,
+          'Non-Reactive'             // Always set to Non-Reactive
         ];
 
-        return dohPool.query(insertQuery, values);
-      });
-
-      await Promise.all(insertPromises);
-
-      // Create a mail notification in RBC database (DOH database) - NOT IMPLEMENTED HERE
-      // This will be handled by the RBC loading pending sync requests
-
-      // Log activity in organization database
-      try {
-        await this.logUserActivity(
-          sourceUserId,
-          "SYNC_REQUEST",
-          `User ${sourceUserName} requested to sync ${donorIds.length} donor record(s) to Regional Blood Center`
-        );
-      } catch (logError) {
-        console.error("Failed to log activity (non-critical):", logError);
+        const insertResult = await dohClient.query(insertQuery, values);
+        insertedCount++;
+        
+        console.log(`[SYNC] Inserted new donor: ${insertResult.rows[0].dr_donor_id} - ${insertResult.rows[0].dr_first_name} ${insertResult.rows[0].dr_last_name}`);
       }
-
-      await orgClient.query("COMMIT");
-
-      console.log(`[DB_ORG] Created ${donorsResult.rows.length} temp_donor_records for sync request from ${sourceOrganization}`);
-
-      return {
-        success: true,
-        message: `Sync request sent for ${donorsResult.rows.length} donor(s)`,
-        count: donorsResult.rows.length,
-      };
-    } catch (error) {
-      await orgClient.query("ROLLBACK");
-      console.error("Error creating sync request:", error);
-      throw error;
-    } finally {
-      orgClient.release();
     }
-  },
 
-  // Get pending sync requests (for RBC to view)
-  async getPendingSyncRequests() {
-    try {
-      const query = `
-      SELECT 
-        sr.*,
-        TO_CHAR(sr.sync_requested_at, 'YYYY-MM-DD HH24:MI:SS') as formatted_requested_at
-      FROM sync_requests sr
-      WHERE sr.status = 'pending'
-      ORDER BY sr.sync_requested_at DESC
+    // Update temp_donor_records status to 'approved'
+    const updateTempQuery = `
+      UPDATE temp_donor_records
+      SET 
+        tdr_sync_status = 'approved',
+        tdr_approved_by = $1,
+        tdr_approved_at = NOW()
+      WHERE tdr_id = ANY($2)
     `;
+    
+    await dohClient.query(updateTempQuery, [approvedBy, tdrIds]);
 
-      const result = await pool.query(query);
-      return result.rows;
-    } catch (error) {
-      console.error("Error getting pending sync requests:", error);
-      throw error;
+    await dohClient.query("COMMIT");
+
+    console.log(`[SYNC] Approved ${tempResult.rows.length} donor records from sync request`);
+    console.log(`[SYNC] - New donors inserted: ${insertedCount}`);
+    console.log(`[SYNC] - Existing donors updated: ${updatedCount}`);
+
+    return {
+      success: true,
+      message: `Successfully synced ${tempResult.rows.length} donor record(s)`,
+      count: tempResult.rows.length,
+      insertedCount: insertedCount,
+      updatedCount: updatedCount,
+    };
+  } catch (error) {
+    await dohClient.query("ROLLBACK");
+    console.error("Error approving temp donor records:", error);
+    throw error;
+  } finally {
+    dohClient.release();
+  }
+},
+
+async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Get the temp donor records before updating
+    const getTempRecordsQuery = `
+      SELECT * FROM temp_donor_records
+      WHERE tdr_id = ANY($1) AND tdr_sync_status = 'pending'
+    `;
+    const tempRecords = await client.query(getTempRecordsQuery, [tdrIds]);
+
+    if (tempRecords.rows.length === 0) {
+      throw new Error("No pending temp donor records found");
     }
-  },
 
-  // Add this new function in the dbOrgService object in db_org.js
+    const sourceOrganization = tempRecords.rows[0].tdr_source_organization;
+    const sourceUserName = tempRecords.rows[0].tdr_source_user_name;
 
-  // ========== SYNC REQUEST METHODS ==========
-  async createSyncRequest(
-    sourceOrganization,
-    sourceUserName,
-    sourceUserId,
-    donorIds
-  ) {
-    const orgClient = await pool.connect();
+    // ✅ FIXED: Update temp_donor_records status to 'declined'
+    // Removed tdr_declined_at column which doesn't exist
+    const updateQuery = `
+      UPDATE temp_donor_records
+      SET tdr_sync_status = 'declined',
+          tdr_approved_by = $1,
+          tdr_approved_at = NOW(),
+          tdr_decline_reason = $2
+      WHERE tdr_id = ANY($3)
+      RETURNING *
+    `;
+    const updatedRecords = await client.query(updateQuery, [
+      declinedBy,
+      declineReason,
+      tdrIds,
+    ]);
+
+    // Create mail notification for the organization
     try {
-      await orgClient.query("BEGIN");
+      const mailId = `MAIL-SYNC-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const subject = `Donor Record Sync Declined - ${tempRecords.rows.length} Record(s)`;
+      const preview = `Your sync request for ${tempRecords.rows.length} donor record(s) has been declined.`;
+      const body = `Dear ${sourceOrganization},\n\nWe regret to inform you that your donor record sync request has been DECLINED by the Regional Blood Center.\n\nSync Details:\n- Organization: ${sourceOrganization}\n- Requestor: ${sourceUserName}\n- Records Declined: ${tempRecords.rows.length}\n- Declined By: ${declinedBy}\n- Date: ${new Date().toLocaleDateString()}\n\nReason for Decline:\n${declineReason}\n\nIf you have any questions or would like to discuss this decision, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team`;
 
-      // Get donor records to sync from organization database
-      const getDonorsQuery = `
-        SELECT * FROM donor_record_org
-        WHERE dr_id = ANY($1) AND dr_source_organization = $2
+      const insertMailQuery = `
+        INSERT INTO mails (
+          mail_id, from_name, from_email, subject, preview, body,
+          status, decline_reason, request_title, requestor, request_organization,
+          date_submitted, organization_type, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
       `;
-      const donorsResult = await orgClient.query(getDonorsQuery, [
-        donorIds,
+
+      await orgPool.query(insertMailQuery, [
+        mailId,
+        'Regional Blood Center',
+        'admin@regionalbloodcenter.org',
+        subject,
+        preview,
+        body,
+        'declined',
+        declineReason,
+        `Donor Record Sync - ${sourceOrganization}`,
+        declinedBy,
         sourceOrganization,
+        tempRecords.rows[0].tdr_created_at,
+        'organization'
       ]);
 
-      if (donorsResult.rows.length === 0) {
-        throw new Error("No donor records found to sync");
-      }
-
-      // Insert into temp_donor_records in DOH database
-      const insertPromises = donorsResult.rows.map((donor) => {
-        const insertQuery = `
-          INSERT INTO temp_donor_records (
-            tdr_donor_id,
-            tdr_first_name,
-            tdr_middle_name,
-            tdr_last_name,
-            tdr_gender,
-            tdr_birthdate,
-            tdr_age,
-            tdr_blood_type,
-            tdr_rh_factor,
-            tdr_contact_number,
-            tdr_address,
-            tdr_source_organization,
-            tdr_source_user_id,
-            tdr_source_user_name,
-            tdr_sync_status,
-            tdr_created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending', NOW())
-          RETURNING *
-        `;
-
-        const values = [
-          donor.dr_donor_id,
-          donor.dr_first_name,
-          donor.dr_middle_name,
-          donor.dr_last_name,
-          donor.dr_gender,
-          donor.dr_birthdate,
-          donor.dr_age,
-          donor.dr_blood_type,
-          donor.dr_rh_factor,
-          donor.dr_contact_number,
-          donor.dr_address,
-          sourceOrganization,
-          sourceUserId,
-          sourceUserName,
-        ];
-
-        return dohPool.query(insertQuery, values);
-      });
-
-      await Promise.all(insertPromises);
-
-      // Create a mail notification in RBC database (DOH database) - NOT IMPLEMENTED HERE
-      // This will be handled by the RBC loading pending sync requests
-
-      // Log activity in organization database
-      try {
-        await this.logUserActivity(
-          sourceUserId,
-          "SYNC_REQUEST",
-          `User ${sourceUserName} requested to sync ${donorIds.length} donor record(s) to Regional Blood Center`
-        );
-      } catch (logError) {
-        console.error("Failed to log activity (non-critical):", logError);
-      }
-
-      await orgClient.query("COMMIT");
-
-      console.log(`[DB_ORG] Created ${donorsResult.rows.length} temp_donor_records for sync request from ${sourceOrganization}`);
-
-      return {
-        success: true,
-        message: `Sync request sent for ${donorsResult.rows.length} donor(s)`,
-        count: donorsResult.rows.length,
-      };
-    } catch (error) {
-      await orgClient.query("ROLLBACK");
-      console.error("Error creating sync request:", error);
-      throw error;
-    } finally {
-      orgClient.release();
+      console.log(`[DB] Decline mail sent to ${sourceOrganization}`);
+    } catch (mailError) {
+      console.error('[DB] Error creating decline mail:', mailError);
+      // Don't fail the transaction if mail creation fails
     }
-  },
 
-  // Get pending sync requests (for RBC to view)
-  async getPendingSyncRequests() {
-    try {
-      const query = `
-      SELECT 
-        sr.*,
-        TO_CHAR(sr.sync_requested_at, 'YYYY-MM-DD HH24:MI:SS') as formatted_requested_at
-      FROM sync_requests sr
-      WHERE sr.status = 'pending'
-      ORDER BY sr.sync_requested_at DESC
-    `;
+    await client.query("COMMIT");
 
-      const result = await pool.query(query);
-      return result.rows;
-    } catch (error) {
-      console.error("Error getting pending sync requests:", error);
-      throw error;
-    }
-  },
+    console.log(`[DB] Declined ${tempRecords.rows.length} temp donor records from ${sourceOrganization}`);
 
+    return {
+      success: true,
+      count: tempRecords.rows.length,
+      records: updatedRecords.rows,
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("[DB] Error declining temp donor records:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
   // ========== MAIL METHODS ==========
   async getAllMails() {
     try {
