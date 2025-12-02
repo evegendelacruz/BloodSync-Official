@@ -1265,7 +1265,7 @@ const loadNotifications = async () => {
         </div>
       )}
 
-      <style jsx>{`
+      <style>{`
         .notification-content {
           padding: 24px;
           background-color: #f9fafb;

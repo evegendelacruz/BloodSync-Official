@@ -22,7 +22,6 @@ import MailOrg from "./(tabs)/mail";
 import CalendarOrg from "./(tabs)/calendar";
 import NotificationOrg from "./(tabs)/notification";
 import AppointmentOrg from "./appointment";
-import RecentActivityOrg from "./recent_activity";
 import ProfileOrg from "./(tabs)/profile/profile";
 import LoginOrg from "../login";
 
@@ -3871,8 +3870,6 @@ const DonorRecordOrg = () => {
         return <ProfileOrg />;
       case "appointment-org":
         return <AppointmentOrg />;
-      case "recent-activity-org":
-        return <RecentActivityOrg />;
       default:
         return <DonorRecordContent currentUser={currentUser} />;
     }
