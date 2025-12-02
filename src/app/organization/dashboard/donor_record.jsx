@@ -13,6 +13,8 @@ import {
   Clock,
   RefreshCw,
   MoreVertical,
+  Handshake,
+  Droplet
 } from "lucide-react";
 import SidePanelOrg from "../../../components/SidePanelOrg";
 
@@ -25,6 +27,15 @@ import ProfileOrg from "./(tabs)/profile/profile";
 import LoginOrg from "../login";
 
 const DonorRecordContent = ({ currentUser }) => {
+  const [sortConfig, setSortConfig] = useState({
+  key: "sortby",
+  direction: "asc",
+  });
+  const sortDropdownRef = useRef(null);
+  const filterDropdownRef = useRef(null);
+  const [filterConfig, setFilterConfig] = useState({ field: "", value: "" });
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [donorData, setDonorData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -58,6 +69,7 @@ const DonorRecordContent = ({ currentUser }) => {
     recentDonation: "",
     donationCount: "",
   });
+  
 
   // Get source organization based on user category
   const getSourceOrganization = () => {
@@ -180,36 +192,131 @@ const DonorRecordContent = ({ currentUser }) => {
       )
     : [];
 
-  // Load donor records on mount and when sourceOrganization changes
-  useEffect(() => {
-    if (sourceOrganization) {
-      loadDonorRecords();
-    }
-  }, [sourceOrganization]);
-
-  const loadDonorRecords = async () => {
-    try {
-      setLoading(true);
-      if (window.electronAPI && sourceOrganization) {
-        const records =
-          await window.electronAPI.getDonorRecordsOrg(sourceOrganization);
-        setDonorData(records || []);
+    useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (
+        sortDropdownRef.current &&
+        !sortDropdownRef.current.contains(e.target)
+      ) {
+        setShowSortDropdown(false);
       }
-    } catch (error) {
-      console.error("Error loading donor records:", error);
-      setDonorData([]);
-    } finally {
-      setLoading(false);
+      if (
+        filterDropdownRef.current &&
+        !filterDropdownRef.current.contains(e.target)
+      ) {
+        setShowFilterDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+    // Load donor records on mount and when sourceOrganization changes
+    useEffect(() => {
+      if (sourceOrganization) {
+        loadDonorRecords();
+      }
+    }, [sourceOrganization]);
+
+    const loadDonorRecords = async () => {
+      try {
+        setLoading(true);
+        if (window.electronAPI && sourceOrganization) {
+          const records =
+            await window.electronAPI.getDonorRecordsOrg(sourceOrganization);
+          setDonorData(records || []);
+        }
+      } catch (error) {
+        console.error("Error loading donor records:", error);
+        setDonorData([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const toggleRowSelection = (id) => {
+      setDonorData((prev) =>
+        prev.map((item) =>
+          item.id === id ? { ...item, selected: !item.selected } : item
+        )
+      );
+    };
+
+    const handleSort = (key) => {
+    let direction = "asc";
+    if (sortConfig.key === key && sortConfig.direction === "asc") {
+      direction = "desc";
     }
+    setSortConfig({ key, direction });
+    setShowSortDropdown(false);
   };
 
-  const toggleRowSelection = (id) => {
-    setDonorData((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, selected: !item.selected } : item
-      )
-    );
+  const getSortLabel = () => {
+    const labels = {
+      sortby: "Sort by",
+      donorId: "Donor ID",
+      firstName: "First Name",
+      lastName: "Last Name",
+      bloodType: "Blood Type",
+      age: "Age",
+      gender: "Gender",
+      address: "Address",
+      recentDonation: "Recent Donation",
+      donationCount: "Donation Count",
+    };
+    return labels[sortConfig.key] || "Sort by";
   };
+
+  const getSortedAndFilteredData = () => {
+    let filtered = [...donorData];
+
+    // Apply search filter
+    if (searchTerm) {
+      filtered = filtered.filter(
+        (item) =>
+          item.donorId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.middleName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.bloodType?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.address?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Apply filter config
+    if (filterConfig.field && filterConfig.value) {
+      filtered = filtered.filter((item) => {
+        const value = item[filterConfig.field];
+        if (value === null || value === undefined) return false;
+        return value
+          .toString()
+          .toLowerCase()
+          .includes(filterConfig.value.toLowerCase());
+      });
+    }
+
+    // Apply sorting
+    const sorted = filtered.sort((a, b) => {
+      const aVal = a[sortConfig.key];
+      const bVal = b[sortConfig.key];
+
+      if (aVal === null || aVal === undefined) return 1;
+      if (bVal === null || bVal === undefined) return -1;
+
+      let comparison = 0;
+      if (typeof aVal === "string") {
+        comparison = aVal.localeCompare(bVal);
+      } else if (typeof aVal === "number") {
+        comparison = aVal - bVal;
+      }
+
+      return sortConfig.direction === "asc" ? comparison : -comparison;
+    });
+
+    return sorted;
+  };
+
 
   const toggleAllSelection = () => {
     const allSelected = donorData.every((item) => item.selected);
@@ -579,40 +686,296 @@ const DonorRecordContent = ({ currentUser }) => {
       </div>
 
       <div className="controls-bar">
-        <div className="left-controls">
-          <div className="search-container">
-            <Search size={16} className="search-icon" />
-            <input
-              type="text"
-              placeholder="Search"
-              className="search-input"
-              value={searchTerm}
-              onChange={(e) => handleSearch(e.target.value)}
-            />
-          </div>
+      <div className="left-controls">
+        <div className="search-container">
+          <Search size={16} className="search-icon" />
+          <input
+            type="text"
+            placeholder="Search"
+            className="search-input"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
-        <div className="right-controls">
-          <button className="sort-button">
-            <span>Sort by</span>
-            <svg
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+      </div>
+      <div className="right-controls">
+        {/* SORT DROPDOWN */}
+    <div style={{ position: "relative" }} ref={sortDropdownRef}>
+      <button
+        className="sort-button"
+        style={{
+          backgroundColor: showSortDropdown ? "#2C58DC" : "white",
+          color: showSortDropdown ? "white" : "#374151",
+          transition: "all 0.2s ease",
+        }}
+        onClick={() => setShowSortDropdown(!showSortDropdown)}
+      >
+        <span>{getSortLabel()}</span>
+        <svg
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          style={{
+            transform: showSortDropdown ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 0.2s ease",
+          }}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="m19 9-7 7-7-7"
+          />
+        </svg>
+      </button>
+      {showSortDropdown && (
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            backgroundColor: "white",
+            border: "1px solid #e5e7eb",
+            borderRadius: "6px",
+            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+            zIndex: 1000,
+            minWidth: "200px",
+            marginTop: "4px",
+          }}
+        >
+          {[
+            { key: "sortby", label: "Sort by" },
+            { key: "donorId", label: "Donor ID" },
+            { key: "firstName", label: "First Name" },
+            { key: "lastName", label: "Last Name" },
+            { key: "bloodType", label: "Blood Type" },
+            { key: "age", label: "Age" },
+            { key: "gender", label: "Gender" },
+            { key: "address", label: "Address" },
+            { key: "recentDonation", label: "Recent Donation" },
+            { key: "donationCount", label: "Donation Count" },
+          ].map((item) => (
+            <div
+              key={item.key}
+              style={{
+                padding: "10px 16px",
+                cursor: "pointer",
+                fontSize: "14px",
+                color: "#374151",
+                transition: "background-color 0.2s ease",
+                borderBottom: "1px solid #e5e7eb",
+                fontFamily: "Barlow",
+                backgroundColor:
+                  sortConfig.key === item.key ? "#dbeafe" : "transparent",
+                fontWeight: sortConfig.key === item.key ? "600" : "normal",
+              }}
+              onClick={() => handleSort(item.key)}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor =
+                  sortConfig.key === item.key ? "#dbeafe" : "#f3f4f6";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor =
+                  sortConfig.key === item.key ? "#dbeafe" : "transparent";
+              }}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="m19 9-7 7-7-7"
-              />
-            </svg>
-          </button>
-          <button className="filter-button">
-            <Filter size={16} />
-            <span>Filter</span>
-          </button>
+              {item.label}{" "}
+              {sortConfig.key === item.key &&
+                (sortConfig.direction === "asc" ? "↑" : "↓")}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+
+
+               <div style={{ position: "relative" }} ref={filterDropdownRef}>
+        <button
+          className="filter-button"
+          style={{
+            backgroundColor: showFilterDropdown ? "#2C58DC" : "white",
+            color: showFilterDropdown ? "white" : "#374151",
+            transition: "all 0.2s ease",
+          }}
+          onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+        >
+          <Filter size={16} />
+          <span>Filter</span>
+          <svg
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            style={{
+              transform: showFilterDropdown ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 0.2s ease",
+            }}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="m19 9-7 7-7-7"
+            />
+          </svg>
+        </button>
+        {showFilterDropdown && (
+          <div
+            style={{
+              position: "absolute",
+              top: "100%",
+              left: 0,
+              backgroundColor: "white",
+              border: "1px solid #e5e7eb",
+              borderRadius: "6px",
+              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+              zIndex: 1000,
+              minWidth: "300px",
+              marginTop: "4px",
+            }}
+          >
+            <div
+              style={{
+                padding: "12px 16px",
+                borderBottom: "1px solid #e5e7eb",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
+                }}
+              >
+                <label
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: "500",
+                    color: "#374151",
+                  }}
+                >
+                  Filter Field
+                </label>
+                <select
+                  style={{
+                    padding: "8px 12px",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "4px",
+                    fontSize: "14px",
+                    fontFamily: "Barlow",
+                    outline: "none",
+                    backgroundColor: "white",
+                    cursor: "pointer",
+                    width: "100%",
+                    boxSizing: "border-box",
+                  }}
+                  value={filterConfig.field}
+                  onChange={(e) =>
+                    setFilterConfig({
+                      ...filterConfig,
+                      field: e.target.value,
+                    })
+                  }
+                >
+                  <option value="">Select a field</option>
+                  <option value="donorId">Donor ID</option>
+                  <option value="firstName">First Name</option>
+                  <option value="lastName">Last Name</option>
+                  <option value="bloodType">Blood Type</option>
+                  <option value="gender">Gender</option>
+                  <option value="address">Address</option>
+                </select>
+              </div>
+            </div>
+            <div
+              style={{
+                padding: "12px 16px",
+                borderBottom: "1px solid #e5e7eb",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
+                }}
+              >
+                <label
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: "500",
+                    color: "#374151",
+                  }}
+                >
+                  Filter Value
+                </label>
+                <input
+                  type="text"
+                  style={{
+                    padding: "8px 12px",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "4px",
+                    fontSize: "14px",
+                    fontFamily: "Barlow",
+                    outline: "none",
+                    backgroundColor: "white",
+                    width: "100%",
+                    boxSizing: "border-box",
+                  }}
+                  value={filterConfig.value}
+                  onChange={(e) =>
+                    setFilterConfig({
+                      ...filterConfig,
+                      value: e.target.value,
+                    })
+                  }
+                  placeholder="Enter value to filter"
+                />
+              </div>
+            </div>
+            <div style={{ padding: "8px", display: "flex", gap: "8px" }}>
+              <button
+                style={{
+                  flex: 1,
+                  padding: "8px 12px",
+                  fontSize: "12px",
+                  backgroundColor: "#9ca3af",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontFamily: "Barlow",
+                }}
+                onClick={() => {
+                  setFilterConfig({ field: "", value: "" });
+                  setShowFilterDropdown(false);
+                }}
+              >
+                Clear
+              </button>
+              <button
+                style={{
+                  flex: 1,
+                  padding: "8px 12px",
+                  fontSize: "12px",
+                  backgroundColor: "#059669",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontFamily: "Barlow",
+                }}
+                onClick={() => setShowFilterDropdown(false)}
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
           <button className="sync-button" onClick={handleRequestSync}>
             <svg
               width="16"
@@ -668,7 +1031,7 @@ const DonorRecordContent = ({ currentUser }) => {
             </tr>
           </thead>
           <tbody className="table-body">
-            {donorData.length === 0 ? (
+            {getSortedAndFilteredData().length === 0 ? (
               <tr>
                 <td
                   colSpan="16"
@@ -678,7 +1041,7 @@ const DonorRecordContent = ({ currentUser }) => {
                 </td>
               </tr>
             ) : (
-              donorData.map((item, index) => (
+              getSortedAndFilteredData().map((item, index) => (
                 <tr
                   key={item.id}
                   className={`table-row ${index % 2 === 1 ? "row-even" : ""} ${item.selected ? "row-selected" : ""}`}
@@ -2462,8 +2825,8 @@ const DonorRecordContent = ({ currentUser }) => {
         .right-controls { display: flex; align-items: center; gap: 12px; }
         .sort-button { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border: 1px solid #d1d5db; border-radius: 6px; background-color: white; cursor: pointer; font-size: 14px; color: #374151; }
         .filter-button { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background-color: white; color: #374151; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; font-size: 14px; }
-        .sync-button { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background-color: #2C58DC; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
-        .add-button { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background-color: #FFC200; color: black; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .sync-button { font-family: "Barlow"; display: flex; align-items: center; gap: 8px; padding: 8px 16px; background-color: #2C58DC; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .add-button { font-family: "Barlow"; display: flex; align-items: center; gap: 8px; padding: 8px 16px; background-color: #FFC200; color: black; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
         .table-container { 
           background-color: white; 
           border-radius: 8px; 
@@ -2504,6 +2867,13 @@ const DonorRecordContent = ({ currentUser }) => {
         .edit-button { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background-color: #4a5568; color: white; border: none; cursor: pointer; font-size: 14px; border-right: 1px solid #2d3748; }
         .delete-button { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background-color: #4a5568; color: white; border: none; cursor: pointer; font-size: 14px; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .message-time {
+          font-size: 0.65rem;
+          color: #6b7280;
+          white-space: nowrap;
+          font-family: 'Barlow';
+          font-weight: 400;
+        }
       `}</style>
     </div>
   );
@@ -2585,7 +2955,13 @@ const DonorRecordOrg = () => {
   const [isLoadingMail, setIsLoadingMail] = useState(false);
   const [calendarAppointments, setCalendarAppointments] = useState([]);
   const [isLoadingCalendar, setIsLoadingCalendar] = useState(false);
+  const [lastViewedMailTime, setLastViewedMailTime] = useState(
+  localStorage.getItem('lastViewedMailTime_org') || new Date(0).toISOString()
+);
   const navigate = useNavigate();
+  const [lastViewedNotificationTime, setLastViewedNotificationTime] = useState(
+  localStorage.getItem('lastViewedNotificationTime_org') || new Date(0).toISOString()
+);
 
   useEffect(() => {
     const loadCurrentUser = async () => {
@@ -2653,211 +3029,182 @@ const DonorRecordOrg = () => {
   }, []);
 
   const loadNotifications = async () => {
-    try {
-      if (typeof window !== "undefined" && window.electronAPI) {
-        const [notificationsData, appointmentsData] = await Promise.all([
-          window.electronAPI.getAllOrgNotifications(),
-          window.electronAPI.getAllAppointments(),
-        ]);
+  try {
+    if (typeof window !== "undefined" && window.electronAPI) {
+      const notificationsData = await window.electronAPI.getAllNotificationsOrg();
+      
+      const readLocalIds = JSON.parse(
+        localStorage.getItem("orgReadNotificationIds") || "[]"
+      );
+      
+      const transformedNotifications = notificationsData.map((n) => {
+        const notifType = n.notification_type || n.type;
+        const derivedStatus =
+          notifType === "stock_expired"
+            ? "expired"
+            : notifType === "stock_expiring_urgent"
+              ? "urgent"
+              : notifType === "stock_expiring_soon"
+                ? "alert"
+                : n.status || "info";
 
-        const readLocalIds = JSON.parse(
-          localStorage.getItem("orgReadNotificationIds") || "[]"
-        );
-        const transformedNotifications = notificationsData.map((n) => {
-          const notifType = n.notification_type || n.type;
-          const derivedStatus =
-            notifType === "stock_expired"
-              ? "expired"
-              : notifType === "stock_expiring_urgent"
-                ? "urgent"
-                : notifType === "stock_expiring_soon"
-                  ? "alert"
-                  : n.status || "info";
+        return {
+          id: n.id,
+          notificationId: n.notification_id,
+          type: notifType || "notification",
+          status: derivedStatus,
+          priority: n.priority,
+          title: n.title,
+          message: n.message || n.description,
+          requestor: n.requestor || "Regional Blood Center",
+          timestamp: new Date(n.updated_at || n.created_at),
+          read:
+            n.read ||
+            n.is_read ||
+            false ||
+            readLocalIds.includes(n.notification_id) ||
+            readLocalIds.includes(n.id),
+          appointmentId: n.appointment_id,
+          eventDate: n.event_date,
+          eventTime: n.event_time,
+          eventLocation: n.event_location,
+          declineReason: n.decline_reason,
+          contactInfo: {
+            email: n.contact_email,
+            phone: n.contact_phone,
+            address: n.event_location || n.contact_address,
+            type: n.contact_type,
+          },
+        };
+      });
+
+      // Load appointments for event notifications
+      let appointmentsData = [];
+      try {
+        appointmentsData = await window.electronAPI.getAllAppointments?.() || [];
+      } catch (error) {
+        console.warn("Could not load appointments for notifications:", error);
+      }
+
+      const now = new Date();
+      const upcomingAppointments = appointmentsData
+        .filter((apt) => {
+          const aptDate = new Date(apt.date + "T" + (apt.time || "00:00:00"));
+          const hoursDiff = (aptDate - now) / (1000 * 60 * 60);
+          return (
+            hoursDiff > 0 &&
+            hoursDiff <= 72 &&
+            (apt.status === "approved" || apt.status === "scheduled" || apt.status === "confirmed")
+          );
+        })
+        .map((apt) => {
+          const aptDate = new Date(apt.date + "T00:00:00");
+          const formattedDate = aptDate.toLocaleDateString("en-US", {
+            weekday: "short",
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          });
+          const formattedTime = apt.time 
+            ? new Date(`1970-01-01T${apt.time}`).toLocaleTimeString("en-US", {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "TBD";
 
           return {
-            id: n.id,
-            notificationId: n.notification_id,
-            type: notifType || "partnership_response",
-            status: derivedStatus,
-            title: n.title,
-            message: n.message,
-            requestor: n.requestor || "Regional Blood Center",
-            timestamp: new Date(n.updated_at || n.created_at),
-            read:
-              n.read ||
-              false ||
-              readLocalIds.includes(n.notification_id) ||
-              readLocalIds.includes(n.id),
-            appointmentId: n.appointment_id,
-            declineReason: n.decline_reason,
-            contactInfo: {
-              email: n.contact_email,
-              phone: n.contact_phone,
-              address: n.contact_address,
-              type: n.contact_type,
-            },
-          };
-        });
-
-        const now = new Date();
-        const upcomingAppointments = appointmentsData
-          .filter((apt) => {
-            const aptDate = new Date(apt.date + "T" + apt.time);
-            const hoursDiff = (aptDate - now) / (1000 * 60 * 60);
-            return (
-              hoursDiff > 0 &&
-              hoursDiff <= 72 &&
-              (apt.status === "approved" || apt.status === "scheduled")
-            );
-          })
-          .map((apt) => {
-            const aptDate = new Date(apt.date + "T00:00:00");
-            const formattedDate = aptDate.toLocaleDateString("en-US", {
-              weekday: "short",
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-            });
-            const formattedTime = new Date(
-              `1970-01-01T${apt.time}`
-            ).toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: true,
-            });
-            const eventLocation = apt.contactInfo?.address || "TBD";
-
-            return {
-              id: `event-${apt.id || apt.appointment_id}`,
-              notificationId: `EVENT-${apt.id || apt.appointment_id}`,
-              type: "partnership_response",
-              status: "approved",
-              title: "Partner, your Blood Drive is Scheduled!",
-              message: `Your blood drive event "${apt.title || "Blood Drive"}" is confirmed for ${formattedDate} at ${formattedTime}. Location: ${eventLocation}.`,
-              requestor: "Regional Blood Center",
-              timestamp: new Date(apt.created_at || apt.date),
-              read: false,
-              appointmentId: apt.id || apt.appointment_id,
-              eventDate: apt.date,
-              eventTime: apt.time,
-              contactInfo: apt.contactInfo,
-              rbcContactInfo: {
-                email: "admin@regionalbloodcenter.org",
-                phone: "+63 (85) 225-1234",
-                address:
-                  "J.V Serina St., Carmen, Cagayan de Oro City, Misamis Oriental.",
-              },
-            };
-          });
-
-        const finishedEventNotifications = appointmentsData
-          .filter((apt) => {
-            const endOfDay = new Date(apt.date + "T23:59:59");
-            const diffMs = now - endOfDay;
-            return (
-              diffMs >= 0 &&
-              diffMs <= 10 * 60 * 1000 &&
-              (apt.status === "approved" || apt.status === "confirmed")
-            );
-          })
-          .map((apt) => ({
-            id: `event-finished-${apt.id || apt.appointment_id}`,
-            notificationId: `EVENT-FINISHED-${apt.id || apt.appointment_id}`,
+            id: `event-${apt.id || apt.appointment_id}`,
+            notificationId: `EVENT-${apt.id || apt.appointment_id}`,
             type: "upcoming_event",
-            status: "info",
-            title: "Blood Drive Partnership event now Completed",
-            message: `The event "${apt.title || "Blood Drive Partnership"}" has ended at 12:00 midnight.`,
-            requestor: "Event Reminder",
-            timestamp: new Date(),
-            read:
-              readLocalIds.includes(
-                `EVENT-FINISHED-${apt.id || apt.appointment_id}`
-              ) ||
-              readLocalIds.includes(
-                `event-finished-${apt.id || apt.appointment_id}`
-              ),
+            status: "approved",
+            title: "Partner, your Blood Drive is Scheduled!",
+            message: `Your blood drive event "${apt.title || "Blood Drive"}" is confirmed for ${formattedDate} at ${formattedTime}.`,
+            requestor: "Regional Blood Center",
+            timestamp: new Date(apt.created_at || apt.date),
+            read: false,
             appointmentId: apt.id || apt.appointment_id,
             eventDate: apt.date,
             eventTime: apt.time,
             contactInfo: apt.contactInfo,
-          }));
+            rbcContactInfo: {
+              email: "admin@regionalbloodcenter.org",
+              phone: "+63 (85) 225-1234",
+              address:
+                "J.V Serina St., Carmen, Cagayan de Oro City, Misamis Oriental.",
+            },
+          };
+        });
 
-        const testFinished = {
-          id: "event-finished-test",
-          notificationId: "EVENT-FINISHED-TEST",
+      const finishedEventNotifications = appointmentsData
+        .filter((apt) => {
+          const endOfDay = new Date(apt.date + "T23:59:59");
+          const diffMs = now - endOfDay;
+          return (
+            diffMs >= 0 &&
+            diffMs <= 10 * 60 * 1000 &&
+            (apt.status === "approved" || apt.status === "confirmed" || apt.status === "completed")
+          );
+        })
+        .map((apt) => ({
+          id: `event-finished-${apt.id || apt.appointment_id}`,
+          notificationId: `EVENT-FINISHED-${apt.id || apt.appointment_id}`,
           type: "upcoming_event",
           status: "info",
           title: "Blood Drive Partnership event now Completed",
-          message:
-            'The event "Blood Drive Partnership" has ended at 12:00 midnight.',
+          message: `The event "${apt.title || "Blood Drive Partnership"}" has ended at 12:00 midnight.`,
           requestor: "Event Reminder",
           timestamp: new Date(),
-          read: readLocalIds.includes("EVENT-FINISHED-TEST"),
-        };
+          read:
+            readLocalIds.includes(
+              `EVENT-FINISHED-${apt.id || apt.appointment_id}`
+            ) ||
+            readLocalIds.includes(
+              `event-finished-${apt.id || apt.appointment_id}`
+            ),
+          appointmentId: apt.id || apt.appointment_id,
+          eventDate: apt.date,
+          eventTime: apt.time,
+          contactInfo: apt.contactInfo,
+        }));
 
-        const merged = [
-          ...transformedNotifications,
-          ...upcomingAppointments,
-          ...finishedEventNotifications,
-          testFinished,
-        ];
-        const deduped = Array.from(
-          new Map(merged.map((n) => [n.notificationId || n.id, n])).values()
-        );
-        const allNotifications = deduped.sort((a, b) => {
-          if (a.read !== b.read) {
-            return a.read ? 1 : -1;
-          }
-          return new Date(b.timestamp) - new Date(a.timestamp);
-        });
+      const testFinished = {
+        id: "event-finished-test",
+        notificationId: "EVENT-FINISHED-TEST",
+        type: "upcoming_event",
+        status: "info",
+        title: "Blood Drive Partnership event now Completed",
+        message:
+          'The event "Blood Drive Partnership" has ended at 12:00 midnight.',
+        requestor: "Event Reminder",
+        timestamp: new Date(),
+        read: readLocalIds.includes("EVENT-FINISHED-TEST"),
+      };
 
-        setNotifications(allNotifications);
-      } else {
-        setNotifications([
-          {
-            id: 1,
-            status: "approved",
-            title: "Blood Drive Partnership Request Approved",
-            message:
-              "Your blood drive partnership request with Metro Hospital has been approved.",
-            requestor: "Metro Hospital",
-            timestamp: new Date(Date.now() - 30 * 60000),
-            read: false,
-          },
-          {
-            id: 2,
-            status: "declined",
-            title: "Sync Request Declined",
-            message:
-              "Your sync request with Butuan Blood Center has been declined.",
-            requestor: "Butuan Blood Center",
-            timestamp: new Date(Date.now() - 2 * 60 * 60000),
-            read: false,
-          },
-          {
-            id: 3,
-            status: "info",
-            title: "Profile Updated Successfully",
-            message: "Your profile information has been updated successfully.",
-            requestor: "System",
-            timestamp: new Date(Date.now() - 3 * 60 * 60000),
-            read: false,
-          },
-          {
-            id: 4,
-            status: "warning",
-            title: "Failed Login Attempts",
-            message: "Multiple failed login attempts detected on your account.",
-            requestor: "Security System",
-            timestamp: new Date(Date.now() - 12 * 60 * 60000),
-            read: false,
-          },
-        ]);
-      }
-    } catch (error) {
-      console.error("Error loading notifications:", error);
+      const merged = [
+        ...transformedNotifications,
+        ...upcomingAppointments,
+        ...finishedEventNotifications,
+        testFinished,
+      ];
+      
+      const deduped = Array.from(
+        new Map(merged.map((n) => [n.notificationId || n.id, n])).values()
+      );
+      
+      const allNotifications = deduped.sort((a, b) => {
+        if (a.read !== b.read) {
+          return a.read ? 1 : -1;
+        }
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      });
+
+      setNotifications(allNotifications);
     }
-  };
+  } catch (error) {
+    console.error("Error loading notifications:", error);
+  }
+};
 
   useEffect(() => {
     loadMailMessages();
@@ -2865,43 +3212,113 @@ const DonorRecordOrg = () => {
     return () => clearInterval(mailInterval);
   }, []);
 
-  const loadMailMessages = async () => {
-    try {
-      setIsLoadingMail(true);
+ const loadMailMessages = async () => {
+  try {
+    setIsLoadingMail(true);
 
-      if (typeof window !== "undefined" && window.electronAPI) {
-        const mailData = await window.electronAPI.getAllMails();
+    if (typeof window !== "undefined" && window.electronAPI) {
+      console.log("[DONOR_RECORD_ORG] Loading mail messages...");
+      
+      // Load regular mails
+      const mailData = await window.electronAPI.getAllMails();
+      console.log("[DONOR_RECORD_ORG] Regular mails:", mailData);
 
-        const mailsFromNotifications = mailData
-          .map((n) => {
-            const avatar = "RBC";
-
-            return {
-              id: n.id,
-              notificationId: n.mail_id,
-              from: "Regional Blood Center",
-              fromEmail: "admin@regionalbloodcenter.org",
-              avatar: avatar,
-              avatarColor: "#165C3C",
-              subject: n.subject,
-              preview: n.preview,
-              timestamp: new Date(n.created_at),
-              read: n.read || false,
-              status: n.status,
-              declineReason: n.decline_reason || null,
-            };
-          })
-          .sort((a, b) => b.timestamp - a.timestamp)
-          .slice(0, 3);
-
-        setMailMessages(mailsFromNotifications);
+      // Load sync notifications
+      let syncNotifications = [];
+      try {
+        if (typeof window.electronAPI.getAllSyncNotifications === 'function') {
+          syncNotifications = await window.electronAPI.getAllSyncNotifications();
+          console.log("[DONOR_RECORD_ORG] Sync notifications:", syncNotifications);
+        }
+      } catch (syncError) {
+        console.error("[DONOR_RECORD_ORG] Error loading sync notifications:", syncError);
       }
-    } catch (error) {
-      console.error("Error loading mail messages:", error);
-    } finally {
-      setIsLoadingMail(false);
+
+      // Transform regular mails
+      const mailsFromNotifications = mailData
+        .map((n) => {
+          const avatar = "RBC";
+          const status = n.status || "pending";
+
+          return {
+            id: n.id,
+            notificationId: n.mail_id || n.id,
+            from: "Regional Blood Center",
+            fromEmail: "admin@regionalbloodcenter.org",
+            avatar: avatar,
+            avatarColor: "#165C3C",
+            avatarFontFamily: "Barlow",
+            subject: n.subject || `Partnership Request Update`,
+            preview: n.preview || n.message || `Partnership request ${status}`,
+            timestamp: new Date(n.created_at || Date.now()),
+            read: n.read || n.is_read || false,
+            status: status,
+            declineReason: n.decline_reason || null,
+            type: 'mail',
+          };
+        });
+
+      // Transform sync notifications into mail format
+      const syncMails = syncNotifications.map((sync) => {
+        const displayStatus = sync.status === 'rejected' ? 'declined' : 
+                             sync.status === 'approved' ? 'approved' : 'pending';
+        
+        const subject = displayStatus === 'approved' 
+          ? `Sync Request Approved - ${sync.donor_count} Record(s)`
+          : displayStatus === 'declined'
+          ? `Sync Request Declined - ${sync.donor_count} Record(s)`
+          : `Sync Request Pending - ${sync.donor_count} Record(s)`;
+        
+        const preview = displayStatus === 'approved'
+          ? `Your sync request for ${sync.donor_count} donor record(s) has been approved.`
+          : displayStatus === 'declined'
+          ? `Your sync request for ${sync.donor_count} donor record(s) was declined.`
+          : `Your sync request for ${sync.donor_count} donor record(s) is pending review.`;
+
+        return {
+          id: `sync-${sync.id}`,
+          notificationId: `SYNC-${sync.id}`,
+          from: "Regional Blood Center - Sync Team",
+          fromEmail: "sync@regionalbloodcenter.org",
+          avatar: "RBC",
+          avatarColor: "#2563eb",
+          subject: subject,
+          preview: preview,
+          timestamp: new Date(sync.updated_at || sync.created_at || Date.now()),
+          read: sync.is_read || sync.read || false,
+          status: displayStatus,
+          declineReason: sync.rejection_reason || null,
+          syncData: {
+            donorCount: sync.donor_count,
+            requestedBy: sync.requested_by,
+            rejectionReason: sync.rejection_reason,
+            approvedBy: sync.approved_by,
+          },
+          type: 'sync',
+        };
+      });
+
+      // Combine and sort all mails - prioritize unread
+      const allMails = [...mailsFromNotifications, ...syncMails]
+        .sort((a, b) => {
+          // Show unread first
+          if (a.read !== b.read) {
+            return a.read ? 1 : -1;
+          }
+          // Then sort by timestamp
+          return new Date(b.timestamp) - new Date(a.timestamp);
+        })
+        .slice(0, 4); // Show only 4 most recent in dropdown
+
+      console.log("[DONOR_RECORD_ORG] Combined mails for dropdown:", allMails);
+      setMailMessages(allMails);
     }
-  };
+  } catch (error) {
+    console.error("[DONOR_RECORD_ORG] Error loading mail messages:", error);
+  } finally {
+    setIsLoadingMail(false);
+  }
+};
 
   useEffect(() => {
     loadCalendarAppointments();
@@ -3074,12 +3491,24 @@ const DonorRecordOrg = () => {
   }, [currentUser]);
 
   const toggleSidePanel = () => setIsSidePanelOpen(!isSidePanelOpen);
-  const handleNavigate = (screen) => {
+
+      const getUnreadNotificationCount = () => {
+      const lastViewed = new Date(lastViewedNotificationTime);
+      return notifications.filter((n) => !n.read && new Date(n.timestamp) > lastViewed).length;
+    };
+    const handleNavigate = (screen) => {
     setActiveScreen(screen);
     setIsCalendarDropdownOpen(false);
     setIsMailDropdownOpen(false);
     setIsNotificationDropdownOpen(false);
     setIsProfileDropdownOpen(false);
+    
+    // Reload notifications when navigating to notification screen
+    if (screen === 'notification-org') {
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('notificationsRefreshed'));
+      }, 100);
+    }
   };
 
   const toggleCalendarDropdown = () => {
@@ -3090,18 +3519,31 @@ const DonorRecordOrg = () => {
   };
 
   const toggleMailDropdown = () => {
-    setIsMailDropdownOpen(!isMailDropdownOpen);
-    setIsProfileDropdownOpen(false);
-    setIsCalendarDropdownOpen(false);
-    setIsNotificationDropdownOpen(false);
-  };
+  if (!isMailDropdownOpen) {
+    // Opening the dropdown - mark current time as last viewed
+    const now = new Date().toISOString();
+    setLastViewedMailTime(now);
+    localStorage.setItem('lastViewedMailTime_org', now);
+  }
+  setIsMailDropdownOpen(!isMailDropdownOpen);
+  setIsProfileDropdownOpen(false);
+  setIsCalendarDropdownOpen(false);
+  setIsNotificationDropdownOpen(false);
+};
 
-  const toggleNotificationDropdown = () => {
-    setIsNotificationDropdownOpen(!isNotificationDropdownOpen);
-    setIsProfileDropdownOpen(false);
-    setIsCalendarDropdownOpen(false);
-    setIsMailDropdownOpen(false);
-  };
+ const toggleNotificationDropdown = () => {
+  if (!isNotificationDropdownOpen) {
+    // Opening the dropdown - mark current time as last viewed
+    const now = new Date().toISOString();
+    setLastViewedNotificationTime(now);
+    localStorage.setItem('lastViewedNotificationTime_org', now);
+  }
+  setIsNotificationDropdownOpen(!isNotificationDropdownOpen);
+  setIsProfileDropdownOpen(false);
+  setIsCalendarDropdownOpen(false);
+  setIsMailDropdownOpen(false);
+};
+
 
   const toggleProfileDropdown = () => {
     setIsProfileDropdownOpen(!isProfileDropdownOpen);
@@ -3129,47 +3571,113 @@ const DonorRecordOrg = () => {
     setIsRefreshing(false);
   };
 
-  const toggleNotificationReadStatus = (notificationId) => {
+  const toggleNotificationReadStatus = async (notificationId) => {
+  const notification = notifications.find((n) => n.id === notificationId);
+  if (!notification) return;
+
+  const isReadNow = !notification.read;
+  
+  // Optimistically update UI
+  setNotifications((prevNotifications) =>
+    prevNotifications.map((n) =>
+      n.id === notificationId ? { ...n, read: isReadNow } : n
+    )
+  );
+  setActiveNotificationMenu(null);
+
+  try {
+    // Update localStorage
+    const readLocalIds = JSON.parse(
+      localStorage.getItem("orgReadNotificationIds") || "[]"
+    );
+    const notifId = notification.notificationId || notification.id;
+    
+    if (isReadNow && !readLocalIds.includes(notifId)) {
+      readLocalIds.push(notifId);
+      localStorage.setItem("orgReadNotificationIds", JSON.stringify(readLocalIds));
+    } else if (!isReadNow) {
+      const filtered = readLocalIds.filter(id => id !== notifId);
+      localStorage.setItem("orgReadNotificationIds", JSON.stringify(filtered));
+    }
+
+    // Handle different notification types
+    if (notification.id.toString().startsWith('sync-')) {
+      const syncId = parseInt(notification.id.replace('sync-', ''));
+      if (window.electronAPI.markSyncNotificationAsRead) {
+        await window.electronAPI.markSyncNotificationAsRead(syncId);
+      }
+    } else if (notification.id.toString().startsWith('event-')) {
+      // Event notifications are stored in localStorage only
+      console.log("[DonorRecordOrg] Event notification marked as read in localStorage");
+    } else {
+      // Regular notifications
+      if (window.electronAPI) {
+        await window.electronAPI.markOrgNotificationAsRead(notificationId);
+      }
+    }
+  } catch (error) {
+    console.error("Error marking notification as read:", error);
+    // Revert UI on error
     setNotifications((prevNotifications) =>
-      prevNotifications.map((notification) =>
-        notification.id === notificationId
-          ? { ...notification, read: !notification.read }
-          : notification
+      prevNotifications.map((n) =>
+        n.id === notificationId ? { ...n, read: !isReadNow } : n
       )
     );
-    setActiveNotificationMenu(null);
-  };
+  }
+};
 
   const markAllAsRead = async () => {
-    try {
-      if (typeof window !== "undefined" && window.electronAPI) {
-        const unreadDbIds = notifications
+  // Optimistically update UI first
+  setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  
+  try {
+    if (typeof window !== "undefined" && window.electronAPI) {
+      // Update localStorage
+      const readLocalIds = JSON.parse(
+        localStorage.getItem("orgReadNotificationIds") || "[]"
+      );
+      const allIds = notifications.map((n) => n.notificationId || n.id);
+      const mergedIds = Array.from(new Set([...readLocalIds, ...allIds]));
+      localStorage.setItem("orgReadNotificationIds", JSON.stringify(mergedIds));
+
+      // Mark regular notifications as read in database
+      const regularNotifications = notifications.filter(
+        (n) => !n.id.toString().startsWith('sync-') && 
+               !n.id.toString().startsWith('event-')
+      );
+      
+      if (regularNotifications.length > 0) {
+        const unreadDbIds = regularNotifications
           .filter((n) => !n.read && typeof n.id === "number")
           .map((n) => n.id);
+        
         await Promise.all(
           unreadDbIds.map((id) =>
             window.electronAPI.markOrgNotificationAsRead(id)
           )
         );
-
-        const existing = JSON.parse(
-          localStorage.getItem("orgReadNotificationIds") || "[]"
-        );
-        const allIds = notifications.map((n) => n.notificationId || n.id);
-        const mergedIds = Array.from(new Set([...existing, ...allIds]));
-        localStorage.setItem(
-          "orgReadNotificationIds",
-          JSON.stringify(mergedIds)
-        );
-
-        await loadNotifications();
-      } else {
-        setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       }
-    } catch (error) {
-      console.error("Error marking all notifications as read (Org):", error);
+
+      // Mark sync notifications as read
+      const syncNotifications = notifications.filter((n) => 
+        n.id.toString().startsWith('sync-')
+      );
+      
+      if (syncNotifications.length > 0 && window.electronAPI.markSyncNotificationAsRead) {
+        const syncIds = syncNotifications.map((n) => 
+          parseInt(n.id.replace('sync-', ''))
+        );
+        await Promise.all(
+          syncIds.map((id) => window.electronAPI.markSyncNotificationAsRead(id))
+        );
+      }
     }
-  };
+  } catch (error) {
+    console.error("Error marking all notifications as read (Org):", error);
+    // Reload to ensure consistency
+    await loadNotifications();
+  }
+};
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -3244,6 +3752,16 @@ const DonorRecordOrg = () => {
     return timestamp.toLocaleDateString();
   };
 
+  const handleNotificationClick = async (notification) => {
+  // Mark as read when clicked
+  if (!notification.read) {
+    await toggleNotificationReadStatus(notification.id);
+  }
+  
+  // Navigate to full notification page
+  handleNavigate("notification-org");
+};
+
   const getLatestNotifications = () => {
     return notifications
       .sort((a, b) => {
@@ -3255,7 +3773,7 @@ const DonorRecordOrg = () => {
       .slice(0, 4);
   };
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const unreadCount = getUnreadNotificationCount();
 
   const getEventStatus = (dateStr, status) => {
     if (status === "cancelled" || status === "declined") return status;
@@ -3295,6 +3813,11 @@ const DonorRecordOrg = () => {
     const colors = ["red-bg", "blue-bg", "green-bg", "yellow-bg"];
     return colors[index % colors.length];
   };
+
+  const getNewMailCount = () => {
+  const lastViewed = new Date(lastViewedMailTime);
+  return mailMessages.filter((m) => !m.read && new Date(m.timestamp) > lastViewed).length;
+};
 
   const getMailSubject = (status, title) => {
     switch (status) {
@@ -3379,119 +3902,134 @@ const DonorRecordOrg = () => {
                   <Calendar className="w-5 h-5 text-gray-600" />
                 </button>
                 {isCalendarDropdownOpen && (
-                  <div className="dropdown-menu requests-dropdown">
-                    <div className="dropdown-header">
-                      <div className="notification-header-content">
-                        <h3 className="dropdown-title">UPCOMING EVENTS</h3>
-                        <button
-                          className={`refresh-button ${isLoadingCalendar ? "refreshing" : ""}`}
-                          onClick={loadCalendarAppointments}
-                          disabled={isLoadingCalendar}
-                          title="Refresh appointments"
-                        >
-                          <RefreshCw size={14} />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="dropdown-content">
-                      {isLoadingCalendar ? (
-                        <div className="dropdown-item">
-                          <div className="loading-mail-content">
-                            <RefreshCw size={16} className="loading-icon" />
-                            <span className="loading-text">
-                              Loading appointments...
-                            </span>
-                          </div>
-                        </div>
-                      ) : calendarAppointments.length === 0 ? (
-                        <div className="dropdown-item">
-                          <div className="empty-mail-content">
-                            <Calendar size={20} color="#d1d5db" />
-                            <span className="empty-text">
-                              No upcoming events
-                            </span>
-                          </div>
-                        </div>
-                      ) : (
-                        calendarAppointments.map((appointment, index) => {
-                          const eventDate = new Date(
-                            appointment.date + "T00:00:00"
-                          );
-                          const formattedDate = eventDate.toLocaleDateString(
-                            "en-US",
-                            {
-                              year: "numeric",
-                              month: "long",
-                              day: "numeric",
-                            }
-                          );
-                          const iconColor = getEventStatusColor(
-                            appointment.status,
-                            appointment.date
-                          );
-                          return (
-                            <div
-                              key={appointment.id}
-                              className="dropdown-item"
-                              onClick={() => handleNavigate("calendar-org")}
-                              style={{ cursor: "pointer" }}
-                            >
-                              <div className="request-icon">
-                                <div
-                                  className={`icon-circle ${getAppointmentIconColor(index)}`}
-                                >
-                                  <span className="icon-text">
-                                    {getAppointmentIcon(appointment.type)}
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="request-details">
-                                <p
-                                  className="request-title"
-                                  style={{ marginBottom: "4px" }}
-                                >
-                                  Blood Drive Partnership - {appointment.title}
-                                </p>
-                                <p
-                                  className="request-subtitle"
-                                  style={{
-                                    fontSize: "0.75rem",
-                                    color: "#059669",
-                                    fontWeight: "600",
-                                  }}
-                                >
-                                  Date: {formattedDate}
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                    <div className="dropdown-footer">
+                <div className="dropdown-menu requests-dropdown">
+                  <div className="dropdown-header">
+                    <div className="notification-header-content">
+                      <h3 className="dropdown-title">UPCOMING EVENTS</h3>
                       <button
-                        className="footer-button"
-                        onClick={() => handleNavigate("calendar-org")}
+                        className={`refresh-button ${isLoadingCalendar ? "refreshing" : ""}`}
+                        onClick={loadCalendarAppointments}
+                        disabled={isLoadingCalendar}
+                        title="Refresh appointments"
                       >
-                        See All Events
+                        <RefreshCw size={14} />
                       </button>
                     </div>
                   </div>
-                )}
+                  <div className="dropdown-content">
+                    {isLoadingCalendar ? (
+                      <div className="dropdown-item">
+                        <div className="loading-mail-content">
+                          <RefreshCw size={16} className="loading-icon" />
+                          <span className="loading-text">Loading events...</span>
+                        </div>
+                      </div>
+                    ) : calendarAppointments.length === 0 ? (
+                      <div className="dropdown-item">
+                        <div className="empty-mail-content">
+                          <Calendar size={20} color="#d1d5db" />
+                          <span className="empty-text">No upcoming events</span>
+                        </div>
+                      </div>
+                    ) : (
+                      calendarAppointments.map((appointment, index) => {
+                        const eventDate = new Date(appointment.date + "T00:00:00");
+                        const formattedDate = eventDate.toLocaleDateString("en-US", {
+                          weekday: "short",
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        });
+                        
+                        // Determine event type icon and color
+                        const isPartnership = appointment.type === "partnership";
+                        
+                        return (
+                          <div
+                            key={appointment.id}
+                            className="dropdown-item calendar-event-item"
+                            onClick={() => handleNavigate("calendar-org")}
+                            style={{ cursor: "pointer", position: "relative" }}
+                          >
+                            <div className="request-icon">
+                              <div 
+                                className="icon-circle"
+                                style={{
+                                  backgroundColor: isPartnership ? "#dbeafe" : "#fee2e2",
+                                  border: `1px solid ${isPartnership ? "#3b82f6" : "#ef4444"}`,
+                                }}
+                              >
+                                {isPartnership ? (
+                                  <Handshake size={16} color="#3b82f6" strokeWidth={2.5} />
+                                ) : (
+                                  <Droplet size={16} color="#ef4444" strokeWidth={2.5} />
+                                )}
+                              </div>
+                            </div>
+                            <div className="request-details">
+                              <p className="request-title" style={{ marginBottom: "4px" }}>
+                                {appointment.title}
+                              </p>
+                              <p className="request-subtitle" style={{ fontSize: "0.7rem", color: "#6b7280", marginBottom: "2px" }}>
+                                {appointment.subtitle}
+                              </p>
+                              <p className="request-subtitle" style={{ fontSize: "0.75rem", color: "#059669", fontWeight: "600" }}>
+                                {formattedDate}
+                              </p>
+                            </div>
+                            {appointment.status === "approved" && (
+                              <div 
+                                className="approval-badge"
+                                style={{
+                                  position: "absolute",
+                                  top: "8px",
+                                  right: "8px",
+                                  backgroundColor: "#dcfce7",
+                                  color: "#059669",
+                                  fontSize: "0.65rem",
+                                  fontWeight: "600",
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  fontFamily: "Barlow",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "2px",
+                                }}
+                                title="Approved by DOH"
+                              >
+                                <CheckCircle size={10} />
+                                <span>Approved</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                  <div className="dropdown-footer">
+                    <button
+                      className="footer-button"
+                      onClick={() => handleNavigate("calendar-org")}
+                    >
+                      See All Events
+                    </button>
+                  </div>
+                </div>
+              )}
               </div>
 
               <div className="dropdown-container">
-                <button
-                  className={`nav-button ${activeScreen === "mail" ? "nav-button-active" : ""}`}
-                  onClick={toggleMailDropdown}
-                >
-                  <Mail className="w-5 h-5 text-gray-600" />
-                  {mailMessages.filter((m) => !m.read).length > 0 && (
-                    <span className="notification-badge">
-                      {mailMessages.filter((m) => !m.read).length}
-                    </span>
-                  )}
-                </button>
+              <button
+                className={`nav-button ${activeScreen === "mail" ? "nav-button-active" : ""}`}
+                onClick={toggleMailDropdown}
+              >
+                <Mail className="w-5 h-5 text-gray-600" />
+                {getNewMailCount() > 0 && (
+                  <span className="notification-badge">
+                    {getNewMailCount()}
+                  </span>
+                )}
+              </button>
                 {isMailDropdownOpen && (
                   <div className="dropdown-menu messages-dropdown">
                     <div className="dropdown-header">
@@ -3510,27 +4048,41 @@ const DonorRecordOrg = () => {
                             className="mark-all-read-button"
                             onClick={async () => {
                               try {
-                                const unreadIds = mailMessages
-                                  .filter((m) => !m.read)
-                                  .map((m) => m.id);
-                                if (unreadIds.length > 0) {
-                                  await Promise.all(
-                                    unreadIds.map((id) =>
-                                      window.electronAPI.markMailAsRead(id)
-                                    )
-                                  );
+                                const unreadMails = mailMessages.filter((m) => !m.read);
+                                if (unreadMails.length > 0) {
+                                  // Mark regular mails as read
+                                  const regularUnreadIds = unreadMails
+                                    .filter((m) => m.type === 'mail')
+                                    .map((m) => m.id);
+                                  
+                                  // Mark sync notifications as read
+                                  const syncUnreadIds = unreadMails
+                                    .filter((m) => m.type === 'sync')
+                                    .map((m) => parseInt(m.id.replace('sync-', '')));
+                                  
+                                  if (regularUnreadIds.length > 0) {
+                                    await Promise.all(
+                                      regularUnreadIds.map((id) =>
+                                        window.electronAPI.markMailAsRead(id)
+                                      )
+                                    );
+                                  }
+                                  
+                                  if (syncUnreadIds.length > 0 && window.electronAPI.markSyncNotificationAsRead) {
+                                    await Promise.all(
+                                      syncUnreadIds.map((id) =>
+                                        window.electronAPI.markSyncNotificationAsRead(id)
+                                      )
+                                    );
+                                  }
+                                  
+                                  await loadMailMessages();
                                 }
-                                await loadMailMessages();
                               } catch (e) {
-                                console.error(
-                                  "Error marking all mails as read (Org):",
-                                  e
-                                );
+                                console.error("Error marking all mails as read:", e);
                               }
                             }}
-                            disabled={
-                              mailMessages.filter((m) => !m.read).length === 0
-                            }
+                            disabled={mailMessages.filter((m) => !m.read).length === 0}
                             title="Mark all as read"
                           >
                             <CheckCircle size={14} />
@@ -3543,9 +4095,7 @@ const DonorRecordOrg = () => {
                         <div className="dropdown-item">
                           <div className="loading-mail-content">
                             <RefreshCw size={16} className="loading-icon" />
-                            <span className="loading-text">
-                              Loading messages...
-                            </span>
+                            <span className="loading-text">Loading messages...</span>
                           </div>
                         </div>
                       ) : mailMessages.length === 0 ? (
@@ -3561,32 +4111,49 @@ const DonorRecordOrg = () => {
                             key={mail.id}
                             className={`dropdown-item ${!mail.read ? "unread-mail" : ""}`}
                             onClick={() => handleNavigate("mail-org")}
+                            style={{ cursor: "pointer" }}
                           >
                             <div
                               className="message-avatar"
-                              style={{ backgroundColor: mail.avatarColor }}
+                              style={{ 
+                                backgroundColor: mail.avatarColor,
+                                color: 'white',
+                                fontWeight: 'bold',
+                                fontSize: '12px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontFamily: 'Barlow'
+                              }}
                             >
                               {mail.avatar}
                             </div>
                             <div className="message-details">
                               <div className="message-header-row">
                                 <p className="message-sender">{mail.from}</p>
-                                <div
-                                  className="mail-status-dot"
-                                  style={{
-                                    backgroundColor: getMailStatusColor(
-                                      mail.status
-                                    ),
-                                  }}
-                                  title={mail.status.toUpperCase()}
-                                ></div>
+                                <div className="mail-badges">
+                                  {mail.type === 'sync' && (
+                                    <span className="sync-badge" title="Sync Request">
+                                      <RefreshCw size={10} /> Sync
+                                    </span>
+                                  )}
+                                  <div
+                                    className="mail-status-dot"
+                                    style={{
+                                      backgroundColor: mail.status === 'approved' ? '#10b981' : 
+                                                    mail.status === 'declined' ? '#ef4444' : '#f59e0b',
+                                    }}
+                                    title={mail.status.toUpperCase()}
+                                  ></div>
+                                </div>
                               </div>
                               <p className="message-subject">{mail.subject}</p>
                               <p className="message-preview">{mail.preview}</p>
+                              <span className="message-time">
+                                {getTimeAgo(mail.timestamp)}
+                              </span>
                             </div>
-                            {!mail.read && (
-                              <div className="unread-dot-dropdown"></div>
-                            )}
+                            {!mail.read && <div className="unread-dot-dropdown"></div>}
                           </div>
                         ))
                       )}
@@ -3601,7 +4168,7 @@ const DonorRecordOrg = () => {
                     </div>
                   </div>
                 )}
-              </div>
+                              </div>
 
               <div className="dropdown-container">
                 <button
@@ -3662,82 +4229,81 @@ const DonorRecordOrg = () => {
                     </div>
                     <div className="dropdown-content">
                       {getLatestNotifications().map((notification) => (
+                      <div
+                        key={notification.id}
+                        className={`dropdown-item notification-item ${!notification.read ? "unread-notification" : ""}`}
+                        onClick={() => handleNotificationClick(notification)}
+                        style={{ cursor: "pointer" }}
+                      >
                         <div
-                          key={notification.id}
-                          className={`dropdown-item notification-item ${!notification.read ? "unread-notification" : ""}`}
+                          className="notification-icon"
+                          style={{
+                            color: getStatusColor(notification.status),
+                          }}
                         >
                           <div
-                            className="notification-icon"
+                            className="icon-circle"
                             style={{
-                              color: getStatusColor(notification.status),
+                              backgroundColor: `${getStatusColor(notification.status)}15`,
+                              border: `1px solid ${getStatusColor(notification.status)}30`,
                             }}
                           >
-                            <div
-                              className="icon-circle"
-                              style={{
-                                backgroundColor: `${getStatusColor(notification.status)}15`,
-                                border: `1px solid ${getStatusColor(notification.status)}30`,
-                              }}
-                            >
-                              {getStatusIcon(notification.status)}
-                            </div>
+                            {getStatusIcon(notification.status)}
                           </div>
-                          <div className="notification-details">
-                            <div className="notification-header-row">
-                              <p className="notification-title">
-                                {notification.title}
-                              </p>
-                              <div className="notification-actions">
-                                <span className="notification-time">
-                                  {getTimeAgo(notification.timestamp)}
-                                </span>
-                                <div className="notification-menu-container">
-                                  <button
-                                    className="notification-menu-button"
-                                    onClick={() =>
-                                      setActiveNotificationMenu(
-                                        activeNotificationMenu ===
-                                          notification.id
-                                          ? null
-                                          : notification.id
-                                      )
-                                    }
-                                  >
-                                    <MoreVertical size={12} />
-                                  </button>
-                                  {activeNotificationMenu ===
-                                    notification.id && (
-                                    <div className="notification-menu">
-                                      <button
-                                        className="notification-menu-item"
-                                        onClick={() =>
-                                          toggleNotificationReadStatus(
-                                            notification.id
-                                          )
-                                        }
-                                      >
-                                        Mark as{" "}
-                                        {notification.read ? "Unread" : "Read"}
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
+                        </div>
+                        <div className="notification-details">
+                          <div className="notification-header-row">
+                            <p className="notification-title">
+                              {notification.title}
+                            </p>
+                            <div className="notification-actions">
+                              <span className="notification-time">
+                                {getTimeAgo(notification.timestamp)}
+                              </span>
+                              <div className="notification-menu-container">
+                                <button
+                                  className="notification-menu-button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveNotificationMenu(
+                                      activeNotificationMenu === notification.id
+                                        ? null
+                                        : notification.id
+                                    );
+                                  }}
+                                >
+                                  <MoreVertical size={12} />
+                                </button>
+                                {activeNotificationMenu === notification.id && (
+                                  <div className="notification-menu">
+                                    <button
+                                      className="notification-menu-item"
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        await toggleNotificationReadStatus(notification.id);
+                                      }}
+                                    >
+                                      Mark as {notification.read ? "Unread" : "Read"}
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             </div>
-                            <p className="notification-subtitle">
-                              {notification.message.length > 60
-                                ? `${notification.message.substring(0, 60)}...`
-                                : notification.message}
-                            </p>
-                            <span className="notification-requestor">
-                              From: {notification.requestor}
-                            </span>
                           </div>
-                          {!notification.read && (
-                            <div className="unread-dot-dropdown"></div>
-                          )}
+                          <p className="notification-subtitle">
+                            {notification.message.length > 60
+                              ? `${notification.message.substring(0, 60)}...`
+                              : notification.message}
+                          </p>
+                          <span className="notification-requestor">
+                            From: {notification.requestor}
+                          </span>
                         </div>
-                      ))}
+                        {!notification.read && (
+                          <div className="unread-dot-dropdown"></div>
+                        )}
+                      </div>
+                    ))}
                     </div>
                     <div className="dropdown-footer">
                       <button
@@ -4338,6 +4904,7 @@ const DonorRecordOrg = () => {
           justify-content: center;
           transition: background-color 0.2s;
           border: "1px solid #059669",
+          font-family: 'Barlow';
         }
 
         .user-avatar:hover {

@@ -502,14 +502,31 @@ const MailComponent = ({ onNavigate }) => {
     setShowReplyModal(false);
   };
 
-  const handleProceedDonorRecord = (mail) => {
-    // Navigate to Donor Record page
-    if (onNavigate) {
+ const handleProceedDonorRecord = (mail) => {
+  
+  // Primary method: Use custom event (like notification component does)
+  window.dispatchEvent(new CustomEvent('navigate-to-screen', { 
+    detail: 'donor-record' 
+  }));
+  
+  // Fallback method: Use onNavigate prop if provided
+  if (onNavigate && typeof onNavigate === 'function') {
+    try {
       onNavigate("donor-record");
-    } else {
-      console.warn("onNavigate prop is not provided to MailComponent");
+    } catch (error) {
+      console.error('[MAIL] Error using onNavigate:', error);
     }
-  };
+  } else {
+    console.warn('[MAIL] onNavigate prop is not provided or not a function');
+  }
+  
+  // Optional: Store the mail ID in localStorage so Donor Record page knows which sync to show
+  try {
+    localStorage.setItem('selectedSyncRequestId', mail.id);
+  } catch (error) {
+    console.error('[MAIL] Error storing sync request ID:', error);
+  }
+};
 
 
   const handleConfirmDeclineSyncRequest = async () => {
@@ -1396,20 +1413,6 @@ const MailComponent = ({ onNavigate }) => {
                     >
                       <CheckCircle size={16} />
                       Proceed to Donor Records
-                    </button>
-                    <button
-                      className="accept-request-btn"
-                      onClick={() => handleAcceptSyncRequest(selectedMail)}
-                    >
-                      <CheckCircle size={16} />
-                      Accept Sync Request
-                    </button>
-                    <button
-                      className="decline-request-btn"
-                      onClick={() => handleDeclineSyncRequest(selectedMail)}
-                    >
-                      <XCircle size={16} />
-                      Decline Sync Request
                     </button>
                   </div>
                 )}
