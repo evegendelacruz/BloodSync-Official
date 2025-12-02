@@ -15,6 +15,7 @@ const Loader = () => (
 );
 
 const DonorRecord = () => {
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [donorData, setDonorData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -194,7 +195,7 @@ const DonorRecord = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const loadDonorData = async () => {
+    const loadDonorData = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -205,6 +206,14 @@ const DonorRecord = () => {
       }
       const data = await window.electronAPI.getAllDonorRecords();
       setDonorData(data);
+      
+      // Fetch pending sync count
+      try {
+        const pendingRecords = await window.electronAPI.getPendingTempDonorRecords();
+        setPendingSyncCount(pendingRecords.length);
+      } catch (countError) {
+        console.error("Error fetching pending sync count:", countError);
+      }
     } catch (err) {
       console.error("Error loading donor data:", err);
       setError(`Failed to load donor data: ${err.message}`);
@@ -444,7 +453,7 @@ const handleApproveSync = async () => {
 
   const handleConfirmDeclineSync = async () => {
   if (!syncDeclineReason.trim()) {
-    alert("Please provide a reason for declining this sync request.");
+    setError("Please provide a reason for declining this sync request.");
     return;
   }
 
@@ -452,21 +461,38 @@ const handleApproveSync = async () => {
     const declinedBy = currentUser?.fullName || "RBC Admin";
     const tdrIds = pendingSyncRecords.map((d) => d.tdr_id);
 
+    console.log("Declining sync request:", {
+      tdrIds,
+      declinedBy,
+      reason: syncDeclineReason
+    });
+
     const result = await window.electronAPI.declineTempDonorRecords(
       tdrIds,
       declinedBy,
       syncDeclineReason
     );
 
+    console.log("Decline result:", result);
+
     if (result.success) {
       setShowApproveSyncModal(false);
       setPendingSyncRecords([]);
+      setSyncDeclineReason("");
+      setError(null);
+      
       setSuccessMessage({
         title: "Sync Requests Declined",
         description: `${result.count} donor record(s) have been declined.`,
       });
       setShowSuccessModal(true);
-      setSyncDeclineReason("");
+      
+      // Reload data after decline
+      setTimeout(async () => {
+        await loadDonorData();
+      }, 1000);
+    } else {
+      throw new Error(result.message || "Failed to decline sync request");
     }
   } catch (error) {
     console.error("Error declining sync:", error);
@@ -1162,32 +1188,54 @@ const handleApproveSync = async () => {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "8px",
-              padding: "8px 16px",
+              gap: "12px",
+              padding: "10px 18px",
               backgroundColor: "#2C58DC",
               color: "white",
               border: "none",
-              borderRadius: "6px",
+              borderRadius: "8px",
               cursor: "pointer",
-              fontSize: "14px",
-              fontFamily: 'Barlow'
+              fontSize: "15px",
+              fontWeight: "500",
+              fontFamily: 'Barlow',
+              position: 'relative',
             }}
             onClick={handleApproveSync}
           >
-            <svg
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
+            {pendingSyncCount > 0 ? (
+              <span
+                style={{
+                  backgroundColor: 'white',
+                  color: '#2C58DC',
+                  borderRadius: '50%',
+                  width: '22px',
+                  height: '22px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  flexShrink: 0,
+                }}
+              >
+                {pendingSyncCount}
+              </span>
+            ) : (
+              <svg
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+            )}
             <span>Approve Sync</span>
           </button>
           <button
@@ -3770,26 +3818,29 @@ const handleApproveSync = async () => {
         </table>
       </div>
 
-      {/* Decline Reason Textarea (conditional) */}
-      {syncDeclineReason !== null && syncDeclineReason !== "" && (
-        <textarea
-          style={{
-            width: "100%",
-            minHeight: 100,
-            padding: 12,
-            border: "1px solid #d1d5db",
-            borderRadius: 8,
-            fontSize: 14,
-            fontFamily: "Barlow",
-            resize: "vertical",
-            marginBottom: 20,
-            boxSizing: "border-box",
-          }}
-          placeholder="Enter reason for declining (required)..."
-          value={syncDeclineReason}
-          onChange={(e) => setSyncDeclineReason(e.target.value)}
-        />
-      )}
+      {/* Decline Reason Textarea */}
+        {syncDeclineReason !== "" && (
+          <textarea
+            style={{
+              width: "100%",
+              minHeight: 100,
+              padding: 12,
+              border: "1px solid #d1d5db",
+              borderRadius: 8,
+              fontSize: 14,
+              fontFamily: "Barlow",
+              resize: "vertical",
+              marginBottom: 20,
+              boxSizing: "border-box",
+            }}
+            placeholder="Enter reason for declining (required)..."
+            value={syncDeclineReason === " " ? "" : syncDeclineReason}
+            onChange={(e) => {
+              setSyncDeclineReason(e.target.value);
+              setError(null); // Clear error when user starts typing
+            }}
+          />
+        )}
 
       {/* Action Buttons */}
       <div
@@ -3839,9 +3890,14 @@ const handleApproveSync = async () => {
             transition: "all 0.2s",
           }}
           onClick={() => {
+            // Show textarea if not already shown
             if (syncDeclineReason === "") {
-              setSyncDeclineReason(" ");
+              setSyncDeclineReason(" "); // Set to space to trigger textarea display
+            } else if (syncDeclineReason.trim() === "") {
+              // If textarea is shown but empty, show error
+              setError("Please provide a reason for declining");
             } else {
+              // If reason is provided, proceed with decline
               handleConfirmDeclineSync();
             }
           }}

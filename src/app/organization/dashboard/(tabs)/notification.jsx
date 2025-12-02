@@ -39,25 +39,35 @@ const NotificationOrg = () => {
   const notificationMenuRef = useRef(null);
 
   useEffect(() => {
-    loadNotifications();
+  loadNotifications();
 
-    let lastUnread = 0;
-    const interval = setInterval(async () => {
-      try {
-        if (typeof window !== "undefined" && window.electronAPI) {
-          const count = await window.electronAPI.getUnreadNotificationCount();
-          if (typeof count === "number" && count > lastUnread) {
-            lastUnread = count;
-            await loadNotifications();
-          } else if (typeof count === "number") {
-            lastUnread = count;
-          }
+  let lastUnread = 0;
+  const interval = setInterval(async () => {
+    try {
+      if (typeof window !== "undefined" && window.electronAPI) {
+        const count = await window.electronAPI.getUnreadNotificationCount();
+        if (typeof count === "number" && count > lastUnread) {
+          lastUnread = count;
+          await loadNotifications();
+        } else if (typeof count === "number") {
+          lastUnread = count;
         }
-      } catch (_) {}
-    }, 10000);
+      }
+    } catch (_) {}
+  }, 10000);
 
-    return () => clearInterval(interval);
-  }, []);
+  // Listen for notification refresh events from other components
+  const handleNotificationRefresh = () => {
+    loadNotifications();
+  };
+
+  window.addEventListener('notificationsRefreshed', handleNotificationRefresh);
+
+  return () => {
+    clearInterval(interval);
+    window.removeEventListener('notificationsRefreshed', handleNotificationRefresh);
+  };
+}, []);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -81,52 +91,62 @@ const NotificationOrg = () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
-
-
-
   
-  const loadNotifications = async () => {
-    try {
-      if (!isRefreshing) {
-        setIsLoading(true);
+    // In the NotificationOrg component, replace the loadNotifications function with this:
+
+const loadNotifications = async () => {
+  try {
+    if (!isRefreshing) {
+      setIsLoading(true);
+    }
+
+    if (typeof window !== "undefined" && window.electronAPI) {
+      console.log("[NotificationOrg] Loading notifications from database...");
+
+      // Load notifications from notifications_org table
+      const notificationsData =
+        await window.electronAPI.getAllNotificationsOrg();
+
+      console.log(
+        "[NotificationOrg] Received notifications:",
+        notificationsData
+      );
+
+      // Load sync notifications
+      let syncNotifications = [];
+      try {
+        if (typeof window.electronAPI.getAllSyncNotifications === 'function') {
+          syncNotifications = await window.electronAPI.getAllSyncNotifications();
+          console.log("[NotificationOrg] Sync notifications:", syncNotifications);
+        }
+      } catch (syncError) {
+        console.error("[NotificationOrg] Error loading sync notifications:", syncError);
       }
 
-      if (typeof window !== "undefined" && window.electronAPI) {
-        console.log("[NotificationOrg] Loading notifications from database...");
+      const readLocalIds = JSON.parse(
+        localStorage.getItem("orgReadNotificationIds") || "[]"
+      );
 
-        // Load notifications from notifications_org table
-        const notificationsData =
-          await window.electronAPI.getAllNotificationsOrg();
+      const transformedNotifications = (notificationsData || []).map((n) => {
+        const notifType = n.notification_type || n.type;
+        const derivedStatus =
+          notifType === "stock_expired"
+            ? "expired"
+            : notifType === "stock_expiring_urgent"
+              ? "urgent"
+              : notifType === "stock_expiring_soon"
+                ? "alert"
+                : n.status || "info";
 
-        console.log(
-          "[NotificationOrg] Received notifications:",
-          notificationsData
-        );
-        console.log(
-          "[NotificationOrg] Number of notifications:",
-          notificationsData?.length || 0
-        );
-
-        if (!notificationsData || notificationsData.length === 0) {
-          console.log("[NotificationOrg] No notifications found in database");
-          setNotifications([]);
-          return;
-        }
-
-
-        
-        const readLocalIds = JSON.parse(
-          localStorage.getItem("orgPageReadNotificationIds") || "[]"
-        );
-        const transformedNotifications = notificationsData.map((n) => ({
+        return {
           id: n.id,
           notificationId: n.notification_id,
-          type: n.notification_type || n.type || "notification",
-          status: n.status || "info",
+          type: notifType || "notification",
+          status: derivedStatus,
           priority: n.priority,
           title: n.title,
           message: n.message || n.description,
-          requestor: n.requestor || "System",
+          requestor: n.requestor || "Regional Blood Center",
           timestamp: new Date(n.updated_at || n.created_at),
           read:
             n.read ||
@@ -145,35 +165,138 @@ const NotificationOrg = () => {
             address: n.event_location || n.contact_address,
             type: n.contact_type,
           },
-        }));
+        };
+      });
 
-        // Sort by unread first, then by timestamp
-        const allNotifications = transformedNotifications.sort((a, b) => {
-          if (a.read !== b.read) {
-            return a.read ? 1 : -1;
-          }
-          return new Date(b.timestamp) - new Date(a.timestamp);
+      // Transform sync notifications
+      const syncMails = syncNotifications.map((sync) => {
+        const displayStatus = sync.status === 'rejected' ? 'declined' : 
+                             sync.status === 'approved' ? 'approved' : 'pending';
+        
+        const title = displayStatus === 'approved' 
+          ? `Sync Request Approved - ${sync.donor_count} Record(s)`
+          : displayStatus === 'declined'
+          ? `Sync Request Declined - ${sync.donor_count} Record(s)`
+          : `Sync Request Pending - ${sync.donor_count} Record(s)`;
+        
+        const message = displayStatus === 'approved'
+          ? `Your sync request for ${sync.donor_count} donor record(s) has been approved and synced successfully.`
+          : displayStatus === 'declined'
+          ? `Your sync request for ${sync.donor_count} donor record(s) was declined. Reason: ${sync.rejection_reason || 'No reason provided'}`
+          : `Your sync request for ${sync.donor_count} donor record(s) is pending review by the Regional Blood Center.`;
+
+        return {
+          id: `sync-${sync.id}`,
+          notificationId: `SYNC-${sync.id}`,
+          type: 'sync_response',
+          status: displayStatus,
+          priority: displayStatus === 'declined' ? 'high' : 'normal',
+          title: title,
+          message: message,
+          requestor: "Regional Blood Center - Sync Team",
+          timestamp: new Date(sync.updated_at || sync.created_at || Date.now()),
+          read: sync.is_read || sync.read || false || readLocalIds.includes(`SYNC-${sync.id}`),
+          syncData: {
+            donorCount: sync.donor_count,
+            requestedBy: sync.requested_by,
+            rejectionReason: sync.rejection_reason,
+            approvedBy: sync.approved_by,
+            sourceOrganization: sync.source_organization,
+          },
+        };
+      });
+
+      // Load appointments for upcoming events
+      let appointmentsData = [];
+      try {
+        appointmentsData = await window.electronAPI.getAllAppointments?.() || [];
+      } catch (error) {
+        console.warn("Could not load appointments for notifications:", error);
+      }
+
+      const now = new Date();
+      
+      // Upcoming events (next 72 hours)
+      const upcomingAppointments = appointmentsData
+        .filter((apt) => {
+          const aptDate = new Date(apt.date + "T" + (apt.time || "00:00:00"));
+          const hoursDiff = (aptDate - now) / (1000 * 60 * 60);
+          return (
+            hoursDiff > 0 &&
+            hoursDiff <= 72 &&
+            (apt.status === "approved" || apt.status === "scheduled" || apt.status === "confirmed")
+          );
+        })
+        .map((apt) => {
+          const aptDate = new Date(apt.date + "T00:00:00");
+          const formattedDate = aptDate.toLocaleDateString("en-US", {
+            weekday: "short",
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          });
+          const formattedTime = apt.time 
+            ? new Date(`1970-01-01T${apt.time}`).toLocaleTimeString("en-US", {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "TBD";
+
+          return {
+            id: `event-${apt.id || apt.appointment_id}`,
+            notificationId: `EVENT-${apt.id || apt.appointment_id}`,
+            type: "upcoming_event",
+            status: "approved",
+            priority: "normal",
+            title: "Partner, your Blood Drive is Scheduled!",
+            message: `Your blood drive event "${apt.title || "Blood Drive"}" is confirmed for ${formattedDate} at ${formattedTime}.`,
+            requestor: "Regional Blood Center",
+            timestamp: new Date(apt.created_at || apt.date),
+            read: readLocalIds.includes(`EVENT-${apt.id || apt.appointment_id}`),
+            appointmentId: apt.id || apt.appointment_id,
+            eventDate: apt.date,
+            eventTime: apt.time,
+            contactInfo: apt.contactInfo,
+            rbcContactInfo: {
+              email: "admin@regionalbloodcenter.org",
+              phone: "+63 (85) 225-1234",
+              address: "J.V Serina St., Carmen, Cagayan de Oro City, Misamis Oriental.",
+            },
+          };
         });
 
-        console.log(
-          "[NotificationOrg] Transformed notifications:",
-          allNotifications
-        );
-        setNotifications(allNotifications);
-      } else {
-        console.log(
-          "[NotificationOrg] electronAPI not available, using sample data"
-        );
-        // ... existing sample data code ...
-      }
-    } catch (error) {
-      console.error("Error loading notifications:", error);
-      setNotifications([]);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      // Combine all notifications
+      const allNotifications = [
+        ...transformedNotifications,
+        ...syncMails,
+        ...upcomingAppointments,
+      ];
+
+      // Deduplicate by notificationId
+      const deduped = Array.from(
+        new Map(allNotifications.map((n) => [n.notificationId || n.id, n])).values()
+      );
+
+      // Sort: unread first, then by timestamp
+      const sortedNotifications = deduped.sort((a, b) => {
+        if (a.read !== b.read) {
+          return a.read ? 1 : -1;
+        }
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      });
+
+      console.log("[NotificationOrg] Final notifications:", sortedNotifications);
+      setNotifications(sortedNotifications);
     }
-  };
+  } catch (error) {
+    console.error("Error loading notifications:", error);
+    setNotifications([]);
+  } finally {
+    setIsLoading(false);
+    setIsRefreshing(false);
+  }
+};
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -255,44 +378,91 @@ const NotificationOrg = () => {
   };
 
   const toggleNotificationReadStatus = async (notificationId) => {
-    const notification = notifications.find((n) => n.id === notificationId);
-    if (!notification) return;
+  const notification = notifications.find((n) => n.id === notificationId);
+  if (!notification) return;
 
-    // Optimistically update the UI
-    const isReadNow = !notification.read;
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === notificationId ? { ...n, read: isReadNow } : n))
+  const isReadNow = !notification.read;
+  
+  // Optimistically update UI
+  setNotifications((prev) =>
+    prev.map((n) => (n.id === notificationId ? { ...n, read: isReadNow } : n))
+  );
+  setActiveNotificationMenu(null);
+
+  try {
+    // Update localStorage
+    const readLocalIds = JSON.parse(
+      localStorage.getItem("orgReadNotificationIds") || "[]"
     );
-    setActiveNotificationMenu(null);
+    const notifId = notification.notificationId || notification.id;
+    
+    if (isReadNow && !readLocalIds.includes(notifId)) {
+      readLocalIds.push(notifId);
+      localStorage.setItem("orgReadNotificationIds", JSON.stringify(readLocalIds));
+    } else if (!isReadNow) {
+      const filtered = readLocalIds.filter(id => id !== notifId);
+      localStorage.setItem("orgReadNotificationIds", JSON.stringify(filtered));
+    }
 
-    try {
-      if (isReadNow) {
-        await window.electronAPI.markOrgNotificationAsRead(notificationId);
+    // Handle different notification types
+    if (notification.id.startsWith('sync-')) {
+      const syncId = parseInt(notification.id.replace('sync-', ''));
+      if (window.electronAPI.markSyncNotificationAsRead) {
+        await window.electronAPI.markSyncNotificationAsRead(syncId);
       }
-      // Note: We don't have a backend function for "mark as unread", so we only call the API when marking as read.
-      // The UI will still reflect the change temporarily.
-    } catch (error) {
-      console.error("Error marking notification as read:", error);
-      // Revert UI on error
-      setNotifications((prev) =>
-        prev.map((n) =>
-          n.id === notificationId ? { ...n, read: !isReadNow } : n
-        )
+    } else if (notification.id.startsWith('event-')) {
+      // Event notifications are stored in localStorage only
+      console.log("[NotificationOrg] Event notification marked as read in localStorage");
+    } else {
+      // Regular notifications
+      await window.electronAPI.markOrgNotificationAsRead(notificationId);
+    }
+  } catch (error) {
+    console.error("Error marking notification as read:", error);
+    // Revert UI on error
+    setNotifications((prev) =>
+      prev.map((n) =>
+        n.id === notificationId ? { ...n, read: !isReadNow } : n
+      )
+    );
+  }
+};
+  const markAllAsRead = async () => {
+  const readLocalIds = JSON.parse(
+    localStorage.getItem("orgReadNotificationIds") || "[]"
+  );
+  
+  // Add all notification IDs to localStorage
+  const allIds = notifications.map(n => n.notificationId || n.id);
+  const mergedIds = Array.from(new Set([...readLocalIds, ...allIds]));
+  localStorage.setItem("orgReadNotificationIds", JSON.stringify(mergedIds));
+  
+  // Optimistically update UI
+  setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  
+  try {
+    // Mark regular notifications as read in database
+    const regularNotifications = notifications.filter(n => 
+      !n.id.startsWith('sync-') && !n.id.startsWith('event-')
+    );
+    if (regularNotifications.length > 0) {
+      await window.electronAPI.markAllOrgNotificationsAsRead?.();
+    }
+    
+    // Mark sync notifications as read
+    const syncNotifications = notifications.filter(n => n.id.startsWith('sync-'));
+    if (syncNotifications.length > 0 && window.electronAPI.markSyncNotificationAsRead) {
+      const syncIds = syncNotifications.map(n => parseInt(n.id.replace('sync-', '')));
+      await Promise.all(
+        syncIds.map(id => window.electronAPI.markSyncNotificationAsRead(id))
       );
     }
-  };
-
-  const markAllAsRead = async () => {
-    // Optimistically update UI
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    try {
-      await window.electronAPI.markAllOrgNotificationsAsRead();
-    } catch (error) {
-      console.error("Error marking all notifications as read:", error);
-      // Optionally revert UI on error
-      loadNotifications();
-    }
-  };
+  } catch (error) {
+    console.error("Error marking all notifications as read:", error);
+    // Optionally reload on error
+    loadNotifications();
+  }
+};
 
   const handleDeleteClick = (notificationId) => {
     setNotificationToDelete(notificationId);
@@ -509,24 +679,6 @@ const NotificationOrg = () => {
           <div className="stat-info">
             <div className="stat-label">Unread</div>
             <div className="stat-value">{counts.unread}</div>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: "#ecfdf5" }}>
-            <CheckCircle size={20} color="#059669" />
-          </div>
-          <div className="stat-info">
-            <div className="stat-label">Approved</div>
-            <div className="stat-value">{counts.approved}</div>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: "#dbeafe" }}>
-            <Calendar size={20} color="#2563eb" />
-          </div>
-          <div className="stat-info">
-            <div className="stat-label">Events</div>
-            <div className="stat-value">{counts.upcoming_event}</div>
           </div>
         </div>
       </div>

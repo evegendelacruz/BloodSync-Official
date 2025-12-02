@@ -8451,26 +8451,25 @@ async markPartnershipRequestAsViewed(requestId) {
 
   // ========== TEMP DONOR RECORDS (SYNC REQUESTS) METHODS ==========
 
-// REPLACE the getPendingTempDonorRecords method in db.js:
-
 async getPendingTempDonorRecords() {
   try {
     const query = `
       SELECT 
         tdr_id,
         tdr_donor_id,
-        tdr_first_name,
-        tdr_middle_name,
-        tdr_last_name,
-        tdr_gender,
-        TO_CHAR(tdr_birthdate, 'YYYY-MM-DD') as tdr_birthdate,
-        tdr_age,
-        tdr_blood_type,
-        tdr_rh_factor,
-        tdr_contact_number,
-        tdr_address,
+        tdr_first_name as first_name,
+        tdr_middle_name as middle_name,
+        tdr_last_name as last_name,
+        tdr_gender as gender,
+        TO_CHAR(tdr_birthdate, 'YYYY-MM-DD') as birthdate,
+        tdr_age as age,
+        tdr_blood_type as blood_type,
+        tdr_rh_factor as rh_factor,
+        tdr_contact_number as contact_number,
+        tdr_address as address,
         tdr_source_user_id,
         tdr_source_user_name,
+        tdr_source_organization,
         tdr_sync_status,
         TO_CHAR(tdr_created_at, 'YYYY-MM-DD HH24:MI:SS') as tdr_created_at
       FROM temp_donor_records
@@ -8478,6 +8477,7 @@ async getPendingTempDonorRecords() {
       ORDER BY tdr_created_at DESC
     `;
 
+    // ✅ FIXED: Use DOH pool (temp_donor_records should be in DOH database)
     const result = await pool.query(query);
     console.log(`✅ Found ${result.rows.length} pending temp donor records`);
     return result.rows;
@@ -8487,7 +8487,105 @@ async getPendingTempDonorRecords() {
   }
 },
 
-// REPLACE the approveTempDonorRecords method in db.js:
+async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    console.log("📋 Declining sync request:", {
+      tdrIds,
+      declinedBy,
+      reason: declineReason
+    });
+
+    // Get the temp donor records before updating
+    const getTempRecordsQuery = `
+      SELECT * FROM temp_donor_records
+      WHERE tdr_id = ANY($1) AND tdr_sync_status = 'pending'
+    `;
+    const tempRecords = await client.query(getTempRecordsQuery, [tdrIds]);
+
+    if (tempRecords.rows.length === 0) {
+      throw new Error("No pending temp donor records found");
+    }
+
+    const sourceOrganization = tempRecords.rows[0].tdr_source_organization;
+    const sourceUserName = tempRecords.rows[0].tdr_source_user_name;
+    
+    console.log(`📊 Found ${tempRecords.rows.length} records from ${sourceOrganization}`);
+    
+    // Update temp_donor_records status to 'declined'
+    const updateQuery = `
+      UPDATE temp_donor_records
+      SET tdr_sync_status = 'declined',
+          tdr_approved_by = $1,
+          tdr_approved_at = NOW(),
+          tdr_decline_reason = $2
+      WHERE tdr_id = ANY($3)
+      RETURNING *
+    `;
+    const updatedRecords = await client.query(updateQuery, [
+      declinedBy,
+      declineReason,
+      tdrIds,
+    ]);
+
+    console.log(`✅ Updated ${updatedRecords.rows.length} records to declined status`);
+
+    // Create mail notification for the organization
+    try {
+      const mailId = `MAIL-SYNC-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const subject = `Donor Record Sync Declined - ${tempRecords.rows.length} Record(s)`;
+      const preview = `Your sync request for ${tempRecords.rows.length} donor record(s) has been declined.`;
+      const body = `Dear ${sourceOrganization},\n\nWe regret to inform you that your donor record sync request has been DECLINED by the Regional Blood Center.\n\nSync Details:\n- Organization: ${sourceOrganization}\n- Requestor: ${sourceUserName}\n- Records Declined: ${tempRecords.rows.length}\n- Declined By: ${declinedBy}\n- Date: ${new Date().toLocaleDateString()}\n\nReason for Decline:\n${declineReason}\n\nIf you have any questions or would like to discuss this decision, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team`;
+
+      const insertMailQuery = `
+        INSERT INTO mails (
+          mail_id, from_name, from_email, subject, preview, body,
+          status, decline_reason, request_title, requestor, request_organization,
+          date_submitted, organization_type, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+      `;
+
+      await client.query(insertMailQuery, [
+        mailId,
+        'Regional Blood Center',
+        'admin@regionalbloodcenter.org',
+        subject,
+        preview,
+        body,
+        'declined',
+        declineReason,
+        `Donor Record Sync - ${sourceOrganization}`,
+        declinedBy,
+        sourceOrganization,
+        tempRecords.rows[0].tdr_created_at,
+        'organization'
+      ]);
+      
+      console.log(`📧 Decline mail sent to ${sourceOrganization}`);
+    } catch (mailError) {
+      console.error('⚠️ Error creating decline mail (non-critical):', mailError);
+      // Don't fail the transaction if mail creation fails
+    }
+
+    await client.query("COMMIT");
+
+    console.log(`✅ Successfully declined ${tempRecords.rows.length} temp donor records from ${sourceOrganization}`);
+
+    return {
+      success: true,
+      count: tempRecords.rows.length,
+      records: updatedRecords.rows,
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("❌ Error declining temp donor records:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
 
 async approveTempDonorRecords(tdrIds, approvedBy) {
   const client = await pool.connect();
@@ -8686,11 +8784,16 @@ async approveTempDonorRecords(tdrIds, approvedBy) {
   }
 },
 
-// Decline temp donor records with reason
 async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
-  const client = await pool.connect();
+  const client = await pool.connect(); // ✅ Use DOH pool, not client variable
   try {
     await client.query("BEGIN");
+
+    console.log("📋 Declining sync request:", {
+      tdrIds,
+      declinedBy,
+      reason: declineReason
+    });
 
     // Get the temp donor records before updating
     const getTempRecordsQuery = `
@@ -8705,7 +8808,9 @@ async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
 
     const sourceOrganization = tempRecords.rows[0].tdr_source_organization;
     const sourceUserName = tempRecords.rows[0].tdr_source_user_name;
-
+    
+    console.log(`📊 Found ${tempRecords.rows.length} records from ${sourceOrganization}`);
+    
     // Update temp_donor_records status to 'declined'
     const updateQuery = `
       UPDATE temp_donor_records
@@ -8722,6 +8827,8 @@ async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
       tdrIds,
     ]);
 
+    console.log(`✅ Updated ${updatedRecords.rows.length} records to declined status`);
+
     // Create mail notification for the organization
     try {
       const mailId = `MAIL-SYNC-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -8737,6 +8844,7 @@ async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
       `;
 
+      // ✅ Use orgPool for the organization's mail database
       await orgPool.query(insertMailQuery, [
         mailId,
         'Regional Blood Center',
@@ -8752,16 +8860,16 @@ async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
         tempRecords.rows[0].tdr_created_at,
         'organization'
       ]);
-
-      console.log(`[DB] Decline mail sent to ${sourceOrganization}`);
+      
+      console.log(`📧 Decline mail sent to ${sourceOrganization}`);
     } catch (mailError) {
-      console.error('[DB] Error creating decline mail:', mailError);
+      console.error('⚠️ Error creating decline mail (non-critical):', mailError);
       // Don't fail the transaction if mail creation fails
     }
 
     await client.query("COMMIT");
 
-    console.log(`[DB] Declined ${tempRecords.rows.length} temp donor records from ${sourceOrganization}`);
+    console.log(`✅ Successfully declined ${tempRecords.rows.length} temp donor records from ${sourceOrganization}`);
 
     return {
       success: true,
@@ -8770,7 +8878,7 @@ async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
     };
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("[DB] Error declining temp donor records:", error);
+    console.error("❌ Error declining temp donor records:", error);
     throw error;
   } finally {
     client.release();
