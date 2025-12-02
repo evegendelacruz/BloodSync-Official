@@ -31,12 +31,6 @@ const SidePanelOrg = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
       icon: CalendarCheck,
       screen: "appointment-org",
     },
-    {
-      id: "recent-activity-org",
-      label: "Recent Activity",
-      icon: Clock,
-      screen: "recent-activity-org",
-    },
   ];
 
   const handleMenuClick = (item) => {

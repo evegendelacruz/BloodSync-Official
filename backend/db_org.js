@@ -1789,17 +1789,18 @@ const dbOrgService = {
         "UPDATE user_org SET u_last_login = NOW() WHERE u_id = $1",
         [user.id]
       );
-      console.log("Last login updated");
+      console.log("✅ Last login updated");
 
-      // Log the login activity
+      // FIXED: Log the login activity to user_org_log
       try {
         await this.logUserActivity(
           user.id,
           "LOGIN",
           `User ${user.fullName} logged into the system`
         );
+        console.log('✅ Login activity logged to user_org_log for:', user.fullName);
       } catch (logError) {
-        console.error("Failed to log activity (non-critical):", logError);
+        console.error("⚠️ Failed to log login activity (non-critical):", logError);
       }
 
       // Remove password from user object before returning
@@ -1968,94 +1969,147 @@ const dbOrgService = {
 
   // ========== USER ACTIVITY LOG METHODS ==========
 
-  // In db_org.js - Update the logUserActivity function
-  async logUserActivity(userId, action, description) {
+    async logUserActivity(userId, action, description) {
     try {
       // Ensure userId is a valid integer
       let parsedUserId = userId;
 
-      // If userId is a string that represents a role instead of an ID, use a default system user ID
+      // If userId is a string that represents a role instead of an ID
       if (typeof userId === "string" && isNaN(parseInt(userId))) {
-        // This is likely a role name like "Central System Admin" - use a system user ID
-        parsedUserId = 0; // or get a system user ID from your users table
-        console.warn(
-          `User ID "${userId}" is not a number, using system ID: ${parsedUserId}`
-        );
+        console.warn(`⚠️ User ID "${userId}" is not a number, fetching system user...`);
+        
+        // Get or create system user
+        const systemUserQuery = `
+          SELECT u_id FROM user_org 
+          WHERE u_email = 'system@bloodsync.org' 
+          LIMIT 1
+        `;
+        const systemUserResult = await pool.query(systemUserQuery);
+        
+        if (systemUserResult.rows.length > 0) {
+          parsedUserId = systemUserResult.rows[0].u_id;
+          console.log('✓ Using existing system user ID:', parsedUserId);
+        } else {
+          // Create system user if doesn't exist
+          console.log('Creating new system user...');
+          const createSystemQuery = `
+            INSERT INTO user_org (
+              u_org_id, u_full_name, u_category, u_email, u_password, 
+              u_status, u_verified_at, u_created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+            RETURNING u_id
+          `;
+          const crypto = require('crypto');
+          const systemUserValues = [
+            'SYS-0000001',
+            'BloodSync System',
+            'System',
+            'system@bloodsync.org',
+            crypto.createHash("sha256").update("system_password").digest("hex"),
+            'verified'
+          ];
+          const createResult = await pool.query(createSystemQuery, systemUserValues);
+          parsedUserId = createResult.rows[0].u_id;
+          console.log('✓ Created new system user ID:', parsedUserId);
+        }
       } else {
         parsedUserId = parseInt(userId);
       }
 
+      // Verify user exists before logging
+      const verifyUserQuery = `SELECT u_id FROM user_org WHERE u_id = $1`;
+      const verifyResult = await pool.query(verifyUserQuery, [parsedUserId]);
+      
+      if (verifyResult.rows.length === 0) {
+        console.warn(`⚠️ User ID ${parsedUserId} not found in user_org, skipping log`);
+        return null;
+      }
+
+      // Insert into user_org_log table
       const query = `
-      INSERT INTO user_activity_log (
-        user_id,
-        action,
-        description,
-        created_at
-      ) VALUES ($1, $2, $3, NOW())
-      RETURNING id
-    `;
+        INSERT INTO user_org_log (
+          ual_user_id,
+          ual_action,
+          ual_description,
+          ual_timestamp
+        ) VALUES ($1, $2, $3, NOW())
+        RETURNING ual_id, ual_timestamp
+      `;
 
       const result = await pool.query(query, [
         parsedUserId,
         action,
         description,
       ]);
+      
+      console.log('✅ Activity logged to user_org_log:', {
+        logId: result.rows[0].ual_id,
+        userId: parsedUserId,
+        action: action,
+        timestamp: result.rows[0].ual_timestamp
+      });
+      
       return result.rows[0];
     } catch (error) {
-      console.error("Error logging user activity:", error);
-      console.error("Error details:", {
+      console.error("❌ Error logging user activity to user_org_log:", error);
+      console.error("Details:", {
         userId: userId,
         action: action,
         description: description,
-        message: error.message,
-        code: error.code,
+        errorMessage: error.message,
+        errorCode: error.code,
       });
+      // Return null instead of throwing to prevent breaking the main operation
       return null;
     }
   },
 
-  // Get user activity log with pagination
-  async getUserActivityLog(userId, limit = 20, offset = 0) {
-    try {
-      const query = `
+  async getUserActivityLogOrg(userId, limit = 20, offset = 0) {
+  try {
+    console.log(`📋 Fetching activity log for user ${userId}, limit: ${limit}, offset: ${offset}`);
+    
+    const query = `
       SELECT
-        id,
-        user_id as "userId",
-        action,
-        description,
-        TO_CHAR(created_at, 'MM/DD/YYYY') as date,
-        TO_CHAR(created_at, 'HH12:MI AM') as time,
-        created_at as timestamp
-      FROM user_activity_log
-      WHERE user_id = $1
-      ORDER BY created_at DESC
+        ual_id as id,
+        ual_user_id as "userId",
+        ual_action as action,
+        ual_description as description,
+        TO_CHAR(ual_timestamp, 'MM/DD/YYYY') as date,
+        TO_CHAR(ual_timestamp, 'HH12:MI AM') as time,
+        ual_timestamp as timestamp
+      FROM user_org_log
+      WHERE ual_user_id = $1
+      ORDER BY ual_timestamp DESC
       LIMIT $2 OFFSET $3
     `;
 
-      const result = await pool.query(query, [userId, limit, offset]);
-      return result.rows;
-    } catch (error) {
-      console.error("Error fetching user activity log:", error);
-      throw error;
-    }
-  },
+    const result = await pool.query(query, [userId, limit, offset]);
+    console.log(`✅ Fetched ${result.rows.length} activity logs for user ${userId}`);
+    
+    return result.rows;
+  } catch (error) {
+    console.error("❌ Error fetching user activity log from user_org_log:", error);
+    throw error;
+  }
+},
 
-  // Get total count for pagination
-  async getUserActivityLogCount(userId) {
-    try {
-      const query = `
+  async getUserActivityLogCountOrg(userId) {
+  try {
+    const query = `
       SELECT COUNT(*) as total
       FROM user_org_log
       WHERE ual_user_id = $1
     `;
 
-      const result = await pool.query(query, [userId]);
-      return parseInt(result.rows[0].total);
-    } catch (error) {
-      console.error("Error fetching user activity log count:", error);
-      throw error;
-    }
-  },
+    const result = await pool.query(query, [userId]);
+    const count = parseInt(result.rows[0].total);
+    console.log(`✅ Total activity count for user ${userId}: ${count}`);
+    return count;
+  } catch (error) {
+    console.error("❌ Error fetching user activity log count from user_org_log:", error);
+    throw error;
+  }
+},
 
   async updateUserPasswordOrg(userId, currentPassword, newPassword) {
     const client = await pool.connect();
@@ -3248,7 +3302,112 @@ async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
       [sourceOrganization]
     );
     return result.count || 0;
+  },
+
+  //==================USER LOG============================
+  async logUserActivity(userId, action, description) {
+  try {
+    // Ensure userId is a valid integer
+    let parsedUserId = userId;
+
+    // If userId is a string that represents a role instead of an ID
+    if (typeof userId === "string" && isNaN(parseInt(userId))) {
+      console.warn(`User ID "${userId}" is not a number, fetching system user...`);
+      
+      // Get or create system user
+      const systemUserQuery = `
+        SELECT u_id FROM user_org 
+        WHERE u_email = 'system@bloodsync.org' 
+        LIMIT 1
+      `;
+      const systemUserResult = await pool.query(systemUserQuery);
+      
+      if (systemUserResult.rows.length > 0) {
+        parsedUserId = systemUserResult.rows[0].u_id;
+      } else {
+        parsedUserId = 0; // Fallback
+      }
+    } else {
+      parsedUserId = parseInt(userId);
+    }
+
+    // FIXED: Insert into user_org_log table
+    const query = `
+      INSERT INTO user_org_log (
+        ual_user_id,
+        ual_action,
+        ual_description,
+        ual_timestamp
+      ) VALUES ($1, $2, $3, NOW())
+      RETURNING ual_id
+    `;
+
+    const result = await pool.query(query, [
+      parsedUserId,
+      action,
+      description,
+    ]);
+    
+    console.log('✓ Activity logged successfully to user_org_log:', result.rows[0]);
+    return result.rows[0];
+  } catch (error) {
+    console.error("Error logging user activity to user_org_log:", error);
+    console.error("Error details:", {
+      userId: userId,
+      action: action,
+      description: description,
+      message: error.message,
+      code: error.code,
+    });
+    return null;
   }
+},
+
+// FIXED: Get user activity log from user_org_log table
+async getUserActivityLogOrg(userId, limit = 20, offset = 0) {
+  try {
+    const query = `
+      SELECT
+        ual_id as id,
+        ual_user_id as "userId",
+        ual_action as action,
+        ual_description as description,
+        TO_CHAR(ual_timestamp, 'MM/DD/YYYY') as date,
+        TO_CHAR(ual_timestamp, 'HH12:MI AM') as time,
+        ual_timestamp as timestamp
+      FROM user_org_log
+      WHERE ual_user_id = $1
+      ORDER BY ual_timestamp DESC
+      LIMIT $2 OFFSET $3
+    `;
+
+    const result = await pool.query(query, [userId, limit, offset]);
+    console.log(`✓ Fetched ${result.rows.length} activity logs for user ${userId}`);
+    return result.rows;
+  } catch (error) {
+    console.error("Error fetching user activity log from user_org_log:", error);
+    throw error;
+  }
+},
+
+// FIXED: Get total count from user_org_log table
+async getUserActivityLogCountOrg(userId) {
+  try {
+    const query = `
+      SELECT COUNT(*) as total
+      FROM user_org_log
+      WHERE ual_user_id = $1
+    `;
+
+    const result = await pool.query(query, [userId]);
+    const count = parseInt(result.rows[0].total);
+    console.log(`✓ Total activity count for user ${userId}: ${count}`);
+    return count;
+  } catch (error) {
+    console.error("Error fetching user activity log count from user_org_log:", error);
+    throw error;
+  }
+},
 };
 
 module.exports = dbOrgService;

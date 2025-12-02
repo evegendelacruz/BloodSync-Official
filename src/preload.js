@@ -1303,6 +1303,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke('approve-temp-donor-records', tdrIds, approvedBy),
   declineTempDonorRecords: (tdrIds, declinedBy, reason) => 
     ipcRenderer.invoke('decline-temp-donor-records', tdrIds, declinedBy, reason),
+
+  //=====================ORGANIZATION USER LOG==============================
+  
+  logUserActivity: (userId, action, description) => 
+    ipcRenderer.invoke('db-org:logUserActivity', userId, action, description),
+  
+  getUserActivityLogOrg: (userId, limit, offset) => 
+  ipcRenderer.invoke('db-org:getUserActivityLogOrg', userId, limit, offset),
+  
+  getUserActivityLogCountOrg: (userId) => 
+    ipcRenderer.invoke('db-org:getUserActivityLogCountOrg', userId),
 });
+
 
 console.log("electronAPI exposed successfully");

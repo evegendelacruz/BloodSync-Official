@@ -1,12 +1,14 @@
+// ProfileActivity.jsx
 import React, { useState, useEffect } from "react";
-import { User, Loader2, AlertCircle } from "lucide-react";
+import { User, ChevronLeft, ChevronRight } from "lucide-react";
 
 const ProfileActivityOrg = ({ userId }) => {
-  const [activities, setActivities] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [activities, setActivities] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [currentDate, setCurrentDate] = useState("");
+  const [totalCount, setTotalCount] = useState(0);
   const itemsPerPage = 6;
 
   const styles = {
@@ -14,7 +16,6 @@ const ProfileActivityOrg = ({ userId }) => {
       backgroundColor: "white",
       borderRadius: "8px",
       padding: "32px",
-      minHeight: "400px",
     },
     title: {
       fontSize: "24px",
@@ -22,21 +23,20 @@ const ProfileActivityOrg = ({ userId }) => {
       color: "#165C3C",
       marginTop: "-7px",
       fontFamily: "Barlow",
-      marginBottom: "24px",
     },
     dateSection: {
       marginBottom: "24px",
     },
     dateTitle: {
       fontSize: "14px",
-      marginBottom: "16px",
+      marginBottom: "24px",
       color: "#1f2937",
-      fontWeight: "600",
     },
     activityList: {
       display: "flex",
       flexDirection: "column",
       gap: "20px",
+      minHeight: "400px",
     },
     activityItem: {
       display: "flex",
@@ -79,7 +79,6 @@ const ProfileActivityOrg = ({ userId }) => {
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
-      marginTop: "20px",
     },
     paginationButton: {
       fontSize: "14px",
@@ -88,191 +87,125 @@ const ProfileActivityOrg = ({ userId }) => {
       border: "none",
       cursor: "pointer",
       padding: "4px 8px",
+      display: "flex",
+      alignItems: "center",
+      gap: "4px",
       transition: "color 0.2s",
     },
     paginationButtonDisabled: {
+      fontSize: "14px",
       color: "#d1d5db",
+      backgroundColor: "transparent",
+      border: "none",
       cursor: "not-allowed",
+      padding: "4px 8px",
+      display: "flex",
+      alignItems: "center",
+      gap: "4px",
     },
     paginationText: {
       fontSize: "12px",
       color: "#6b7280",
       fontFamily: "Arial",
     },
-    loadingContainer: {
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      minHeight: "300px",
-      flexDirection: "column",
-      gap: "12px",
-    },
     loadingText: {
+      textAlign: "center",
       color: "#6b7280",
       fontSize: "14px",
+      padding: "40px",
     },
-    errorContainer: {
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      minHeight: "300px",
-      flexDirection: "column",
-      gap: "12px",
-      color: "#dc2626",
-    },
-    errorText: {
-      fontSize: "14px",
-    },
-    noDataContainer: {
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      minHeight: "300px",
-      flexDirection: "column",
-      gap: "12px",
+    emptyText: {
+      textAlign: "center",
       color: "#6b7280",
-    },
-    noDataText: {
       fontSize: "14px",
+      padding: "40px",
     },
-  };
-
-  // Media query for mobile responsiveness
-  const isMobile = window.innerWidth <= 768;
-
-  if (isMobile) {
-    styles.container.padding = "24px";
-    styles.activityItem.flexWrap = "wrap";
-    styles.activityTime.paddingTop = "8px";
-    styles.activityTime.width = "100%";
-    styles.activityTime.order = "2";
-    styles.activityContent.order = "1";
-    styles.pagination.justifyContent = "center";
-  }
-
-  // Fetch activities
-  const fetchActivities = async (page) => {
-    if (!userId) {
-      setError("User ID is required");
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Check if window.electronAPI exists
-      if (!window.electronAPI) {
-        throw new Error("Electron API not available");
-      }
-
-      // Fetch activities
-      const activitiesResult = await window.electronAPI.getUserActivityLogOrg(
-        userId,
-        page,
-        itemsPerPage
-      );
-
-      if (!activitiesResult.success) {
-        throw new Error(activitiesResult.error || "Failed to fetch activities");
-      }
-
-      // Fetch total count for pagination
-      const countResult = await window.electronAPI.getUserActivityLogCountOrg(userId);
-
-      if (!countResult.success) {
-        throw new Error(countResult.error || "Failed to fetch activity count");
-      }
-
-      setActivities(activitiesResult.activities || {});
-      setTotalPages(Math.ceil(countResult.count / itemsPerPage) || 1);
-      setLoading(false);
-    } catch (err) {
-      console.error("Error fetching activities:", err);
-      setError(err.message || "Failed to load activities");
-      setLoading(false);
-    }
   };
 
   useEffect(() => {
-    fetchActivities(currentPage);
+    if (userId) {
+      fetchActivities();
+    }
   }, [currentPage, userId]);
 
-  const handlePrevious = () => {
+  const fetchActivities = async () => {
+  setLoading(true);
+  try {
+    const offset = (currentPage - 1) * itemsPerPage;
+    
+    console.log('🔍 Fetching activities for user:', userId, 'Page:', currentPage);
+    
+    // Use Electron IPC to call database methods
+    const logs = await window.electronAPI.getUserActivityLogOrg(userId, itemsPerPage, offset);
+    const count = await window.electronAPI.getUserActivityLogCountOrg(userId);
+    
+    console.log('✅ Fetched activities:', logs);
+    console.log('✅ Total count:', count);
+    
+    setActivities(logs || []);
+    setTotalCount(count);
+    setTotalPages(Math.ceil(count / itemsPerPage));
+    
+    // Set current date
+    const today = new Date();
+    setCurrentDate(
+      today.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    );
+  } catch (error) {
+    console.error("❌ Error fetching activities:", error);
+    setActivities([]);
+    setTotalCount(0);
+    setTotalPages(1);
+  } finally {
+    setLoading(false);
+  }
+};
+
+  const handlePreviousPage = () => {
     if (currentPage > 1) {
       setCurrentPage(currentPage - 1);
     }
   };
 
-  const handleNext = () => {
+  const handleNextPage = () => {
     if (currentPage < totalPages) {
       setCurrentPage(currentPage + 1);
     }
   };
 
-  // Loading state
-  if (loading) {
-    return (
-      <div style={styles.container}>
-        <h2 style={styles.title}>Recent Activity</h2>
-        <div style={styles.loadingContainer}>
-          <Loader2 size={32} className="animate-spin" color="#165C3C" />
-          <span style={styles.loadingText}>Loading activities...</span>
-        </div>
-      </div>
-    );
-  }
-
-  // Error state
-  if (error) {
-    return (
-      <div style={styles.container}>
-        <h2 style={styles.title}>Recent Activity</h2>
-        <div style={styles.errorContainer}>
-          <AlertCircle size={32} />
-          <span style={styles.errorText}>{error}</span>
-        </div>
-      </div>
-    );
-  }
-
-  // No data state
-  if (Object.keys(activities).length === 0) {
-    return (
-      <div style={styles.container}>
-        <h2 style={styles.title}>Recent Activity</h2>
-        <div style={styles.noDataContainer}>
-          <User size={32} />
-          <span style={styles.noDataText}>No activities yet</span>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div style={styles.container}>
-      <h2 style={styles.title}>Recent Activity</h2>
+      <h2 style={styles.title}>User Log</h2>
 
-      {Object.entries(activities).map(([date, dateActivities]) => (
-        <div key={date} style={styles.dateSection}>
-          <h3 style={styles.dateTitle}>{date}</h3>
+      <div style={styles.dateSection}>
+        <h3 style={styles.dateTitle}>{currentDate}</h3>
 
-          <div style={styles.activityList}>
-            {dateActivities.map((activity) => (
-              <div key={activity.id} style={styles.activityItem}>
+        <div style={styles.activityList}>
+          {loading ? (
+            <div style={styles.loadingText}>Loading activity log...</div>
+          ) : activities.length === 0 ? (
+            <div style={styles.emptyText}>No activity log found</div>
+          ) : (
+            activities.map((activity, index) => (
+              <div key={activity.id || index} style={styles.activityItem}>
                 <div style={styles.iconContainer}>
                   <User size={16} color="#6b7280" />
                 </div>
                 <div style={styles.activityContent}>
-                  <p style={styles.activityText}>{activity.text}</p>
+                  <p style={styles.activityText}>{activity.description}</p>
                 </div>
-                <span style={styles.activityTime}>{activity.time}</span>
+                <span style={styles.activityTime}>
+                  {activity.date} {activity.time}
+                </span>
               </div>
-            ))}
-          </div>
+            ))
+          )}
         </div>
-      ))}
+      </div>
     </div>
   );
 };

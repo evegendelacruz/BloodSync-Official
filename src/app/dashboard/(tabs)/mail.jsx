@@ -35,6 +35,8 @@ const MailComponent = ({ onNavigate }) => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [mailToDelete, setMailToDelete] = useState(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showAcceptModal, setShowAcceptModal] = useState(false);
+  const [mailToAccept, setMailToAccept] = useState(null);
   const [successMessage, setSuccessMessage] = useState({
     title: "",
     description: "",
@@ -149,6 +151,80 @@ const MailComponent = ({ onNavigate }) => {
         };
       });
 
+      // Update handleConfirmDecline to properly handle partnership requests
+      const handleConfirmDecline = async () => {
+        if (!declineReason.trim()) {
+          alert("Please provide a reason for declining this partnership request.");
+          return;
+        }
+
+        const mail = mailToDecline;
+
+        try {
+          if (typeof window !== "undefined" && window.electronAPI) {
+            // Get current user
+            const user = JSON.parse(localStorage.getItem("currentUser"));
+            const declinedBy = user?.fullName || "RBC Admin";
+
+            // Update partnership request status to declined
+            await window.electronAPI.updatePartnershipRequestStatus(
+              mail.requestId,
+              "declined",
+              declinedBy,
+              declineReason
+            );
+
+            // Update the appointment status to cancelled
+            await window.electronAPI.updateAppointmentStatus(
+              mail.appointmentId,
+              "cancelled"
+            );
+
+            console.log("[DECLINE] Partnership request declined successfully");
+            console.log("[DECLINE] Declined by:", declinedBy);
+            console.log("[DECLINE] Organization:", mail.requestInfo.organizationName);
+            console.log("[DECLINE] Reason:", declineReason);
+
+            // Update local state
+            setMails((prev) =>
+              prev.map((m) =>
+                m.id === mail.id
+                  ? {
+                      ...m,
+                      read: true,
+                      status: "declined",
+                      declineReason: declineReason,
+                    }
+                  : m
+              )
+            );
+
+            if (selectedMail && selectedMail.id === mail.id) {
+              setSelectedMail({
+                ...selectedMail,
+                read: true,
+                status: "declined",
+                declineReason: declineReason,
+              });
+            }
+
+            // Show success modal
+            setSuccessMessage({
+              title: "Partnership Declined",
+              description: "The partnership request has been declined with the provided reason.",
+            });
+            setShowSuccessModal(true);
+
+            setShowDeclineModal(false);
+            setMailToDecline(null);
+            setDeclineReason("");
+            await loadMails();
+          }
+        } catch (error) {
+          console.error("Error declining partnership request:", error);
+          alert("Failed to decline request. Please try again.");
+        }
+      };
       // Transform sync requests into mail format
       const mailsFromSyncRequests = Object.values(groupedSyncRequests).map(
         (group, index) => {
@@ -632,10 +708,13 @@ const MailComponent = ({ onNavigate }) => {
   }
 };
 
-  const handleAcceptRequest = async (mail) => {
-    if (!confirm(`Accept partnership request from ${mail.from}?`)) {
-      return;
-    }
+  const handleAcceptRequest = (mail) => {
+  setMailToAccept(mail);
+  setShowAcceptModal(true);
+  };
+
+  const handleConfirmAccept = async () => {
+    if (!mailToAccept) return;
 
     try {
       if (typeof window !== "undefined" && window.electronAPI) {
@@ -645,42 +724,130 @@ const MailComponent = ({ onNavigate }) => {
 
         // Update partnership request status
         await window.electronAPI.updatePartnershipRequestStatus(
-          mail.requestId,
+          mailToAccept.requestId,
           "approved",
           approvedBy
         );
 
-        // ADD THIS LINE TO UPDATE THE LOCAL CALENDAR
+        // Update the local calendar
         await window.electronAPI.updateAppointmentStatus(
-          mail.appointmentId,
+          mailToAccept.appointmentId,
           "scheduled"
         );
 
-        // Note: Notification to organization will be handled through their system
         console.log("[APPROVAL] Partnership request approved successfully");
         console.log("[APPROVAL] Approved by:", approvedBy);
-        console.log("[APPROVAL] Organization:", mail.requestInfo.organizationName);
-        console.log("[APPROVAL] Appointment ID:", mail.appointmentId);
+        console.log("[APPROVAL] Organization:", mailToAccept.requestInfo.organizationName);
+        console.log("[APPROVAL] Appointment ID:", mailToAccept.appointmentId);
 
         // Update local state
         setMails((prev) =>
           prev.map((m) =>
-            m.id === mail.id ? { ...m, read: true, status: "approved" } : m
+            m.id === mailToAccept.id ? { ...m, read: true, status: "approved" } : m
           )
         );
 
-        if (selectedMail && selectedMail.id === mail.id) {
+        if (selectedMail && selectedMail.id === mailToAccept.id) {
           setSelectedMail({ ...selectedMail, read: true, status: "approved" });
         }
 
-        alert("Partnership request accepted successfully!");
-        loadMails(); // Reload to get fresh data
+        // Show success modal
+        setSuccessMessage({
+          title: "Partnership Approved",
+          description: "The partnership request has been accepted successfully.",
+        });
+        setShowSuccessModal(true);
+
+        setShowAcceptModal(false);
+        setMailToAccept(null);
+        await loadMails();
       }
     } catch (error) {
       console.error("Error accepting request:", error);
       alert("Failed to accept request. Please try again.");
     }
   };
+
+  // ADD THIS FUNCTION HERE - handleDeclineRequest
+  const handleDeclineRequest = (mail) => {
+    setMailToDecline(mail);
+    setShowDeclineModal(true);
+  };
+
+  const handleConfirmDecline = async () => {
+    if (!declineReason.trim()) {
+      alert("Please provide a reason for declining this partnership request.");
+      return;
+    }
+
+    const mail = mailToDecline;
+
+    try {
+      if (typeof window !== "undefined" && window.electronAPI) {
+        // Get current user
+        const user = JSON.parse(localStorage.getItem("currentUser"));
+        const declinedBy = user?.fullName || "RBC Admin";
+
+        // Update partnership request status to declined
+        await window.electronAPI.updatePartnershipRequestStatus(
+          mail.requestId,
+          "declined",
+          declinedBy,
+          declineReason
+        );
+
+        // Update the appointment status to cancelled
+        await window.electronAPI.updateAppointmentStatus(
+          mail.appointmentId,
+          "cancelled"
+        );
+
+        console.log("[DECLINE] Partnership request declined successfully");
+        console.log("[DECLINE] Declined by:", declinedBy);
+        console.log("[DECLINE] Organization:", mail.requestInfo.organizationName);
+        console.log("[DECLINE] Reason:", declineReason);
+
+        // Update local state
+        setMails((prev) =>
+          prev.map((m) =>
+            m.id === mail.id
+              ? {
+                  ...m,
+                  read: true,
+                  status: "declined",
+                  declineReason: declineReason,
+                }
+              : m
+          )
+        );
+
+        if (selectedMail && selectedMail.id === mail.id) {
+          setSelectedMail({
+            ...selectedMail,
+            read: true,
+            status: "declined",
+            declineReason: declineReason,
+          });
+        }
+
+        // Show success modal
+        setSuccessMessage({
+          title: "Partnership Declined",
+          description: "The partnership request has been declined with the provided reason.",
+        });
+        setShowSuccessModal(true);
+
+        setShowDeclineModal(false);
+        setMailToDecline(null);
+        setDeclineReason("");
+        await loadMails();
+      }
+    } catch (error) {
+      console.error("Error declining partnership request:", error);
+      alert("Failed to decline request. Please try again.");
+    }
+  };
+
 
   const handleDeclineSyncRequest = async () => {
   if (!declineReason.trim()) {
@@ -1483,6 +1650,72 @@ const MailComponent = ({ onNavigate }) => {
         )}
       </div>
 
+      {/* Accept Partnership Modal */}
+      {showAcceptModal && mailToAccept && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>Accept Partnership Request</h3>
+              <button
+                className="modal-close"
+                onClick={() => {
+                  setShowAcceptModal(false);
+                  setMailToAccept(null);
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="decline-info">
+                <p>
+                  <strong>From:</strong> {mailToAccept.from}
+                </p>
+                <p>
+                  <strong>Organization:</strong> {mailToAccept.requestInfo.organizationName}
+                </p>
+                <p>
+                  <strong>Event Date:</strong>{" "}
+                  {new Date(mailToAccept.requestInfo.eventDate).toLocaleDateString("en-US", {
+                    weekday: "long",
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </p>
+                <p>
+                  <strong>Event Time:</strong> {mailToAccept.requestInfo.eventTime}
+                </p>
+                <p>
+                  <strong>Location:</strong> {mailToAccept.requestInfo.eventAddress}
+                </p>
+              </div>
+              <p style={{ marginTop: "16px", fontSize: "14px", color: "#374151", fontFamily: "Barlow" }}>
+                Are you sure you want to accept this partnership request? This will schedule the blood drive event in your calendar.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button
+                className="btn-cancel"
+                onClick={() => {
+                  setShowAcceptModal(false);
+                  setMailToAccept(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-accept-confirm"
+                onClick={handleConfirmAccept}
+              >
+                <CheckCircle size={16} />
+                Confirm Accept
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Reply Modal */}
       {showReplyModal && selectedMail && (
         <div className="modal-overlay">
@@ -1604,16 +1837,6 @@ const MailComponent = ({ onNavigate }) => {
         </div>
       )}
 
-      <DeleteConfirmationModal
-        isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
-        onConfirm={handleConfirmDelete}
-        title="Delete Message"
-        message="Are you sure you want to delete this message? This action cannot be undone."
-      />
-
-      {isDeleting && <Loader />}
-
       {showSuccessModal && (
         <div className="success-modal-overlay">
           <div className="success-modal">
@@ -1640,6 +1863,37 @@ const MailComponent = ({ onNavigate }) => {
             >
               OK
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE MODAL */}
+      {isDeleteModalOpen && (
+        <div className="delete-modal-overlay">
+          <div className="delete-modal-content">
+            <div className="delete-modal-icon">
+              <div className="delete-icon-circle">
+                <Trash2 size={24} color="#dc2626" />
+              </div>
+            </div>
+            <h3 className="delete-modal-title">Delete Message</h3>
+            <p className="delete-modal-description">
+              Are you sure you want to delete this message? This action cannot be undone.
+            </p>
+            <div className="delete-modal-actions">
+              <button
+                className="delete-modal-cancel"
+                onClick={() => setIsDeleteModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="delete-modal-confirm"
+                onClick={handleConfirmDelete}
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -3026,6 +3280,124 @@ const MailComponent = ({ onNavigate }) => {
 
         .success-modal-button:active {
           transform: translateY(0);
+        }
+
+        .btn-accept-confirm {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          background-color: #10b981;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          font-size: 14px;
+          font-weight: 500;
+          font-family: 'Barlow', sans-serif;
+          cursor: pointer;
+          transition: background-color 0.2s;
+        }
+
+        .btn-accept-confirm:hover {
+          background-color: #059669;
+        }
+        
+        .delete-modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background-color: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+          animation: fadeIn 0.2s ease-out;
+        }
+
+        .delete-modal-content {
+          background-color: white;
+          border-radius: 12px;
+          padding: 32px;
+          max-width: 400px;
+          width: 90%;
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+          animation: slideIn 0.3s ease-out;
+          text-align: center;
+          position: relative;
+          z-index: 10000;
+        }
+
+        .delete-modal-icon {
+          margin-bottom: 20px;
+          display: flex;
+          justify-content: center;
+        }
+
+        .delete-icon-circle {
+          width: 60px;
+          height: 60px;
+          background-color: #fee2e2;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .delete-modal-title {
+          font-size: 20px;
+          font-weight: 700;
+          color: #111827;
+          margin: 0 0 12px 0;
+          font-family: "Barlow", sans-serif;
+        }
+
+        .delete-modal-description {
+          font-size: 14px;
+          color: #6b7280;
+          margin: 0 0 28px 0;
+          font-family: "Barlow", sans-serif;
+          line-height: 1.6;
+        }
+
+        .delete-modal-actions {
+          display: flex;
+          gap: 12px;
+          justify-content: center;
+        }
+
+        .delete-modal-cancel,
+        .delete-modal-confirm {
+          padding: 10px 24px;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: "Barlow", sans-serif;
+          transition: all 0.2s;
+          border: none;
+          min-width: 100px;
+        }
+
+        .delete-modal-cancel {
+          background-color: #f3f4f6;
+          color: #374151;
+        }
+
+        .delete-modal-cancel:hover {
+          background-color: #e5e7eb;
+        }
+
+        .delete-modal-confirm {
+          background-color: #dc2626;
+          color: white;
+        }
+
+        .delete-modal-confirm:hover {
+          background-color: #b91c1c;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 8px rgba(220, 38, 38, 0.3);
         }
       `}</style>
     </div>
