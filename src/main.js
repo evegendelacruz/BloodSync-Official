@@ -1925,6 +1925,26 @@ ipcMain.handle("decline-temp-donor-records", async (event, tdrIds, declinedBy, r
   }
 });
 
+//==================ORGANIZATION USER LOG==============================
+ipcMain.handle('db-org:getUserActivityLogOrg', async (event, userId, limit, offset) => {
+  try {
+    const logs = await dbOrgService.getUserActivityLogOrg(userId, limit, offset);
+    return logs;
+  } catch (error) {
+    console.error('Error in getUserActivityLogOrg handler:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('db-org:getUserActivityLogCountOrg', async (event, userId) => {
+  try {
+    const count = await dbOrgService.getUserActivityLogCountOrg(userId);
+    return count;
+  } catch (error) {
+    console.error('Error in getUserActivityLogCountOrg handler:', error);
+    throw error;
+  }
+});
 
 
 
