@@ -2990,9 +2990,15 @@ async approveTempDonorRecords(tdrIds, approvedBy) {
 },
 
 async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
-  const client = await pool.connect();
+  const client = await pool.connect(); // Use DOH database pool
   try {
     await client.query("BEGIN");
+
+    console.log("📋 Declining sync request:", {
+      tdrIds,
+      declinedBy,
+      reason: declineReason
+    });
 
     // Get the temp donor records before updating
     const getTempRecordsQuery = `
@@ -3007,9 +3013,10 @@ async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
 
     const sourceOrganization = tempRecords.rows[0].tdr_source_organization;
     const sourceUserName = tempRecords.rows[0].tdr_source_user_name;
-
-    // ✅ FIXED: Update temp_donor_records status to 'declined'
-    // Removed tdr_declined_at column which doesn't exist
+    
+    console.log(`📊 Found ${tempRecords.rows.length} records from ${sourceOrganization}`);
+    
+    // Update temp_donor_records status to 'declined'
     const updateQuery = `
       UPDATE temp_donor_records
       SET tdr_sync_status = 'declined',
@@ -3024,6 +3031,8 @@ async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
       declineReason,
       tdrIds,
     ]);
+
+    console.log(`✅ Updated ${updatedRecords.rows.length} records to declined status`);
 
     // Create mail notification for the organization
     try {
@@ -3040,31 +3049,36 @@ async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
       `;
 
-      await orgPool.query(insertMailQuery, [
-        mailId,
-        'Regional Blood Center',
-        'admin@regionalbloodcenter.org',
-        subject,
-        preview,
-        body,
-        'declined',
-        declineReason,
-        `Donor Record Sync - ${sourceOrganization}`,
-        declinedBy,
-        sourceOrganization,
-        tempRecords.rows[0].tdr_created_at,
-        'organization'
-      ]);
-
-      console.log(`[DB] Decline mail sent to ${sourceOrganization}`);
+      // Use organization database pool for mails
+      const orgClient = await orgPool.connect();
+      try {
+        await orgClient.query(insertMailQuery, [
+          mailId,
+          'Regional Blood Center',
+          'admin@regionalbloodcenter.org',
+          subject,
+          preview,
+          body,
+          'declined',
+          declineReason,
+          `Donor Record Sync - ${sourceOrganization}`,
+          declinedBy,
+          sourceOrganization,
+          tempRecords.rows[0].tdr_created_at,
+          'organization'
+        ]);
+        console.log(`📧 Decline mail sent to ${sourceOrganization}`);
+      } finally {
+        orgClient.release();
+      }
     } catch (mailError) {
-      console.error('[DB] Error creating decline mail:', mailError);
+      console.error('⚠️ Error creating decline mail (non-critical):', mailError);
       // Don't fail the transaction if mail creation fails
     }
 
     await client.query("COMMIT");
 
-    console.log(`[DB] Declined ${tempRecords.rows.length} temp donor records from ${sourceOrganization}`);
+    console.log(`✅ Successfully declined ${tempRecords.rows.length} temp donor records from ${sourceOrganization}`);
 
     return {
       success: true,
@@ -3073,7 +3087,7 @@ async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
     };
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("[DB] Error declining temp donor records:", error);
+    console.error("❌ Error declining temp donor records:", error);
     throw error;
   } finally {
     client.release();
@@ -3226,6 +3240,15 @@ async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
       throw error;
     }
   },
+
+  async getUnsyncedDonorCount(sourceOrganization) {
+    const result = await db.get(
+      `SELECT COUNT(*) as count FROM donor_records_org 
+      WHERE source_organization = ? AND (synced = 0 OR synced IS NULL)`,
+      [sourceOrganization]
+    );
+    return result.count || 0;
+  }
 };
 
 module.exports = dbOrgService;

@@ -12,8 +12,8 @@ import {
   Clock,
   Phone,
   X,
+  RefreshCw,
 } from "lucide-react";
-import DeleteConfirmationModal from "../../../../components/DeleteConfirmationModal";
 import Loader from "../../../../components/Loader";
 
 const MailOrg = () => {
@@ -47,56 +47,101 @@ const MailOrg = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const loadMails = async () => {
+  // In MailOrg component, replace the loadMails function with this:
+
+const loadMails = async () => {
   try {
     setIsLoading(true);
 
     if (typeof window !== "undefined" && window.electronAPI) {
-      console.log("[MAIL_ORG] Loading mails...");
-      
-      // Load partnership requests from DOH database
-      const requests = await window.electronAPI.getAllPartnershipRequests();
-      console.log("[MAIL_ORG] Partnership requests:", requests);
+      console.log("[MAIL_ORG] Loading mail messages...");
 
-      // Transform partnership requests into mail format
-      const transformedMails = requests.map((r) => {
-        const avatar = r.contact_name
-          ? r.contact_name
-              .split(" ")
-              .map((name) => name[0])
-              .join("")
-              .substring(0, 2)
-              .toUpperCase()
-          : "RBC";
+      // Load regular mails - THIS IS THE KEY DIFFERENCE
+      const mailData = await window.electronAPI.getAllMails();
+      console.log("[MAIL_ORG] Regular mails:", mailData);
 
-        const orgType = r.organization_type || 
-          (r.contact_name && r.contact_name.toLowerCase().includes("barangay")
-            ? "barangay"
-            : "organization");
+      // Load sync notifications
+      let syncNotifications = [];
+      try {
+        if (typeof window.electronAPI.getAllSyncNotifications === "function") {
+          syncNotifications = await window.electronAPI.getAllSyncNotifications();
+          console.log("[MAIL_ORG] Sync notifications:", syncNotifications);
+        }
+      } catch (syncError) {
+        console.error("[MAIL_ORG] Error loading sync notifications:", syncError);
+      }
 
-        const displayName = r.organization_barangay && r.organization_barangay !== "N/A"
-          ? `${r.contact_name} (${r.organization_barangay})`
-          : r.contact_name || "Regional Blood Center";
+      // Transform regular mails (from notifications/mails table)
+      const mailsFromNotifications = mailData.map((n) => {
+        const avatar = "RBC";
+        const status = n.status || "pending";
 
-        // Build email body based on status
+        return {
+          id: n.id,
+          notificationId: n.mail_id || n.id,
+          from: "Regional Blood Center",
+          fromEmail: "admin@regionalbloodcenter.org",
+          avatar: avatar,
+          avatarColor: "#165C3C",
+          subject: n.subject || `Partnership Request Update`,
+          preview: n.preview || n.message || `Partnership request ${status}`,
+          body: n.message || n.body || "",
+          timestamp: new Date(n.created_at || Date.now()),
+          read: n.read || n.is_read || false,
+          starred: false,
+          category: "inbox",
+          attachments: [],
+          status: status,
+          declineReason: n.decline_reason || null,
+          type: "mail",
+        };
+      });
+
+      // Transform sync notifications into mail format
+      const syncMails = syncNotifications.map((sync) => {
+        const displayStatus = sync.status === "rejected" ? "declined" : sync.status;
+
+        const subject = displayStatus === "approved"
+          ? `Sync Request Approved - ${sync.donor_count} Record(s)`
+          : displayStatus === "declined"
+          ? `Sync Request Declined - ${sync.donor_count} Record(s)`
+          : `Sync Request Pending - ${sync.donor_count} Record(s)`;
+
+        const preview = displayStatus === "approved"
+          ? `Your sync request for ${sync.donor_count} donor record(s) has been approved.`
+          : displayStatus === "declined"
+          ? `Your sync request for ${sync.donor_count} donor record(s) was declined.`
+          : `Your sync request for ${sync.donor_count} donor record(s) is pending review.`;
+
+        // Build body
         const statusMessage = {
-          approved: "We are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center.",
-          declined: "We regret to inform you that your partnership request has been DECLINED by the Regional Blood Center.",
-          pending: "Your partnership request is currently UNDER REVIEW by the Regional Blood Center. We will notify you once a decision has been made.",
+          approved: `We are pleased to inform you that your donor records sync request has been APPROVED and successfully synced to the main database.`,
+          declined: `We regret to inform you that your donor records sync request has been DECLINED by the Regional Blood Center.`,
+          pending: `Your donor records sync request is currently UNDER REVIEW by the Regional Blood Center. We will notify you once a decision has been made.`,
         };
 
         const bodyLines = [
           "Dear Partner,",
           "",
-          statusMessage[r.status] || "This is an update regarding your partnership request.",
+          statusMessage[displayStatus] || "This is an update regarding your sync request.",
+          "",
+          `Sync Request Details:`,
+          `- Number of Records: ${sync.donor_count}`,
+          `- Requested By: ${sync.requested_by}`,
+          `- Request Date: ${new Date(sync.created_at).toLocaleDateString()}`,
           "",
         ];
 
-        if (r.status === "approved") {
+        if (displayStatus === 'approved') {
           bodyLines.push("Next Steps:");
-          bodyLines.push("- Our team will contact you shortly to coordinate the blood drive details.");
-          bodyLines.push("- Please prepare the necessary documentation and venue arrangements.");
-          bodyLines.push("- Check your calendar for the scheduled appointment.");
+          bodyLines.push("- The donor records have been successfully integrated into the main database.");
+          bodyLines.push("- You can now view these records in the centralized system.");
+          bodyLines.push("");
+        }
+
+        if (displayStatus === 'declined' && sync.rejection_reason) {
+          bodyLines.push("Rejection Reason:");
+          bodyLines.push(sync.rejection_reason);
           bodyLines.push("");
         }
 
@@ -105,118 +150,47 @@ const MailOrg = () => {
         bodyLines.push("Best regards,");
         bodyLines.push("Regional Blood Center Team");
 
-        const body = bodyLines.join("\n");
-
         return {
-          id: r.id,
-          mailId: r.id,
-          from: displayName,
-          fromEmail: r.contact_email || "admin@regionalbloodcenter.org",
-          avatar: avatar,
-          avatarColor: "#165C3C",
-          profilePhoto: r.profile_photo || null,
-          subject: getSubjectByStatus(r.status, r.appointment_title || "Blood Drive Partnership Request"),
-          preview: `${displayName} - Partnership request ${r.status}. Event: ${new Date(r.event_date).toLocaleDateString()}`,
-          body: body,
-          timestamp: new Date(r.created_at),
-          read: r.status !== "pending",
+          id: `sync-${sync.id}`,
+          notificationId: `SYNC-${sync.id}`,
+          from: "Regional Blood Center - Sync Team",
+          fromEmail: "sync@regionalbloodcenter.org",
+          avatar: "RBC",
+          avatarColor: "#2563eb",
+          subject: subject,
+          preview: preview,
+          body: bodyLines.join("\n"),
+          timestamp: new Date(sync.updated_at || sync.created_at || Date.now()),
+          read: sync.is_read || sync.read || false,
           starred: false,
           category: "inbox",
           attachments: [],
-          appointmentId: r.appointment_id,
-          status: r.status,
-          declineReason: r.decline_reason || null,
+          status: displayStatus,
+          declineReason: sync.rejection_reason || null,
+          type: "sync",
           requestInfo: {
-            title: r.appointment_title || "Blood Drive Partnership Request",
-            requestor: r.contact_name,
-            organization: r.organization_barangay || r.organization_name,
-            dateSubmitted: r.created_at,
-            contactInfo: {
-              name: r.contact_name,
-              email: r.contact_email,
-              phone: r.contact_phone,
-              address: r.event_address,
-              type: orgType,
-            },
+            title: `Donor Records Sync Request`,
+            requestor: sync.requested_by,
+            organization: sync.source_organization,
+            dateSubmitted: sync.created_at,
+            donorCount: sync.donor_count,
+            approvedBy: sync.approved_by,
+            rejectionReason: sync.rejection_reason,
           },
         };
       });
 
-      // Play notification sound for new mails
-      try {
-        const prevIds = new Set(mails.map((m) => m.id || m.mailId));
-        const newArrivals = transformedMails.some(
-          (m) => !prevIds.has(m.id || m.mailId)
-        );
-        if (newArrivals) {
-          const audio = new Audio("/assets/message.mp3");
-          audio.volume = 0.5;
-          audio.play().catch(e => console.log("Audio play failed:", e));
-        }
-      } catch (_) {}
+      // Combine and sort all mails
+      const allMails = [...mailsFromNotifications, ...syncMails]
+        .sort((a, b) => {
+          if (a.read !== b.read) {
+            return a.read ? 1 : -1;
+          }
+          return new Date(b.timestamp) - new Date(a.timestamp);
+        });
 
-      setMails(transformedMails);
-    } else {
-      // Fallback sample data
-      setMails([
-        {
-          id: 1,
-          from: "Regional Blood Center",
-          fromEmail: "admin@regionalbloodcenter.org",
-          avatar: "RBC",
-          avatarColor: "#165C3C",
-          subject:
-            "Partnership Request Approved - Blood Drive at Community Center",
-          preview:
-            "Your partnership request has been approved by the Regional Blood Center...",
-          body: "Dear Partner,\n\nWe are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center.\n\nNext Steps:\n- Our team will contact you shortly to coordinate the blood drive details.\n- Please prepare the necessary documentation and venue arrangements.\n- Check your calendar for the scheduled appointment.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team",
-          timestamp: new Date(Date.now() - 2 * 60 * 60000),
-          read: false,
-          starred: false,
-          category: "inbox",
-          attachments: [],
-          status: "approved",
-          appointmentId: "APT001",
-        },
-        {
-          id: 2,
-          from: "Regional Blood Center",
-          fromEmail: "admin@regionalbloodcenter.org",
-          avatar: "RBC",
-          avatarColor: "#165C3C",
-          subject: "Partnership Request Declined - Blood Drive at School",
-          preview:
-            "Your partnership request has been declined by the Regional Blood Center...",
-          body: "Dear Partner,\n\nWe regret to inform you that your partnership request has been DECLINED by the Regional Blood Center.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team",
-          timestamp: new Date(Date.now() - 1 * 24 * 60 * 60000),
-          read: true,
-          starred: false,
-          category: "inbox",
-          attachments: [],
-          status: "declined",
-          declineReason:
-            "The proposed venue does not meet our safety and accessibility standards. Additionally, the requested date conflicts with another scheduled event in the area.",
-          appointmentId: "APT002",
-        },
-        {
-          id: 3,
-          from: "Regional Blood Center",
-          fromEmail: "admin@regionalbloodcenter.org",
-          avatar: "RBC",
-          avatarColor: "#165C3C",
-          subject: "Partnership Request Under Review - Company Blood Drive",
-          preview:
-            "Your partnership request is under review by the Regional Blood Center...",
-          body: "Dear Partner,\n\nYour partnership request is currently UNDER REVIEW by the Regional Blood Center. We will notify you once a decision has been made.\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team",
-          timestamp: new Date(Date.now() - 30 * 60000),
-          read: false,
-          starred: true,
-          category: "inbox",
-          attachments: [],
-          status: "pending",
-          appointmentId: "APT003",
-        },
-      ]);
+      console.log("[MAIL_ORG] Combined mails:", allMails);
+      setMails(allMails);
     }
   } catch (error) {
     console.error("Error loading mails:", error);
@@ -225,18 +199,32 @@ const MailOrg = () => {
   }
 };
 
-  const getSubjectByStatus = (status, title) => {
+const getSubjectByStatus = (status, title, type = 'partnership') => {
+  if (type === 'sync') {
     switch (status) {
       case "approved":
-        return `Partnership Request Approved - ${title}`;
+        return `Sync Request Approved - ${title}`;
       case "declined":
-        return `Partnership Request Declined - ${title}`;
+        return `Sync Request Declined - ${title}`;
       case "pending":
-        return `Partnership Request Under Review - ${title}`;
+        return `Sync Request Under Review - ${title}`;
       default:
-        return `Partnership Request Update - ${title}`;
+        return `Sync Request Update - ${title}`;
     }
-  };
+  }
+  
+  // Original partnership logic
+  switch (status) {
+    case "approved":
+      return `Partnership Request Approved - ${title}`;
+    case "declined":
+      return `Partnership Request Declined - ${title}`;
+    case "pending":
+      return `Partnership Request Under Review - ${title}`;
+    default:
+      return `Partnership Request Update - ${title}`;
+  }
+};
 
   const getPreviewByStatus = (status, message) => {
     const preview = message.substring(0, 100);
@@ -528,6 +516,22 @@ const MailOrg = () => {
             min-height: 100vh;
             font-family: "Barlow", sans-serif;
           }
+          
+          .sync-badge-inline {
+            background-color: #2563eb;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.55rem;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            font-family: 'Barlow';
+            letter-spacing: 0.5px;
+            margin-left: 4px;
+            vertical-align: middle;
+          }
 
           .loading-state {
             display: flex;
@@ -557,6 +561,124 @@ const MailOrg = () => {
             color: #6b7280;
             font-size: 14px;
             font-family: "Barlow", sans-serif;
+          }
+
+          .delete-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 99999;
+            animation: fadeIn 0.2s ease-out;
+          }
+
+          @keyframes fadeIn {
+            from {
+              opacity: 0;
+            }
+            to {
+              opacity: 1;
+            }
+          }
+
+          .delete-modal-content {
+            background: white;
+            border-radius: 16px;
+            padding: 32px;
+            max-width: 420px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s ease-out;
+            position: relative;
+            z-index: 100000;
+          }
+
+          @keyframes slideUp {
+            from {
+              opacity: 0;
+              transform: translateY(20px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+
+          .delete-modal-icon {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+          }
+
+          .delete-icon-circle {
+            width: 60px;
+            height: 60px;
+            background-color: #fee2e2;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .delete-modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #111827;
+            margin: 0 0 12px 0;
+            font-family: "Barlow", sans-serif;
+          }
+
+          .delete-modal-description {
+            font-size: 14px;
+            color: #6b7280;
+            margin: 0 0 28px 0;
+            font-family: "Barlow", sans-serif;
+            line-height: 1.6;
+          }
+
+          .delete-modal-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+          }
+
+          .delete-modal-cancel,
+          .delete-modal-confirm {
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: "Barlow", sans-serif;
+            transition: all 0.2s;
+            border: none;
+            min-width: 100px;
+          }
+
+          .delete-modal-cancel {
+            background-color: #f3f4f6;
+            color: #374151;
+          }
+
+          .delete-modal-cancel:hover {
+            background-color: #e5e7eb;
+          }
+
+          .delete-modal-confirm {
+            background-color: #dc2626;
+            color: white;
+          }
+
+          .delete-modal-confirm:hover {
+            background-color: #b91c1c;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(220, 38, 38, 0.3);
           }
         `}</style>
       </div>
@@ -763,6 +885,8 @@ const MailOrg = () => {
         </div>
       </div>
 
+      
+
       {/* Mail List and Detail View */}
       <div className="mail-layout">
         {/* Mail List */}
@@ -780,59 +904,67 @@ const MailOrg = () => {
           ) : (
             <div className="mail-list">
               {filteredMails.map((mail) => (
+              <div
+                key={mail.id}
+                className={`mail-item ${!mail.read ? "unread" : ""} ${selectedMail && selectedMail.id === mail.id ? "selected" : ""}`}
+                onClick={() => handleMailClick(mail)}
+              >
                 <div
-                  key={mail.id}
-                  className={`mail-item ${!mail.read ? "unread" : ""} ${selectedMail && selectedMail.id === mail.id ? "selected" : ""}`}
-                  onClick={() => handleMailClick(mail)}
+                  className="mail-avatar"
+                  style={{ backgroundColor: mail.avatarColor }}
                 >
-                  <div
-                    className="mail-avatar"
-                    style={{ backgroundColor: mail.avatarColor }}
-                  >
-                    {mail.avatar}
-                  </div>
-
-                  <div className="mail-item-content">
-                    <div className="mail-item-header">
-                      <span className="mail-from">{mail.from}</span>
-                      <div className="mail-meta">
-                        {getStatusIcon(mail.status)}
-                        <span className="mail-time">
-                          {getTimeAgo(mail.timestamp)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="mail-subject">{mail.subject}</div>
-                    <div className="mail-preview">{mail.preview}</div>
-                  </div>
-
-                  <div className="mail-actions">
-                    <button
-                      className={`star-button ${mail.starred ? "starred" : ""}`}
-                      onClick={(e) => handleToggleStar(mail.id, e)}
-                      title={mail.starred ? "Unstar" : "Star"}
-                    >
-                      <Star
-                        size={16}
-                        fill={mail.starred ? "#f59e0b" : "none"}
-                      />
-                    </button>
-                    <button
-                      className="delete-button"
-                      onClick={(e) => handleDeleteClick(mail.id, e)}
-                      title="Delete"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-
-                  {!mail.read && <div className="unread-dot"></div>}
+                  {mail.avatar}
                 </div>
-              ))}
+
+                <div className="mail-item-content">
+                  <div className="mail-item-header">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                      <span className="mail-from">{mail.from}</span>
+                      {mail.type === 'sync' && (
+                        <span className="sync-badge-inline" title="Sync Request">
+                          <RefreshCw size={10} /> SYNC
+                        </span>
+                      )}
+                    </div>
+                    <div className="mail-meta">
+                      {getStatusIcon(mail.status)}
+                      <span className="mail-time">
+                        {getTimeAgo(mail.timestamp)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mail-subject">{mail.subject}</div>
+                  <div className="mail-preview">{mail.preview}</div>
+                </div>
+
+                <div className="mail-actions">
+                  <button
+                    className={`star-button ${mail.starred ? "starred" : ""}`}
+                    onClick={(e) => handleToggleStar(mail.id, e)}
+                    title={mail.starred ? "Unstar" : "Star"}
+                  >
+                    <Star
+                      size={16}
+                      fill={mail.starred ? "#f59e0b" : "none"}
+                    />
+                  </button>
+                  <button
+                    className="delete-button"
+                    onClick={(e) => handleDeleteClick(mail.id, e)}
+                    title="Delete"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+
+                {!mail.read && <div className="unread-dot"></div>}
+              </div>
+            ))}
             </div>
           )}
         </div>
 
+          
         {/* Mail Detail View */}
         {selectedMail && (
           <div className="mail-detail">
@@ -898,7 +1030,6 @@ const MailOrg = () => {
               ))}
             </div>
 
-            {/* --- ADD THIS NEW BLOCK (for Org inbox) --- */}
             {selectedMail.requestInfo &&
               (selectedMail.requestInfo.title ||
                 selectedMail.requestInfo.requestor) && (
@@ -913,8 +1044,7 @@ const MailOrg = () => {
                   <div className="request-detail-item">
                     <span className="request-detail-label">Requestor:</span>
                     <span className="request-detail-value">
-                      {selectedMail.requestInfo.requestor} – (
-                      {selectedMail.requestInfo.organization})
+                      {selectedMail.requestInfo.requestor}
                     </span>
                   </div>
                   <div className="request-detail-item">
@@ -934,7 +1064,7 @@ const MailOrg = () => {
                 </div>
               )}
             {/* --- END OF NEW BLOCK --- */}
-
+              
             {/* --- DOH/RBC CONTACT INFORMATION SECTION --- */}
             <div className="request-details-box">
               <h4 className="request-details-title">
@@ -983,7 +1113,6 @@ const MailOrg = () => {
                 </span>
               </div>
             </div>
-            {/* --- END DOH/RBC CONTACT INFORMATION SECTION --- */}
 
             {/* Decline Reason Display */}
             {selectedMail.status === "declined" &&
@@ -1019,55 +1148,45 @@ const MailOrg = () => {
             <p>Select a message to read</p>
           </div>
         )}
+
+        
       </div>
 
-      <DeleteConfirmationModal
-        isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
-        onConfirm={handleConfirmDelete}
-        itemCount={1}
-        itemName="message"
-        customTitle="Delete Message"
-      />
+       {isDeleting && <Loader />}
 
-      {isDeleting && <Loader />}
-
-      {showSuccessModal && (
+      {/* DELETE MODAL */}
+      {isDeleteModalOpen && (
         <div
-          className="success-modal-overlay"
-          onClick={() => setShowSuccessModal(false)}
+          className="delete-modal-overlay"
+          onClick={() => setIsDeleteModalOpen(false)}
         >
           <div
-            className="success-modal-content"
+            className="delete-modal-content"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              className="success-modal-close"
-              onClick={() => setShowSuccessModal(false)}
-            >
-              <X size={20} color="#9ca3af" />
-            </button>
-            <div className="success-modal-icon">
-              <div className="success-checkmark-circle">
-                <svg width="48" height="48" fill="white" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                    clipRule="evenodd"
-                  />
-                </svg>
+            <div className="delete-modal-icon">
+              <div className="delete-icon-circle">
+                <Trash2 size={24} color="#dc2626" />
               </div>
             </div>
-            <h3 className="success-modal-title">{successMessage.title}</h3>
-            <p className="success-modal-description">
-              {successMessage.description}
+            <h3 className="delete-modal-title">Delete Message</h3>
+            <p className="delete-modal-description">
+              Are you sure you want to delete this message? This action cannot be undone.
             </p>
-            <button
-              className="success-modal-button"
-              onClick={() => setShowSuccessModal(false)}
-            >
-              OK
-            </button>
+            <div className="delete-modal-actions">
+              <button
+                className="delete-modal-cancel"
+                onClick={() => setIsDeleteModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="delete-modal-confirm"
+                onClick={handleConfirmDelete}
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1931,6 +2050,113 @@ const MailOrg = () => {
 
         .success-modal-button:active {
           transform: translateY(0);
+        }
+
+        .delete-modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background-color: rgba(0, 0, 0, 0.6);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 99999;
+          animation: fadeIn 0.2s ease-out;
+        }
+
+        .delete-modal-content {
+          background: white;
+          border-radius: 16px;
+          padding: 32px;
+          max-width: 420px;
+          width: 90%;
+          text-align: center;
+          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+          animation: slideUp 0.3s ease-out;
+        }
+
+        @keyframes slideUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .delete-modal-icon {
+          margin-bottom: 20px;
+          display: flex;
+          justify-content: center;
+        }
+
+        .delete-icon-circle {
+          width: 60px;
+          height: 60px;
+          background-color: #fee2e2;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .delete-modal-title {
+          font-size: 20px;
+          font-weight: 700;
+          color: #111827;
+          margin: 0 0 12px 0;
+          font-family: "Barlow", sans-serif;
+        }
+
+        .delete-modal-description {
+          font-size: 14px;
+          color: #6b7280;
+          margin: 0 0 28px 0;
+          font-family: "Barlow", sans-serif;
+          line-height: 1.6;
+        }
+
+        .delete-modal-actions {
+          display: flex;
+          gap: 12px;
+          justify-content: center;
+        }
+
+        .delete-modal-cancel,
+        .delete-modal-confirm {
+          padding: 10px 24px;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: "Barlow", sans-serif;
+          transition: all 0.2s;
+          border: none;
+          min-width: 100px;
+        }
+
+        .delete-modal-cancel {
+          background-color: #f3f4f6;
+          color: #374151;
+        }
+
+        .delete-modal-cancel:hover {
+          background-color: #e5e7eb;
+        }
+
+        .delete-modal-confirm {
+          background-color: #dc2626;
+          color: white;
+        }
+
+        .delete-modal-confirm:hover {
+          background-color: #b91c1c;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 8px rgba(220, 38, 38, 0.3);
         }
       `}</style>
     </div>

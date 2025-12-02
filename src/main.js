@@ -1918,7 +1918,7 @@ ipcMain.handle("approve-temp-donor-records", async (event, tdrIds, approvedBy) =
 
 ipcMain.handle("decline-temp-donor-records", async (event, tdrIds, declinedBy, reason) => {
   try {
-    return await dbOrgService.declineTempDonorRecords(tdrIds, declinedBy, reason);
+    return await dbService.declineTempDonorRecords(tdrIds, declinedBy, reason);
   } catch (error) {
     console.error("Error in decline-temp-donor-records:", error);
     throw error;
