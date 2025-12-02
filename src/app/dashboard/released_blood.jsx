@@ -763,11 +763,15 @@ const ReleasedBlood = () => {
       padding: "16px",
       borderRadius: "8px",
       boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
+      flexWrap: "wrap",
+      gap: "12px",
     },
     leftControls: {
       display: "flex",
       alignItems: "center",
       gap: "16px",
+      flex: "1 1 auto",
+      minWidth: "200px",
     },
     searchContainer: {
       position: "relative",
@@ -788,7 +792,9 @@ const ReleasedBlood = () => {
       paddingBottom: "8px",
       border: "1px solid #d1d5db",
       borderRadius: "6px",
-      width: "256px",
+      width: "100%",
+      minWidth: "200px",
+      maxWidth: "400px",
       fontSize: "14px",
       outline: "none",
       fontFamily: "Barlow",
@@ -797,6 +803,7 @@ const ReleasedBlood = () => {
       display: "flex",
       alignItems: "center",
       gap: "12px",
+      flexWrap: "wrap",
     },
     button: {
       display: "flex",
@@ -813,6 +820,7 @@ const ReleasedBlood = () => {
       transition: "all 0.2s ease",
       position: "relative",
       minWidth: "100px",
+      whiteSpace: "nowrap",
     },
     buttonActive: {
       backgroundColor: "#2C58DC",
@@ -831,6 +839,7 @@ const ReleasedBlood = () => {
       cursor: "pointer",
       fontSize: "14px",
       fontFamily: "Barlow",
+      whiteSpace: "nowrap",
     },
     dropdown: {
       position: "absolute",
@@ -863,10 +872,12 @@ const ReleasedBlood = () => {
       borderRadius: "8px",
       boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
       overflow: "hidden",
+      overflowX: "auto",
     },
     table: {
       width: "100%",
       borderCollapse: "collapse",
+      minWidth: "1200px",
     },
     thead: {
       backgroundColor: "#f9fafb",

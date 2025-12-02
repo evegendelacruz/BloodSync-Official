@@ -375,64 +375,85 @@ const Reports = () => {
     doc.setTextColor(0, 0, 0);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.text(
-      "Name of Blood Service Facility: __________________________________________________________",
-      0.5,
-      1.8 // Changed from 1.5 - added margin-top
-    );
+   doc.text(
+  "Name of Blood Service Facility: ",
+  0.5,
+  1.8
+  );
+
+  const facilityText = "Northern Mindanao Regional Blood Center";
+  const facilityLabelWidth = doc.getTextWidth("Name of Blood Service Facility: ");
+  doc.setFont("helvetica", "normal");
+  doc.text(facilityText, 0.5 + facilityLabelWidth + 0.05, 1.8);
+  const facilityTextWidth = doc.getTextWidth(facilityText);
+  doc.setLineWidth(0.01);
+  doc.line(
+    0.5 + facilityLabelWidth + 0.05,
+    1.81,
+    0.5 + facilityLabelWidth + 0.05 + facilityTextWidth,
+    1.81
+  );
 
     doc.setTextColor(0, 0, 0);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.text(
-      "Center for Health Development for: ________________________________________ Qtr:",
-      0.5,
-      2.1 // Changed from 1.75 - added margin-top
-    );
+doc.setFont("helvetica", "bold");
+doc.setFontSize(9);
+doc.text(
+  "Center for Health Development for: ",
+  0.5,
+  2.1
+);
 
-    // Add underlined quarter number
-    const qtrLabelWidth = doc.getTextWidth(
-      "Center for Health Development for: ________________________________________ Qtr:"
-    );
-    doc.setFont("helvetica", "normal");
-    const qtrText = previewReport.quarterNumber;
-    doc.text(qtrText, 0.5 + qtrLabelWidth + 0.05, 2.11); // Updated Y position
-    const qtrNumWidth = doc.getTextWidth(qtrText);
-    doc.setLineWidth(0.01);
-    doc.line(
-      0.5 + qtrLabelWidth + 0.05,
-      2.12, // Updated Y position for underline
-      0.5 + qtrLabelWidth + 0.05 + qtrNumWidth,
-      2.12 // Updated Y position for underline
-    );
+// Add underlined text for "Northern Mindanao"
+const regionText = "Northern Mindanao";
+const regionLabelWidth = doc.getTextWidth("Center for Health Development for: ");
+doc.setFont("helvetica", "normal");
+doc.text(regionText, 0.5 + regionLabelWidth + 0.05, 2.1);
+const regionTextWidth = doc.getTextWidth(regionText);
+doc.setLineWidth(0.01);
+doc.line(
+  0.5 + regionLabelWidth + 0.05,
+  2.11,
+  0.5 + regionLabelWidth + 0.05 + regionTextWidth,
+  2.11  // Fixed: Changed 0.5 to 2.11 for proper underline
+);
 
-    // Add Year label and underlined year
-    doc.setTextColor(0, 0, 0);
-    doc.setFont("helvetica", "bold");
-    doc.text("Year:", 0.5 + qtrLabelWidth + 0.05 + qtrNumWidth + 0.1, 2.11); // Updated Y position
-    const yearLabelWidth = doc.getTextWidth("Year:");
-    doc.setFont("helvetica", "normal");
-    const yearText = previewReport.year.toString();
-    doc.text(
-      yearText,
-      0.5 + qtrLabelWidth + 0.05 + qtrNumWidth + 0.1 + yearLabelWidth + 0.05,
-      2.1 // Updated Y position
-    );
-    const yearWidth = doc.getTextWidth(yearText);
-    doc.line(
-      0.5 + qtrLabelWidth + 0.05 + qtrNumWidth + 0.1 + yearLabelWidth + 0.05,
-      2.11, // Updated Y position for underline
-      0.5 +
-        qtrLabelWidth +
-        0.05 +
-        qtrNumWidth +
-        0.1 +
-        yearLabelWidth +
-        0.05 +
-        yearWidth,
-      2.12 // Updated Y position for underline
-    );
+// Add "Qtr:" label after the region name
+const qtrLabelX = 0.5 + regionLabelWidth + 0.05 + regionTextWidth + 0.1;
+doc.setFont("helvetica", "bold");
+doc.text("Qtr:", qtrLabelX, 2.1);
 
+// Add underlined quarter number
+const qtrLabelWidth = doc.getTextWidth("Qtr:");
+doc.setFont("helvetica", "normal");
+const qtrText = previewReport.quarterNumber;
+doc.text(qtrText, qtrLabelX + qtrLabelWidth + 0.05, 2.1); // Fixed: Use qtrLabelX as starting point
+const qtrNumWidth = doc.getTextWidth(qtrText);
+doc.line(
+  qtrLabelX + qtrLabelWidth + 0.05,
+  2.11,
+  qtrLabelX + qtrLabelWidth + 0.05 + qtrNumWidth,
+  2.11
+);
+
+
+   const yearLabelX = qtrLabelX + qtrLabelWidth + 0.05 + qtrNumWidth + 0.1;
+doc.setFont("helvetica", "bold");
+doc.text("Year:", yearLabelX, 2.1);
+const yearLabelWidth = doc.getTextWidth("Year:");
+doc.setFont("helvetica", "normal");
+const yearText = previewReport.year.toString();
+doc.text(
+  yearText,
+  yearLabelX + yearLabelWidth + 0.05,
+  2.1
+);
+const yearWidth = doc.getTextWidth(yearText);
+doc.line(
+  yearLabelX + yearLabelWidth + 0.05,
+  2.11,
+  yearLabelX + yearLabelWidth + 0.05 + yearWidth,
+  2.11
+);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.text(
@@ -893,11 +914,14 @@ const Reports = () => {
       padding: "16px",
       borderRadius: "8px",
       boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
+      flexWrap: "wrap",
+      gap: "12px",
     },
     leftControls: {
       display: "flex",
       alignItems: "center",
       gap: "16px",
+
     },
     searchContainer: {
       position: "relative",
@@ -911,9 +935,11 @@ const Reports = () => {
       paddingBottom: "8px",
       border: "1px solid #d1d5db",
       borderRadius: "6px",
-      width: "300px",
+      width: "100%",
       fontSize: "14px",
       outline: "none",
+       minWidth: "200px",
+      maxWidth: "400px",
     },
     searchIcon: {
       position: "absolute",
@@ -944,10 +970,12 @@ const Reports = () => {
       borderRadius: "8px",
       boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
       overflow: "hidden",
+      overflowX: "auto",
     },
     table: {
       width: "100%",
       borderCollapse: "collapse",
+      minWidth: "1200px",
     },
     thead: {
       backgroundColor: "#f9fafb",
@@ -1277,12 +1305,12 @@ const Reports = () => {
         <table style={styles.table}>
           <thead style={styles.thead}>
             <tr>
-              <th style={{ ...styles.th, width: "18%" }}>DOCUMENT ID</th>
-              <th style={{ ...styles.th, width: "16%" }}>QUARTER</th>
+              <th style={{ ...styles.th, width: "10%" }}>DOCUMENT ID</th>
+              <th style={{ ...styles.th, width: "10%" }}>QUARTER</th>
               <th style={{ ...styles.th, width: "10%" }}>YEAR</th>
-              <th style={{ ...styles.th, width: "16%" }}>CREATED BY</th>
-              <th style={{ ...styles.th, width: "16%" }}>CREATED AT</th>
-              <th style={{ ...styles.th, width: "12%" }}>REPORT</th>
+              <th style={{ ...styles.th, width: "10%" }}>CREATED BY</th>
+              <th style={{ ...styles.th, width: "10%" }}>CREATED AT</th>
+              <th style={{ ...styles.th, width: "10%" }}>REPORT</th>
             </tr>
           </thead>
           <tbody style={styles.tbody}>
@@ -1545,14 +1573,18 @@ const Reports = () => {
                     fontWeight: "bold",
                   }}
                 >
-                  Name of Blood Service Facility:
-                  ____________________________________________________________________________
+                  Name of Blood Service Facility:{" "}
+                  <span style={{ textDecoration: "underline", fontWeight: 'normal' }}>
+                    Northern Mindanao Regional Blood Center
+                  </span>
                 </div>
 
                 <div style={{ fontSize: "10px", marginBottom: "30px" }}>
                   <span style={{ fontWeight: "bold" }}>
-                    Center for Health Development for:
-                    __________________________________________________________
+                    Center for Health Development for:{" "}
+                    <span style={{ textDecoration: "underline", fontWeight: 'normal' }}>
+                      Northern Mindanao
+                    </span>{" "}
                     Qtr:{" "}
                   </span>
                   <span style={{ textDecoration: "underline" }}>

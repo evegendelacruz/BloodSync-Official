@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Search, Filter } from "lucide-react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import Loader from "../../../components/loader";
+import Loader from "../../../components/Loader";
 
 
 const ReleasedInvoice = () => {
@@ -645,6 +645,7 @@ const handleMouseLeave = (key) => {
       marginTop: "15px",
       fontSize: "10px",
       fontFamily: "Arial, sans-serif",
+      minWidth: "1200px",
     },
     tableHeader: {
       backgroundColor: "#c9c9c9",
@@ -848,11 +849,18 @@ const handleMouseLeave = (key) => {
       padding: "16px",
       borderRadius: "8px",
       boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
+      flexWrap: "wrap",
+      gap: "12px",
     },
     leftControls: {
       display: "flex",
       alignItems: "center",
       gap: "16px",
+      flex: "1 1 auto",
+      minWidth: "200px",
+      flexWrap: "wrap",
+      rowGap: "12px",
+
     },
     searchContainer: {
       position: "relative",
@@ -866,9 +874,11 @@ const handleMouseLeave = (key) => {
       paddingBottom: "8px",
       border: "1px solid #d1d5db",
       borderRadius: "6px",
-      width: "300px",
+      width: "100%",
       fontSize: "14px",
       outline: "none",
+      minWidth: "200px",
+      maxWidth: "400px",
     },
     searchIcon: {
       position: "absolute",
@@ -880,12 +890,14 @@ const handleMouseLeave = (key) => {
       display: "flex",
       alignItems: "center",
       gap: "12px",
+      flexWrap: "wrap",
     },
     tableContainer: {
       backgroundColor: "white",
       borderRadius: "8px",
       boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
       overflow: "hidden",
+      overflowX: "auto",
     },
     table: {
       width: "100%",
@@ -1010,6 +1022,7 @@ const handleMouseLeave = (key) => {
       borderRadius: "4px",
       cursor: "pointer",
       fontSize: "12px",
+      whiteSpace: "nowrap",
     },
   };
 
@@ -1071,7 +1084,10 @@ const handleMouseLeave = (key) => {
                 fontFamily: "Barlow",
                 color: showSortDropdown ? "white" : "#374151",
                 transition: "all 0.2s ease",
-                minWidth: "100px"
+                minWidth: "100px",
+                whiteSpace: "nowrap",
+                width: "100%", 
+                
               }}
               onClick={() => setShowSortDropdown(!showSortDropdown)}
             >
@@ -1130,7 +1146,9 @@ const handleMouseLeave = (key) => {
                 borderRadius: "6px", 
                 cursor: "pointer", 
                 fontSize: "14px",
-                transition: "all 0.2s ease"
+                transition: "all 0.2s ease",
+                whiteSpace: "nowrap",
+                width: "100%", 
               }}
               onClick={() => setShowFilterDropdown(!showFilterDropdown)}
             >
