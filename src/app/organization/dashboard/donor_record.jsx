@@ -3952,14 +3952,14 @@ const DonorRecordOrg = () => {
                               <div 
                                 className="icon-circle"
                                 style={{
-                                  backgroundColor: isPartnership ? "#dbeafe" : "#fee2e2",
-                                  border: `1px solid ${isPartnership ? "#3b82f6" : "#ef4444"}`,
+                                  backgroundColor: isPartnership ? "#dbeafe" : "#dbeafe",
+                                  border: `1px solid ${isPartnership ? "#3b82f6" : "#3b82f6"}`,
                                 }}
                               >
                                 {isPartnership ? (
                                   <Handshake size={16} color="#3b82f6" strokeWidth={2.5} />
                                 ) : (
-                                  <Droplet size={16} color="#ef4444" strokeWidth={2.5} />
+                                  <Calendar size={16} color="#3b82f6" strokeWidth={2.5} />
                                 )}
                               </div>
                             </div>

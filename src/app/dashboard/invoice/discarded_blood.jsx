@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Search, Filter } from "lucide-react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import Loader from "../../../components/loader";
+import Loader from "../../../components/Loader";
 
 const DiscardedInvoice = () => {
   const [invoiceData, setInvoiceData] = useState([]);
@@ -589,6 +589,10 @@ const DiscardedInvoice = () => {
       display: "flex",
       alignItems: "center",
       gap: "16px",
+      flex: "1 1 auto",
+      minWidth: "200px",
+      flexWrap: "wrap", 
+      rowGap: "12px",
     },
     searchContainer: {
       position: "relative",
@@ -602,9 +606,11 @@ const DiscardedInvoice = () => {
       paddingBottom: "8px",
       border: "1px solid #d1d5db",
       borderRadius: "6px",
-      width: "300px",
+      width: "100%",
       fontSize: "14px",
       outline: "none",
+      minWidth: "200px",
+      maxWidth: "400px",
     },
     searchIcon: {
       position: "absolute",

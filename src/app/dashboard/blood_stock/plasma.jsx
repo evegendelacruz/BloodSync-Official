@@ -1062,11 +1062,16 @@ const Plasma = () => {
       padding: "16px",
       borderRadius: "8px",
       boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
+      flexWrap: "wrap",
+      gap: "12px",
     },
     leftControls: {
       display: "flex",
       alignItems: "center",
       gap: "16px",
+      flex: "1 1 auto",
+      minWidth: "200px",
+
     },
     searchContainer: { position: "relative" },
     searchIcon: {
@@ -1085,15 +1090,18 @@ const Plasma = () => {
       paddingBottom: "8px",
       border: "1px solid #d1d5db",
       borderRadius: "6px",
-      width: "256px",
+      width: "100%", 
       fontSize: "14px",
       outline: "none",
       fontFamily: "Barlow",
+      minWidth: "200px", 
+      maxWidth: "400px",
     },
     rightControls: {
       display: "flex",
       alignItems: "center",
       gap: "12px",
+      flexWrap: "wrap",
     },
     button: {
       display: "flex",
@@ -1110,6 +1118,7 @@ const Plasma = () => {
       transition: "all 0.2s ease",
       position: "relative",
       minWidth: "100px",
+      whiteSpace: "nowrap",
     },
     buttonHover: {
       backgroundColor: "white",
@@ -1133,6 +1142,7 @@ const Plasma = () => {
       fontSize: "14px",
       fontFamily: "Barlow",
       transition: "all 0.2s ease",
+      whiteSpace: "nowrap"
     },
     releaseButtonHover: {
       backgroundColor: "#1e40af",
@@ -1153,6 +1163,7 @@ const Plasma = () => {
       fontSize: "14px",
       fontFamily: "Barlow",
       transition: "all 0.2s ease",
+      whiteSpace: "nowrap",
     },
     addButtonHover: {
       backgroundColor: "#ffb300",
@@ -1194,8 +1205,9 @@ const Plasma = () => {
       borderRadius: "8px",
       boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
       overflow: "hidden",
+      overflowX: "auto",
     },
-    table: { width: "100%", borderCollapse: "collapse" },
+    table: { width: "100%", borderCollapse: "collapse", minWidth: "1200px", },
     thead: { backgroundColor: "#f9fafb", borderBottom: "1px solid #e5e7eb" },
     th: {
       padding: "12px 16px",

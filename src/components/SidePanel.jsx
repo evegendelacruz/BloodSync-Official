@@ -412,7 +412,7 @@ const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate, userPermissions
           transform: translateX(0);
         }
 
-        @media (max-width: 767px) {
+        @media (max-width: 167px) {
           .side-panel-container.open {
             width: 15rem;
             transform: translateX(0);

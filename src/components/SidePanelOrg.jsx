@@ -238,18 +238,25 @@ const SidePanelOrg = ({ isOpen, onToggle, activeScreen, onNavigate }) => {
           transform: translateX(0);
         }
 
-        @media (max-width: 767px) {
-          .side-panel-container.open {
-            width: 15rem;
-            transform: translateX(0);
+        @media (max-width: 167px) {
+          .side-panel-container.closed .side-panel-logo,
+          .side-panel-container.closed .side-panel-nav,
+          .side-panel-container.closed .side-panel-menu-btn {
+            display: none;
           }
-
+          
+          .side-panel-container.closed .side-panel-header {
+            display: flex;
+          }
+          
+          .side-panel-container.closed .side-panel-icon {
+            display: block;
+          }
+          
           .side-panel-container.closed {
-            width: 0;
-            transform: translateX(-100%);
+            overflow: hidden;
           }
         }
-
         .side-panel-toggle-btn {
           position: absolute;
           top: 1.4rem;
