@@ -1770,6 +1770,7 @@ const Dashboard = () => {
       backgroundColor: "#059669",
       padding: "0.75rem 1rem",
       color: "white",
+      fontFamily: 'Barlow',
     },
     dropdownTitle: {
       fontSize: "14px",
@@ -2135,17 +2136,19 @@ const loadNotificationCount = async () => {
   }
 };
 
-// Load stock alerts for dropdown
 const loadStockAlerts = async () => {
   try {
     if (window.electronAPI) {
       const alerts = await window.electronAPI.getStockAlerts();
       console.log('🔔 Stock alerts loaded:', alerts.length);
       
+      // Filter out already read alerts
+      const unreadAlerts = alerts.filter(alert => !alert.is_read);
+      
       // Check for new alerts and play sound for each new one
-      if (!isInitialLoad && alerts.length > 0) {
-        const currentAlertIds = new Set(alerts.map(a => a.notification_id));
-        const newAlerts = alerts.filter(a => !lastCheckedAlerts.has(a.notification_id));
+      if (!isInitialLoad && unreadAlerts.length > 0) {
+        const currentAlertIds = new Set(unreadAlerts.map(a => a.notification_id));
+        const newAlerts = unreadAlerts.filter(a => !lastCheckedAlerts.has(a.notification_id));
         
         // Play sound for each new alert
         if (newAlerts.length > 0 && !isNotificationDropdownOpen) {
@@ -2154,17 +2157,17 @@ const loadStockAlerts = async () => {
         }
         
         setLastCheckedAlerts(currentAlertIds);
-      } else if (isInitialLoad && alerts.length > 0) {
-        setLastCheckedAlerts(new Set(alerts.map(a => a.notification_id)));
+      } else if (isInitialLoad && unreadAlerts.length > 0) {
+        setLastCheckedAlerts(new Set(unreadAlerts.map(a => a.notification_id)));
       }
       
-      setStockAlerts(alerts.slice(0, 5));
+      // Only show unread alerts, limit to 5
+      setStockAlerts(unreadAlerts.slice(0, 5));
     }
   } catch (error) {
     console.error('Error loading stock alerts:', error);
   }
 };
-// Handle notification dropdown click
 const handleNotificationDropdownClick = async () => {
   const wasOpen = isNotificationDropdownOpen;
   
@@ -2177,11 +2180,28 @@ const handleNotificationDropdownClick = async () => {
   setIsNotificationDropdownOpen(!wasOpen);
   
   if (!wasOpen) {
-    // Opening dropdown - mark current time as last check and hide badge
     console.log('🔔 Opening notification dropdown - marking as viewed');
     setHasNewNotifications(false);
     setNotificationsViewed(true);
     setLastNotificationCheck(Date.now());
+    
+    // Mark all visible notifications as read
+    if (window.electronAPI && stockAlerts.length > 0) {
+      try {
+        // Check if the function exists before calling it
+        if (typeof window.electronAPI.markNotificationAsRead === 'function') {
+          for (const alert of stockAlerts) {
+            if (!alert.is_read) {
+              await window.electronAPI.markNotificationAsRead(alert.notification_id);
+            }
+          }
+        } else {
+          console.warn('markNotificationAsRead function not available, skipping marking as read');
+        }
+      } catch (err) {
+        console.warn('Could not mark notifications as read:', err.message);
+      }
+    }
     
     // Reload counts and alerts
     await loadNotificationCount();
@@ -2800,14 +2820,14 @@ const handleNavigate = (screen) => {
                                     ...styles.requestTitle,
                                     fontWeight: actuallyUnread ? '600' : '400',
                                     color: actuallyUnread ? '#111827' : '#6b7280',
-                                    fontFamily: 'Arial, sans-serif'
+                                    fontFamily: 'Barlow'
                                   }}>
                                     {event.title}
                                   </p>
                                   <p style={{
                                     ...styles.requestSubtitle,
                                     color: actuallyUnread ? '#6b7280' : '#9ca3af',
-                                    fontFamily: 'Arial, sans-serif'
+                                    fontFamily: 'Barlow'
                                   }}>
                                     {new Date(event.date).toLocaleDateString('en-US', {
                                       weekday: 'short',
@@ -2822,7 +2842,7 @@ const handleNavigate = (screen) => {
                                       fontSize: '11px',
                                       marginTop: '2px',
                                       color: actuallyUnread ? '#9ca3af' : '#bababaff',
-                                      fontFamily: 'Arial, sans-serif'
+                                      fontFamily: 'Barlow'
                                     }}>
                                       Location: {event.location}
                                     </p>
@@ -2833,7 +2853,7 @@ const handleNavigate = (screen) => {
                                       fontSize: '11px',
                                       marginTop: '2px',
                                       color: actuallyUnread ? '#9ca3af' : '#bababaff',
-                                      fontFamily: 'Arial, sans-serif'
+                                      fontFamily: 'Barlow'
                                     }}>
                                       Organizer: {event.organization}
                                     </p>
@@ -2993,7 +3013,7 @@ const handleNavigate = (screen) => {
                                   ...styles.messageAvatar,
                                   ...styles.blueAvatar,
                                   display: request.profile_photo ? 'none' : 'flex',
-                                  fontFamily: 'Arial, sans-serif', 
+                                  fontFamily: 'Barlow', 
                                   fontWeight: 'bold',
                                   fontSize: '12px', 
                                 }}
@@ -3008,7 +3028,7 @@ const handleNavigate = (screen) => {
                                 ...styles.requestTitle,
                                 fontWeight: isUnread ? '600' : '400',
                                 color: isUnread ? '#111827' : '#6b7280',
-                                fontFamily: 'Arial, sans-serif'
+                                fontFamily: 'Barlow'
                               }}>
                                 {displayName}
                                 {organizationType === 'barangay' && (
@@ -3020,7 +3040,7 @@ const handleNavigate = (screen) => {
                               <p style={{
                                 ...styles.requestSubtitle,
                                 color: isUnread ? '#6b7280' : '#9ca3af',
-                                fontFamily: 'Arial, sans-serif'
+                                fontFamily: 'Barlow'
                               }}>
                                 Blood Drive - {new Date(request.event_date).toLocaleDateString('en-US', {
                                   month: 'short',
@@ -3034,7 +3054,7 @@ const handleNavigate = (screen) => {
                                   fontSize: '11px',
                                   marginTop: '2px',
                                   color: isUnread ? '#9ca3af' : '#d1d5db',
-                                  fontFamily: 'Arial, sans-serif'
+                                  fontFamily: 'Barlow'
                                 }}>
                                   Organization: {request.event_address}
                                 </p>
@@ -3058,7 +3078,7 @@ const handleNavigate = (screen) => {
                     ) : (
                       <div style={styles.dropdownItem}>
                         <div style={styles.requestDetails}>
-                          <p style={{...styles.requestSubtitle, fontFamily: 'Arial, sans-serif'}}>
+                          <p style={{...styles.requestSubtitle, fontFamily: 'Barlow'}}>
                             No partnership requests
                           </p>
                         </div>
@@ -3096,113 +3116,152 @@ const handleNavigate = (screen) => {
                   )}
                 </button>
                 {isNotificationDropdownOpen && (
-                <div
-                  style={{
-                    ...styles.dropdownMenu,
-                    ...styles.notificationsDropdown,
-                  }}
-                >
-                  <div style={styles.dropdownHeader}>
-                    <div style={styles.notificationHeaderContent}>
-                      <h3 style={styles.dropdownTitle}>NOTIFICATIONS</h3>
-                      <div style={styles.notificationHeaderActions}>
-                        <button
-                          style={styles.refreshButton}
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            await window.electronAPI.checkAndCreateStockAlerts();
-                            await loadNotificationCount();
-                            await loadStockAlerts();
-                          }}
-                          title="Refresh notifications"
-                        >
-                          <RefreshCw size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  <div style={styles.dropdownContent}>
-                    {stockAlerts.length > 0 ? (
-                      stockAlerts.map((alert, index) => {
-                        const iconColor = 
-                          alert.priority === 'critical' ? '#ef4444' :
-                          alert.priority === 'urgent' ? '#eab308' :
-                          '#f97316';
-                        
-                        return (
-                          <div 
-                            key={alert.notification_id || index}
-                            style={{
-                              ...styles.dropdownItem,
-                              backgroundColor: 'white',
-                              cursor: 'pointer',
-                              position: 'relative'
+                  <div
+                    style={{
+                      ...styles.dropdownMenu,
+                      ...styles.notificationsDropdown,
+                    }}
+                  >
+                    <div style={styles.dropdownHeader}>
+                      <div style={styles.notificationHeaderContent}>
+                        <h3 style={styles.dropdownTitle}>NOTIFICATIONS</h3>
+                        <div style={styles.notificationHeaderActions}>
+                          <button
+                            style={styles.refreshButton}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              await window.electronAPI.checkAndCreateStockAlerts();
+                              await loadNotificationCount();
+                              await loadStockAlerts();
                             }}
-                            onClick={() => {
-                              handleNavigate('notification');
-                              setIsNotificationDropdownOpen(false);
-                            }}
+                            title="Refresh notifications"
                           >
-                            <div>
-                              <div style={{ 
-                                ...styles.iconCircle, 
-                                backgroundColor: 'transparent',
-                                border: `2px solid ${iconColor}`
-                              }}>
-                                <svg 
-                                  width="16" 
-                                  height="16" 
-                                  viewBox="0 0 24 24" 
-                                  fill="none" 
-                                  stroke={iconColor}
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                                  <line x1="12" y1="9" x2="12" y2="13"/>
-                                  <line x1="12" y1="17" x2="12.01" y2="17"/>
-                                </svg>
-                              </div>
-                            </div>
-                            <div style={styles.requestDetails}>
-                              <p style={{
-                                ...styles.requestTitle,
-                                fontFamily: 'Arial, sans-serif'
-                              }}>
-                                {alert.title}
-                              </p>
-                              <p style={{
-                                ...styles.requestSubtitle,
-                                fontFamily: 'Arial, sans-serif'
-                              }}>
-                                {alert.message.substring(0, 50)}...
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <div style={styles.dropdownItem}>
-                        <div style={styles.requestDetails}>
-                          <p style={styles.requestSubtitle}>No stock alerts</p>
+                            <RefreshCw size={14} />
+                          </button>
                         </div>
                       </div>
-                    )}
+                    </div>
+                    <div style={styles.dropdownContent}>
+                      {stockAlerts.length > 0 ? (
+                        stockAlerts.map((alert, index) => {
+                          const iconColor = 
+                            alert.priority === 'critical' ? '#ef4444' :
+                            alert.priority === 'urgent' ? '#eab308' :
+                            '#f97316';
+                          
+                          const isUnread = !alert.is_read;
+                          
+                          return (
+                            <div 
+                              key={alert.notification_id || index}
+                              style={{
+                                ...styles.dropdownItem,
+                                backgroundColor: isUnread ? '#f0f9ff' : 'white',
+                                cursor: 'pointer',
+                                position: 'relative'
+                              }}
+                                 onClick={async () => {
+                                // Mark as read when clicked
+                                if (isUnread && window.electronAPI) {
+                                  try {
+                                    // Check if the function exists before calling it
+                                    if (typeof window.electronAPI.markNotificationAsRead === 'function') {
+                                      await window.electronAPI.markNotificationAsRead(alert.notification_id);
+                                      await loadNotificationCount();
+                                      await loadStockAlerts();
+                                    } else {
+                                      console.warn('markNotificationAsRead function not available');
+                                      // Fallback: Just reload the data
+                                      await loadNotificationCount();
+                                      await loadStockAlerts();
+                                    }
+                                  } catch (err) {
+                                    console.warn('Could not mark notification as read:', err);
+                                    // Still try to reload data
+                                    await loadNotificationCount();
+                                    await loadStockAlerts();
+                                  }
+                                }
+                                handleNavigate('notification');
+                                setIsNotificationDropdownOpen(false);
+                              }}
+                            >
+                              <div>
+                                <div style={{ 
+                                  ...styles.iconCircle, 
+                                  backgroundColor: 'transparent',
+                                  border: `2px solid ${iconColor}`
+                                }}>
+                                  <svg 
+                                    width="16" 
+                                    height="16" 
+                                    viewBox="0 0 24 24" 
+                                    fill="none" 
+                                    stroke={iconColor}
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                    <line x1="12" y1="9" x2="12" y2="13"/>
+                                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                  </svg>
+                                </div>
+                              </div>
+                              <div style={{...styles.requestDetails, flex: 1}}>
+                                <p style={{
+                                  ...styles.requestTitle,
+                                  fontFamily: 'Barlow',
+                                  fontWeight: isUnread ? '600' : '400',
+                                  color: isUnread ? '#111827' : '#6b7280'
+                                }}>
+                                  {alert.title}
+                                </p>
+                                <p style={{
+                                  ...styles.requestSubtitle,
+                                  fontFamily: 'Barlow',
+                                  color: isUnread ? '#6b7280' : '#9ca3af'
+                                }}>
+                                  {alert.message.substring(0, 50)}...
+                                </p>
+                              </div>
+                              {/* Unread indicator (red dot) */}
+                              {isUnread && (
+                                <div style={{
+                                  width: '8px',
+                                  height: '8px',
+                                  backgroundColor: '#ef4444',
+                                  borderRadius: '50%',
+                                  marginLeft: '8px',
+                                  flexShrink: 0
+                                }} />
+                              )}
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div style={styles.dropdownItem}>
+                          <div style={styles.requestDetails}>
+                            <p style={{...styles.requestSubtitle, fontFamily: 'Barlow'}}>
+                              No new notifications
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div style={styles.dropdownFooter}>
+                      <button
+                        style={styles.footerButton}
+                        onClick={() => {
+                          handleNavigate("notification");
+                          setIsNotificationDropdownOpen(false);
+                        }}
+                      >
+                        See All Notifications ({notificationCount})
+                      </button>
+                    </div>
                   </div>
-                  <div style={styles.dropdownFooter}>
-                    <button
-                      style={styles.footerButton}
-                      onClick={() => {
-                        handleNavigate("notification");
-                        setIsNotificationDropdownOpen(false);
-                      }}
-                    >
-                      See All Notifications ({notificationCount})
-                    </button>
-                  </div>
-                </div>
-              )}
+                )}
               </div>
 
               {/* User Profile Section - FIXED */}

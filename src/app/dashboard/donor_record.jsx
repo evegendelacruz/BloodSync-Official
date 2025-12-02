@@ -845,14 +845,18 @@ const handleApproveSync = async () => {
           padding: "16px",
           borderRadius: "8px",
           boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
+          flexWrap: "wrap",
+          gap: "12px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "16px", flex: "1 1 auto", minWidth: "200px", }}>
           <div
             style={{
               position: "relative",
               display: "flex",
               alignItems: "center",
+              flex: "1 1 auto",
+              minWidth: "200px",
             }}
           >
             <Search
@@ -874,9 +878,11 @@ const handleApproveSync = async () => {
                 paddingBottom: "8px",
                 border: "1px solid #d1d5db",
                 borderRadius: "6px",
-                width: "300px",
+                width: "100%", 
                 fontSize: "14px",
                 outline: "none",
+                minWidth: "200px",
+                maxWidth: "400px",
               }}
               value={searchTerm}
               onChange={handleSearch}
@@ -884,7 +890,7 @@ const handleApproveSync = async () => {
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", }}>
           <div style={{ position: "relative" }} ref={sortDropdownRef}>
             <button
               style={{
@@ -901,6 +907,7 @@ const handleApproveSync = async () => {
                 color: showSortDropdown ? "white" : "#374151",
                 transition: "all 0.2s ease",
                 minWidth: "100px",
+                whiteSpace: "nowrap",
               }}
               onClick={() => setShowSortDropdown(!showSortDropdown)}
             >
@@ -939,6 +946,7 @@ const handleApproveSync = async () => {
                   zIndex: 1000,
                   minWidth: "200px",
                   marginTop: "4px",
+                  whiteSpace: "nowrap",
                 }}
               >
                 {[
@@ -1003,6 +1011,7 @@ const handleApproveSync = async () => {
                 cursor: "pointer",
                 fontSize: "14px",
                 transition: "all 0.2s ease",
+                whiteSpace: "nowrap",
               }}
               onClick={() => setShowFilterDropdown(!showFilterDropdown)}
             >
@@ -1042,6 +1051,7 @@ const handleApproveSync = async () => {
                   zIndex: 1000,
                   minWidth: "300px",
                   marginTop: "4px",
+                  whiteSpace: "nowrap",
                 }}
               >
                 <div
@@ -1155,6 +1165,7 @@ const handleApproveSync = async () => {
                       borderRadius: "6px",
                       cursor: "pointer",
                       fontFamily: "Barlow",
+                      whiteSpace: "nowrap",
                     }}
                     onClick={() => {
                       setFilterConfig({ field: "", value: "" });
@@ -1199,6 +1210,7 @@ const handleApproveSync = async () => {
               fontWeight: "500",
               fontFamily: 'Barlow',
               position: 'relative',
+              whiteSpace: "nowrap",
             }}
             onClick={handleApproveSync}
           >
@@ -1250,7 +1262,8 @@ const handleApproveSync = async () => {
               borderRadius: "6px",
               cursor: "pointer",
               fontSize: "14px",
-              fontFamily: 'Barlow'
+              fontFamily: 'Barlow',
+              whiteSpace: "nowrap",
             }}
             onClick={openAddModal}
           >
@@ -1266,9 +1279,10 @@ const handleApproveSync = async () => {
           borderRadius: "8px",
           boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
           overflow: "hidden",
+          overflowX: "auto",
         }}
       >
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "1200px", }}>
           <thead
             style={{
               backgroundColor: "#f9fafb",
