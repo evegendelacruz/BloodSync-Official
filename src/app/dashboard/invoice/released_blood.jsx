@@ -645,7 +645,6 @@ const handleMouseLeave = (key) => {
       marginTop: "15px",
       fontSize: "10px",
       fontFamily: "Arial, sans-serif",
-      minWidth: "1200px",
     },
     tableHeader: {
       backgroundColor: "#c9c9c9",
