@@ -56,7 +56,7 @@ const MailComponent = ({ onNavigate }) => {
     return () => clearInterval(interval);
   }, []);
 
-  const loadMails = async () => {
+ const loadMails = async () => {
   try {
     setIsLoading(true);
 
@@ -68,6 +68,13 @@ const MailComponent = ({ onNavigate }) => {
       // Load sync requests from the database (temp_donor_records)
       const syncRequests = await window.electronAPI.getPendingTempDonorRecords();
       console.log("Sync requests from DB:", syncRequests);
+      
+      // DEBUG
+      if (syncRequests.length > 0) {
+        console.log("🔍 First sync request tdr_created_at:", syncRequests[0].tdr_created_at);
+        console.log("🔍 Type:", typeof syncRequests[0].tdr_created_at);
+        console.log("🔍 Parsed:", new Date(syncRequests[0].tdr_created_at));
+      }
 
       // Group sync requests by source organization and user
       const groupedSyncRequests = syncRequests.reduce((acc, record) => {
@@ -75,21 +82,30 @@ const MailComponent = ({ onNavigate }) => {
         const userName = record.tdr_source_user_name || "Unknown User";
         const key = `${organization}-${record.tdr_source_user_id}`;
 
+        // ✅ FIX: Properly parse the timestamp
+        const createdAt = record.tdr_created_at ? new Date(record.tdr_created_at) : new Date();
+
         if (!acc[key]) {
           acc[key] = {
             source_organization: organization,
             source_user_name: userName,
-            sync_requested_at: record.tdr_created_at,
+            sync_requested_at: createdAt,
+            earliest_created_at: createdAt, // Initialize with Date object
             donors: [],
           };
+        } else {
+          // Update earliest timestamp if current record is older
+          if (createdAt < new Date(acc[key].earliest_created_at)) {
+            acc[key].earliest_created_at = createdAt;
+          }
         }
+        
         acc[key].donors.push(record);
         return acc;
       }, {});
 
       // Transform partnership requests into mail format
       const mailsFromRequests = requests.map((r) => {
-        // Generate avatar from organization name
         const avatar = r.contact_name
           ? r.contact_name
               .split(" ")
@@ -99,13 +115,11 @@ const MailComponent = ({ onNavigate }) => {
               .toUpperCase()
           : "UN";
 
-        // Determine organization type
         const orgType = r.organization_type || 
           (r.contact_name && r.contact_name.toLowerCase().includes("barangay")
             ? "barangay"
             : "organization");
 
-        // Build proper display name
         const displayName = r.organization_barangay && r.organization_barangay !== "N/A"
           ? `${r.contact_name} (${r.organization_barangay})`
           : r.contact_name;
@@ -225,8 +239,8 @@ const MailComponent = ({ onNavigate }) => {
           alert("Failed to decline request. Please try again.");
         }
       };
-      // Transform sync requests into mail format
-      const mailsFromSyncRequests = Object.values(groupedSyncRequests).map(
+      
+       const mailsFromSyncRequests = Object.values(groupedSyncRequests).map(
         (group, index) => {
           const orgType = group.source_organization
             .toLowerCase()
@@ -240,6 +254,9 @@ const MailComponent = ({ onNavigate }) => {
             .substring(0, 2)
             .toUpperCase();
 
+          // ✅ FIX: Use the earliest_created_at Date object
+          const timestamp = new Date(group.earliest_created_at);
+
           return {
             id: `sync-${group.source_organization}-${group.source_user_name}-${index}`,
             requestId: `sync-${group.source_organization}-${group.source_user_name}`,
@@ -251,7 +268,7 @@ const MailComponent = ({ onNavigate }) => {
             subject: `Incoming Record Sync Request`,
             preview: `${group.source_user_name} would like to approve ${group.donors.length} pending donor record${group.donors.length > 1 ? "s" : ""}.`,
             body: buildSyncRequestBody(group),
-            timestamp: new Date(group.sync_requested_at),
+            timestamp: timestamp, // ✅ Now properly a Date object
             read: false,
             starred: false,
             category: "inbox",
@@ -263,6 +280,7 @@ const MailComponent = ({ onNavigate }) => {
               organizationType: orgType,
               donorCount: group.donors.length,
               donors: group.donors,
+              submittedAt: group.earliest_created_at, // ✅ Store for display
             },
           };
         }
@@ -355,33 +373,33 @@ const MailComponent = ({ onNavigate }) => {
   };
 
   const buildSyncRequestBody = (group) => {
-    const timestamp = new Date(group.sync_requested_at).toLocaleString(
-      "en-US",
-      {
+  // ✅ FIX: Use earliest_created_at directly (it's already a Date object)
+  const timestamp = group.earliest_created_at
+    ? new Date(group.earliest_created_at).toLocaleString("en-US", {
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
         hour: "numeric",
         minute: "2-digit",
         hour12: true,
-      }
-    );
+      })
+    : "N/A";
 
-    const lines = [
-      `This partner ${group.source_user_name} (${group.source_organization.toLowerCase().includes("barangay") ? "Barangay" : "Organization"}) would like to approve their new ${group.donors.length} pending donor record${group.donors.length > 1 ? "s" : ""}. Proceed to Donor Record Page.`,
-      "",
-      "Information:",
-      `Name: ${group.source_user_name}`,
-      `Organization: ${group.source_organization}`,
-      `Timestamp: ${timestamp}`,
-      `Number of Donor Records: ${group.donors.length}`,
-      "",
-      'Click "Proceed Donor Record" button to review the donor records.',
-      "",
-    ];
+  const lines = [
+    `This partner ${group.source_user_name} (${group.source_organization.toLowerCase().includes("barangay") ? "Barangay" : "Organization"}) would like to approve their new ${group.donors.length} pending donor record${group.donors.length > 1 ? "s" : ""}. Proceed to Donor Record Page.`,
+    "",
+    "Information:",
+    `Name: ${group.source_user_name}`,
+    `Organization: ${group.source_organization}`,
+    `Timestamp: ${timestamp}`,
+    `Number of Donor Records: ${group.donors.length}`,
+    "",
+    'Click "Proceed Donor Record" button to review the donor records.',
+    "",
+  ];
 
-    return lines.join("\n");
-  };
+  return lines.join("\n");
+};
 
   const getAvatarColor = (text) => {
     const colors = [
@@ -1350,67 +1368,65 @@ const MailComponent = ({ onNavigate }) => {
             </div>
 
             {/* --- REQUEST DETAILS SECTION (For Partnership Requests) --- */}
-            {selectedMail.type === "partnership" &&
-              selectedMail.requestInfo &&
-              selectedMail.requestInfo.organizationName && (
-                <div className="request-details-box">
-                  <h4 className="request-details-title">Request Details:</h4>
-                  <div className="request-detail-item">
-                    <span className="request-detail-label">Title:</span>
-                    <span className="request-detail-value">
-                      {selectedMail.requestInfo.appointmentTitle || "Blood Drive Partnership Request"}
-                    </span>
-                  </div>
-                  <div className="request-detail-item">
-                    <span className="request-detail-label">Requestor:</span>
-                    <span className="request-detail-value">
-                      {selectedMail.requestInfo.organizationName} – (
-                      {selectedMail.requestInfo.organizationBarangay})
-                    </span>
-                  </div>
-                  <div className="request-detail-item">
-                    <span className="request-detail-label">Event Date:</span>
-                    <span className="request-detail-value">
-                      {new Date(
-                        selectedMail.requestInfo.eventDate
-                      ).toLocaleDateString("en-US", {
-                        weekday: "long",
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
-                    </span>
-                  </div>
-                  <div className="request-detail-item">
-                    <span className="request-detail-label">Event Time:</span>
-                    <span className="request-detail-value">
-                      {selectedMail.requestInfo.eventTime}
-                    </span>
-                  </div>
-                  <div className="request-detail-item">
-                    <span className="request-detail-label">Event Address:</span>
-                    <span className="request-detail-value">
-                      {selectedMail.requestInfo.eventAddress}
-                    </span>
-                  </div>
-                  <div className="request-detail-item">
-                    <span className="request-detail-label">
-                      Date Submitted:
-                    </span>
-                    <span className="request-detail-value">
-                      {new Date(selectedMail.timestamp).toLocaleDateString(
+            {selectedMail.type === "sync" && selectedMail.syncInfo && (
+            <div className="request-details-box">
+              <h4 className="request-details-title">Sync Request Details:</h4>
+              <div className="request-detail-item">
+                <span className="request-detail-label">Title:</span>
+                <span className="request-detail-value">
+                  Donor Records Sync Request
+                </span>
+              </div>
+              <div className="request-detail-item">
+                <span className="request-detail-label">Requestor:</span>
+                <span className="request-detail-value">
+                  {selectedMail.syncInfo.userName} – (
+                  {selectedMail.syncInfo.organization})
+                </span>
+              </div>
+              <div className="request-detail-item">
+                <span className="request-detail-label">
+                  Organization Type:
+                </span>
+                <span className="request-detail-value">
+                  {selectedMail.syncInfo.organizationType}
+                </span>
+              </div>
+              <div className="request-detail-item">
+                <span className="request-detail-label">
+                  Number of Donor Records:
+                </span>
+                <span className="request-detail-value">
+                  {selectedMail.syncInfo.donorCount}
+                </span>
+              </div>
+              <div className="request-detail-item">
+                <span className="request-detail-label">Date Submitted:</span>
+                <span className="request-detail-value">
+                  {/* ✅ FIX: Use submittedAt from syncInfo with proper fallbacks */}
+                  {selectedMail.syncInfo.submittedAt 
+                    ? new Date(selectedMail.syncInfo.submittedAt).toLocaleDateString(
                         "en-US",
                         {
                           year: "numeric",
                           month: "2-digit",
                           day: "2-digit",
                         }
-                      )}
-                    </span>
-                  </div>
-                </div>
-              )}
-            {/* --- END REQUEST DETAILS SECTION (Partnership) --- */}
+                      )
+                    : selectedMail.timestamp 
+                      ? new Date(selectedMail.timestamp).toLocaleDateString(
+                          "en-US",
+                          {
+                            year: "numeric",
+                            month: "2-digit",
+                            day: "2-digit",
+                          }
+                        )
+                      : "N/A"}
+                </span>
+              </div>
+            </div>
+          )}
 
             {/* --- REQUEST DETAILS SECTION (For Sync Requests) --- */}
             {selectedMail.type === "sync" && selectedMail.syncInfo && (
