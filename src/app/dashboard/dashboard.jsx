@@ -1891,7 +1891,7 @@ const Dashboard = () => {
       flexShrink: 0,
     },
     blueAvatar: {
-      backgroundColor: "#3b82f6",
+      backgroundColor: "#165C3C",
     },
     greenAvatar: {
       backgroundColor: "#10b981",
@@ -2963,7 +2963,7 @@ const handleNavigate = (screen) => {
                             key={request.id} 
                             style={{
                               ...styles.dropdownItem,
-                              backgroundColor: isUnread ? '#f0f9ff' : 'white',
+                              backgroundColor: isUnread ? 'white' : 'white',
                               position: 'relative',
                               cursor: 'pointer'
                             }}
@@ -3027,20 +3027,21 @@ const handleNavigate = (screen) => {
                               <p style={{
                                 ...styles.requestTitle,
                                 fontWeight: isUnread ? '600' : '400',
-                                color: isUnread ? '#111827' : '#6b7280',
+                                color: isUnread ? '#111827' : '#000000ff',
                                 fontFamily: 'Barlow'
                               }}>
                                 {displayName}
                                 {organizationType === 'barangay' && (
-                                  <span style={{ fontSize: '11px', color: '#6b7280', marginLeft: '6px' }}>
+                                  <span style={{ fontSize: '11px', color: '#000000ff', marginLeft: '6px' }}>
                                     (Barangay)
                                   </span>
                                 )}
                               </p>
                               <p style={{
                                 ...styles.requestSubtitle,
-                                color: isUnread ? '#6b7280' : '#9ca3af',
-                                fontFamily: 'Barlow'
+                                color: isUnread ? '#6b7280' : '#000000ff',
+                                fontFamily: 'Barlow',
+                                fontWeight: 'bold'
                               }}>
                                 Blood Drive - {new Date(request.event_date).toLocaleDateString('en-US', {
                                   month: 'short',
@@ -3053,7 +3054,7 @@ const handleNavigate = (screen) => {
                                   ...styles.requestSubtitle,
                                   fontSize: '11px',
                                   marginTop: '2px',
-                                  color: isUnread ? '#9ca3af' : '#d1d5db',
+                                  color: isUnread ? '#9ca3af' : '#85898fff',
                                   fontFamily: 'Barlow'
                                 }}>
                                   Organization: {request.event_address}
