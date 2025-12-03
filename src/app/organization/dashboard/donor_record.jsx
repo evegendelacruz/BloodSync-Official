@@ -2816,12 +2816,12 @@ const DonorRecordContent = ({ currentUser }) => {
         .donor-header { margin: 0; }
         .donor-title { font-size: 24px; font-weight: bold; color: #165C3C; margin-top: 1px; font-family: Barlow; }
         .donor-subtitle { color: #6b7280; font-size: 14px; margin-top: -7px; font-family: Barlow; }
-        .controls-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; background-color: white; padding: 16px; border-radius: 8px; box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1); }
-        .left-controls { display: flex; align-items: center; gap: 16px; }
+        .controls-bar { display: flex; gap: 16px; ; align-items: center; justify-content: space-between; margin-bottom: 20px; background-color: white; padding: 16px; border-radius: 8px; box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1); }
+        .left-controls { flex: 1 1 auto; minWidth: 200px; display: flex; align-items: center; gap: 16px; }
         .search-container { position: relative; display: flex; align-items: center; }
-        .search-input { padding-left: 40px; padding-right: 16px; padding-top: 8px; padding-bottom: 8px; border: 1px solid #d1d5db; border-radius: 6px; width: 300px; font-size: 14px; outline: none; }
+        .search-input { width: 100%, minWidth: 200px; maxWidth: 400px; padding-left: 40px; padding-right: 16px; padding-top: 8px; padding-bottom: 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; outline: none; }
         .search-icon { position: absolute; left: 12px; z-index: 1; color: #9ca3af; }
-        .right-controls { display: flex; align-items: center; gap: 12px; }
+        .right-controls { gap: 12px; flexWrap: wrap; display: flex; align-items: center; gap: 12px; }
         .sort-button { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border: 1px solid #d1d5db; border-radius: 6px; background-color: white; cursor: pointer; font-size: 14px; color: #374151; }
         .filter-button { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background-color: white; color: #374151; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; font-size: 14px; }
         .sync-button { font-family: "Barlow"; display: flex; align-items: center; gap: 8px; padding: 8px 16px; background-color: #2C58DC; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
@@ -2872,6 +2872,14 @@ const DonorRecordContent = ({ currentUser }) => {
           white-space: nowrap;
           font-family: 'Barlow';
           font-weight: 400;
+        }
+         @media (min-width: 68px) {
+          .right-controls {
+            flex-direction: row;
+            width: auto;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+          }
         }
       `}</style>
     </div>

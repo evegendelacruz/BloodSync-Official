@@ -371,14 +371,7 @@ const handleApproveSync = async () => {
       setError("Electron API not available");
       return;
     }
-
-    console.log("📋 Loading pending sync requests...");
-
-    // Load all pending temp donor records
     const records = await window.electronAPI.getPendingTempDonorRecords();
-    
-    console.log("✅ Loaded records:", records.length);
-    console.log("📊 Records data:", records);
 
     if (records.length === 0) {
       setSuccessMessage({
@@ -392,7 +385,7 @@ const handleApproveSync = async () => {
     setPendingSyncRecords(records);
     setShowApproveSyncModal(true);
   } catch (error) {
-    console.error("❌ Error loading sync requests:", error);
+    console.error("Error loading sync requests:", error);
     setError(`Failed to load sync requests: ${error.message}`);
     setSuccessMessage({
       title: "Error",
@@ -402,25 +395,27 @@ const handleApproveSync = async () => {
   }
 };
 
-  const handleConfirmApproveSync = async () => {
+ const handleConfirmApproveSync = async () => {
   try {
     if (pendingSyncRecords.length === 0) {
       setError("No records to approve");
       return;
     }
-
-    console.log("✅ Approving sync request...");
-    console.log("📊 Records to approve:", pendingSyncRecords.length);
-
-    const approvedBy = currentUser?.fullName || "RBC Admin";
+    const userData = {
+      id: currentUser?.id,
+      fullName: currentUser?.fullName || "RBC Admin"
+    };
+    
     const tdrIds = pendingSyncRecords.map((d) => d.tdr_id);
 
-    console.log("👤 Approved by:", approvedBy);
+    console.log("👤 User Data:", userData);
     console.log("🆔 TDR IDs:", tdrIds);
 
+    // ⭐ FIX: Call with userData object instead of just approvedBy string
     const result = await window.electronAPI.approveTempDonorRecords(
       tdrIds,
-      approvedBy
+      userData.fullName,  // approvedBy (for backward compatibility)
+      userData            // NEW: Pass full userData for activity logging
     );
 
     console.log("✅ Approval result:", result);
@@ -1206,7 +1201,7 @@ const handleApproveSync = async () => {
               border: "none",
               borderRadius: "8px",
               cursor: "pointer",
-              fontSize: "15px",
+              fontSize: "14px",
               fontWeight: "500",
               fontFamily: 'Barlow',
               position: 'relative',
