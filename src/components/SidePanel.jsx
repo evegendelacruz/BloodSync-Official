@@ -33,6 +33,10 @@ const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate, userPermissions
     "released-invoice": "Invoice",
     "discard-invoice-nc": "Invoice",
     "reports": "Reports",
+    "bddr-reports": "Reports",
+    "release-reports": "Reports",
+    "event-reports": "Reports",
+    "discard-reports": "Reports",
     "recent-activity": "Recent Activity",
   };
 
@@ -108,8 +112,27 @@ const SidePanel = ({ isOpen, onToggle, activeScreen, onNavigate, userPermissions
       id: "reports",
       label: "Reports",
       icon: TrendingUp,
-      screen: "reports",
+      hasSubmenu: true,
       permissionKey: "Reports",
+      submenu: [
+        {
+          id: "bddr-reports",
+          label: "BDDR Report",
+          screen: "bddr-reports",
+        },
+        { id: "release-reports", 
+          label: "Released Blood Report", 
+          screen: "release-reports" 
+        },
+        { id: "discard-reports", 
+          label: "Discarded Blood Report", 
+          screen: "discard-reports" 
+        },
+        { id: "event-reports", 
+          label: "Partnered Org Report", 
+          screen: "event-reports" 
+        },
+      ],
     },
     {
       id: "recent-activity",

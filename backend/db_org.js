@@ -133,196 +133,132 @@ const dbOrgService = {
       return 0;
     }
   },
-  async getAllAppointments(organizationName = null) {
+
+  async createPartnershipRequest(requestData) {
+  const dohClient = await dohPool.connect();
+  
   try {
-    let query = `
-      SELECT
-        id,
+    await dohClient.query("BEGIN");
+
+    console.log('📤 Creating partnership request:', {
+      appointmentId: requestData.appointmentId,
+      organizationName: requestData.organizationName,
+      organizationBarangay: requestData.organizationBarangay,
+      contactName: requestData.contactName,
+      eventDate: requestData.eventDate
+    });
+
+    // ✅ FIXED: Get the ACTUAL organization name from the ORGANIZATION database (pool)
+    let organizationName = 'Unknown Organization';
+    let organizationBarangay = null;
+    
+    // Query user_org table from the organization database (pool), NOT dohPool
+    const userQuery = `
+      SELECT 
+        u_category,
+        u_organization_name,
+        u_barangay,
+        u_full_name
+      FROM user_org 
+      WHERE u_email = $1 OR u_full_name = $2
+      LIMIT 1
+    `;
+    
+    // ✅ Use pool (organization DB) instead of dohClient
+    const userResult = await pool.query(userQuery, [
+      requestData.contactEmail,
+      requestData.contactName
+    ]);
+    
+    if (userResult.rows.length > 0) {
+      const user = userResult.rows[0];
+      
+      if (user.u_category === 'Barangay') {
+        // For Barangay: use barangay name as organization name
+        organizationName = user.u_barangay || user.u_full_name;
+        organizationBarangay = user.u_barangay;
+      } else if (user.u_category === 'Organization') {
+        // For Organization: use organization name
+        organizationName = user.u_organization_name || user.u_full_name;
+        organizationBarangay = null;
+      } else {
+        // Fallback
+        organizationName = user.u_full_name;
+      }
+      
+      console.log('✅ Found user in database:', {
+        category: user.u_category,
+        organizationName: user.u_organization_name,
+        barangay: user.u_barangay,
+        fullName: user.u_full_name
+      });
+    } else {
+      console.log('⚠️ User not found in database, using provided data');
+      // If user not found, use the provided organizationName from requestData
+      organizationName = requestData.organizationName || 'Unknown Organization';
+      organizationBarangay = requestData.organizationBarangay || null;
+    }
+
+    console.log('✅ Resolved organization info:', {
+      organizationName: organizationName,
+      organizationBarangay: organizationBarangay
+    });
+
+    // Insert partnership request into DOH database using dohClient
+    const insertQuery = `
+      INSERT INTO partnership_requests (
         appointment_id,
-        title,
-        TO_CHAR(appointment_date, 'YYYY-MM-DD') as date,
-        appointment_time as time,
-        appointment_type as type,
-        contact_type,
-        last_name,
-        email,
-        phone,
-        address,
-        message,
-        notes,
+        organization_name,
+        organization_barangay,
+        contact_name,
+        contact_email,
+        contact_phone,
+        event_date,
+        event_time,
+        event_address,
+        profile_photo,
         status,
         created_at,
         updated_at
-      FROM appointments
-      WHERE status != 'cancelled'
-    `;
-
-    const values = [];
-    if (organizationName) {
-      query += " AND last_name = $1";
-      values.push(organizationName);
-    }
-
-    query += " ORDER BY appointment_date DESC, appointment_time DESC";
-
-    const result = await pool.query(query, values);
-
-    return result.rows.map((row) => ({
-      ...row,
-      contactInfo: {
-        lastName: row.last_name,
-        email: row.email,
-        phone: row.phone,
-        address: row.address,
-        message: row.message,
-        type: row.contact_type,
-      },
-    }));
-  } catch (error) {
-    console.error("Error getting all appointments:", error);
-    throw error;
-  }
-},
-
-  async addAppointment(appointmentData, userId = null) {
-    const client = await pool.connect();
-
-    try {
-      await client.query("BEGIN");
-
-      // Get valid user ID - simplified approach
-      let validUserId = null;
-
-      if (userId && typeof userId === "number" && userId > 0) {
-        // Verify the user exists
-        const userCheckQuery = `SELECT u_id FROM user_org WHERE u_id = $1`;
-        const userCheckResult = await client.query(userCheckQuery, [userId]);
-
-        if (userCheckResult.rows.length > 0) {
-          validUserId = userCheckResult.rows[0].u_id;
-          console.log("Using provided user ID:", validUserId);
-        }
-      }
-
-      // If no valid user ID, find or create system user
-      if (!validUserId) {
-        console.log(
-          "No valid user ID provided, finding/creating system user..."
-        );
-
-        const systemUserQuery = `
-        SELECT u_id 
-        FROM user_org 
-        WHERE u_email = 'system@bloodsync.org' 
-        LIMIT 1
-      `;
-        const systemUserResult = await client.query(systemUserQuery);
-
-        if (systemUserResult.rows.length > 0) {
-          validUserId = systemUserResult.rows[0].u_id;
-          console.log("Found system user:", validUserId);
-        } else {
-          // Create system user
-          console.log("Creating system user...");
-          const createSystemUserQuery = `
-          INSERT INTO user_org (
-            u_org_id, u_full_name, u_category, u_email, u_password, 
-            u_status, u_verified_at, u_created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-          RETURNING u_id
-        `;
-
-          const systemUserValues = [
-            "SYS-0000001",
-            "BloodSync System",
-            "System",
-            "system@bloodsync.org",
-            crypto.createHash("sha256").update("system_password").digest("hex"),
-            "verified",
-          ];
-
-          const createResult = await client.query(
-            createSystemUserQuery,
-            systemUserValues
-          );
-          validUserId = createResult.rows[0].u_id;
-          console.log("Created system user:", validUserId);
-        }
-      }
-
-      console.log("Final user ID for appointment:", validUserId);
-
-      const insertQuery = `
-      INSERT INTO appointments (
-        appointment_id, title, appointment_date, appointment_time,
-        appointment_type, contact_type, last_name, email, phone,
-        address, message, notes, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', NOW(), NOW())
       RETURNING *
     `;
 
-      const values = [
-        appointmentData.id || Date.now(),
-        appointmentData.title,
-        appointmentData.date,
-        appointmentData.time,
-        appointmentData.type,
-        appointmentData.contactInfo.type || "organization",
-        appointmentData.contactInfo.lastName,
-        appointmentData.contactInfo.email,
-        appointmentData.contactInfo.phone,
-        appointmentData.contactInfo.address,
-        appointmentData.contactInfo.message || null,
-        appointmentData.notes || null,
-        appointmentData.status || "pending",
-      ];
+    const values = [
+      requestData.appointmentId,
+      organizationName,          // ✅ Now uses the correct organization name
+      organizationBarangay,      // ✅ Now uses the correct barangay
+      requestData.contactName,   // Contact person's name
+      requestData.contactEmail || '',
+      requestData.contactPhone || '',
+      requestData.eventDate,
+      requestData.eventTime,
+      requestData.eventAddress || '',
+      requestData.profilePhoto || null
+    ];
 
-      const result = await client.query(insertQuery, values);
-      const appointment = result.rows[0];
+    const result = await dohClient.query(insertQuery, values);
 
-      // Log activity with validated user ID
-      try {
-        await this.logUserActivity(
-          validUserId,
-          "ADD_APPOINTMENT",
-          this.generateActivityDescription("add", "appointment", {
-            appointmentTitle: appointment.title,
-            appointmentDate: new Date(
-              appointment.appointment_date
-            ).toLocaleDateString("en-US"),
-            appointmentTime: appointment.appointment_time,
-          })
-        );
-      } catch (logError) {
-        console.error("Failed to log activity (non-critical):", logError);
-      }
+    console.log('✅ Partnership request created successfully:', {
+      id: result.rows[0].id,
+      organization_name: result.rows[0].organization_name,
+      organization_barangay: result.rows[0].organization_barangay
+    });
 
-      await client.query("COMMIT");
-
-      return {
-        id: appointment.appointment_id,
-        title: appointment.title,
-        date: appointment.appointment_date.toISOString().split("T")[0],
-        time: appointment.appointment_time,
-        type: appointment.appointment_type,
-        notes: appointment.notes,
-        contactInfo: {
-          lastName: appointment.last_name,
-          email: appointment.email,
-          phone: appointment.phone,
-          address: appointment.address,
-          message: appointment.message,
-          type: appointment.contact_type,
-        },
-      };
-    } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("Error adding appointment:", error);
-      throw error;
-    } finally {
-      client.release();
-    }
-  },
+    await dohClient.query("COMMIT");
+    return {
+      success: true,
+      id: result.rows[0].id,
+      request: result.rows[0]
+    };
+  } catch (error) {
+    await dohClient.query("ROLLBACK");
+    console.error("❌ Error creating partnership request:", error);
+    throw error;
+  } finally {
+    dohClient.release();
+  }
+},
 
   // A3. Update appointment
   async updateAppointment(id, appointmentData, userName = "System User") {
@@ -359,20 +295,23 @@ const dbOrgService = {
         RETURNING *
       `;
 
+      const organizationName = appointmentData.contactInfo.organizationName || 
+                        appointmentData.contactInfo.lastName;
+
       const values = [
-        id,
-        appointmentData.title,
+        appointmentData.id || Date.now(),
+        appointmentData.title, // This now contains organization/barangay name
         appointmentData.date,
         appointmentData.time,
         appointmentData.type,
-        appointmentData.contactInfo.type,
-        appointmentData.contactInfo.lastName,
+        appointmentData.contactInfo.type || "organization",
+        organizationName, // CHANGED: Use organization/barangay name instead of lastName
         appointmentData.contactInfo.email,
         appointmentData.contactInfo.phone,
         appointmentData.contactInfo.address,
-        appointmentData.contactInfo.message,
-        appointmentData.notes,
-        appointmentData.status || originalAppointment.status || "pending",
+        appointmentData.contactInfo.message || null,
+        appointmentData.notes || null,
+        appointmentData.status || "pending",
       ];
 
       const result = await client.query(updateQuery, values);
@@ -418,8 +357,6 @@ const dbOrgService = {
     }
   },
 
-  // A4. Update appointment status
-  // In db_org.js - updateAppointmentStatus function
   async updateAppointmentStatus(
     appointmentId,
     status,
@@ -456,6 +393,148 @@ const dbOrgService = {
       client.release();
     }
   },
+
+  async getAllAppointments() {
+    // NEW FUNCTION - ADD HERE
+    try {
+      const query = `
+        SELECT
+          id,
+          appointment_id,
+          title,
+          TO_CHAR(appointment_date, 'YYYY-MM-DD') as date,
+          appointment_time as time,
+          appointment_type as type,
+          contact_type,
+          last_name,
+          email,
+          phone,
+          address,
+          message,
+          notes,
+          status,
+          created_at,
+          updated_at
+        FROM appointments
+        WHERE status != 'cancelled'
+        ORDER BY appointment_date DESC, appointment_time DESC
+      `;
+
+      const result = await pool.query(query);
+
+      return result.rows.map((row) => ({
+        id: row.id,
+        appointment_id: row.appointment_id,
+        title: row.title,
+        date: row.date,
+        time: row.time,
+        type: row.type,
+        notes: row.notes,
+        status: row.status,
+        contactInfo: {
+          lastName: row.last_name,
+          email: row.email,
+          phone: row.phone,
+          address: row.address,
+          message: row.message,
+          type: row.contact_type,
+        },
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      }));
+    } catch (error) {
+      console.error("Error getting all appointments:", error);
+      throw error;
+    }
+  },
+
+  async addAppointment(appointmentData, userId = "System User") {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const insertQuery = `
+      INSERT INTO appointments (
+        appointment_id,
+        title,
+        appointment_date,
+        appointment_time,
+        appointment_type,
+        contact_type,
+        last_name,
+        email,
+        phone,
+        address,
+        message,
+        notes,
+        status,
+        created_at,
+        updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
+      RETURNING *
+    `;
+
+    const values = [
+      appointmentData.id || Date.now(),
+      appointmentData.title,
+      appointmentData.date,
+      appointmentData.time,
+      appointmentData.type || "blood-donation",
+      appointmentData.contactInfo.type || "organization",
+      appointmentData.contactInfo.lastName,
+      appointmentData.contactInfo.email,
+      appointmentData.contactInfo.phone,
+      appointmentData.contactInfo.address,
+      appointmentData.contactInfo.message || null,
+      appointmentData.notes || null,
+      appointmentData.status || "pending",
+    ];
+
+    const result = await client.query(insertQuery, values);
+    const newAppointment = result.rows[0];
+
+    // Log activity
+    await this.logUserActivity(
+      userId,
+      "ADD_APPOINTMENT",
+      this.generateActivityDescription("add", "appointment", {
+        appointmentTitle: newAppointment.title,
+        appointmentDate: new Date(
+          newAppointment.appointment_date
+        ).toLocaleDateString("en-US"),
+        appointmentTime: newAppointment.appointment_time,
+      })
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      id: newAppointment.appointment_id,
+      appointment_id: newAppointment.appointment_id,
+      title: newAppointment.title,
+      date: newAppointment.appointment_date.toISOString().split("T")[0],
+      time: newAppointment.appointment_time,
+      type: newAppointment.appointment_type,
+      notes: newAppointment.notes,
+      status: newAppointment.status,
+      contactInfo: {
+        lastName: newAppointment.last_name,
+        email: newAppointment.email,
+        phone: newAppointment.phone,
+        address: newAppointment.address,
+        message: newAppointment.message,
+        type: newAppointment.contact_type,
+      },
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error adding appointment:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
 
   // A5. Cancel appointment with reason
   async cancelAppointmentWithReason(
@@ -777,8 +856,6 @@ const dbOrgService = {
     }
   },
 
-  // [Rest of your existing functions continue here...]
-  // ========== DONOR RECORD ORG METHODS ==========
   // ========== DONOR RECORD ORG METHODS ==========
 async getAllDonorRecordsOrg(sourceOrganization) {
   try {

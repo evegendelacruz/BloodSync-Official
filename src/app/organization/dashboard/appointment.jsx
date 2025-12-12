@@ -11,21 +11,21 @@ import {
 } from "lucide-react";
 import Loader from "../../../components/Loader";
 
-// New Appointment Form Component
 const NewAppointmentForm = ({
   isOpen,
   onClose,
   onSubmit,
   editingAppointment = null,
   appointments = [],
-  currentUser = null, // Add this prop
+  currentUser = null,
 }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedType, setSelectedType] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
   const [dateTimeModalDate, setDateTimeModalDate] = useState(new Date());
-  const [contactInfo, setContactInfo] = useState({
+
+   const [contactInfo, setContactInfo] = useState({
     lastName: "",
     email: "",
     phone: "",
@@ -33,9 +33,52 @@ const NewAppointmentForm = ({
     message: "",
   });
   const [showThankYou, setShowThankYou] = useState(false);
-  const [currentAppointment, setCurrentAppointment] =
-    useState(editingAppointment);
-  const [isLoading, setIsLoading] = useState(false); // <-- ADD THIS LINE
+  const [currentAppointment, setCurrentAppointment] = useState(editingAppointment);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && !editingAppointment) {
+      const getUserData = () => {
+        try {
+          const possibleKeys = ['currentOrgUser', 'currentUser', 'user', 'orgUser'];
+          
+          for (const key of possibleKeys) {
+            const userData = localStorage.getItem(key);
+            if (userData) {
+              try {
+                const parsed = JSON.parse(userData);
+                const fullName = parsed.u_full_name || parsed.fullName || parsed.name || "";
+                const email = parsed.u_email || parsed.email || "";
+                const phone = parsed.u_contact_number || parsed.contactNumber || parsed.phone || "";
+                const address = parsed.u_address || parsed.address || "";
+                
+                if (fullName) {
+                  setContactInfo({
+                    lastName: fullName,
+                    email: email,
+                    phone: phone,
+                    address: address,
+                    message: "",
+                  });
+                  console.log('✅ Auto-populated user data:', { fullName, email, phone, address });
+                  return;
+                }
+              } catch (parseError) {
+                console.warn(`Failed to parse ${key}:`, parseError);
+                continue;
+              }
+            }
+          }
+          
+          console.warn('No user data found in localStorage for auto-population');
+        } catch (error) {
+          console.error('Error getting user data:', error);
+        }
+      };
+      
+      getUserData();
+    }
+  }, [isOpen, editingAppointment]);
 
   // Compute occupiedDates from appointments prop
   const occupiedDates = React.useMemo(
@@ -166,177 +209,182 @@ const NewAppointmentForm = ({
   console.log("=== END DEBUG ===");
 
   const handleContactSubmit = async () => {
-    const { lastName, email, phone, address } = contactInfo;
+  const { lastName, email, phone, address } = contactInfo;
 
-    if (!lastName || !email || !phone || !address) {
-      alert("Please fill in all required fields");
-      return;
-    }
+  if (!lastName || !email || !phone || !address) {
+    alert("Please fill in all required fields");
+    return;
+  }
 
-    setIsLoading(true);
+  setIsLoading(true);
 
-    try {
-      // Get user ID from localStorage
-      const getUserId = () => {
-        try {
-          const possibleKeys = [
-            "currentOrgUser",
-            "currentUser",
-            "user",
-            "orgUser",
-          ];
+  try {
+    // ✅ FIXED: Get organization info FIRST and use it consistently
+    const getOrgInfo = () => {
+      try {
+        const userData =
+          localStorage.getItem("currentOrgUser") ||
+          localStorage.getItem("user");
+        if (userData) {
+          const parsed = JSON.parse(userData);
+          console.log("User data for partnership request:", parsed);
 
-          for (const key of possibleKeys) {
-            const userData = localStorage.getItem(key);
-            if (userData) {
-              try {
-                const parsed = JSON.parse(userData);
-                const userId =
-                  parsed.id || parsed.u_id || parsed.userId || parsed.user_id;
-
-                if (userId && typeof userId === "number") {
-                  console.log(`Found valid user ID in ${key}:`, userId);
-                  return userId;
-                }
-              } catch (parseError) {
-                console.warn(`Failed to parse ${key}:`, parseError);
-                continue;
-              }
-            }
+          // Determine the correct organization/barangay name
+          let displayName;
+          let barangayName = null;
+          let organizationName = null;
+          
+          if (parsed.u_category === "Barangay" || parsed.category === "Barangay") {
+            // For Barangay users: use barangay name
+            displayName = parsed.u_barangay || parsed.barangay || parsed.u_full_name || parsed.fullName;
+            barangayName = parsed.u_barangay || parsed.barangay;
+          } else {
+            // For Organization users: use organization name
+            displayName = parsed.u_organization_name || parsed.organizationName || parsed.u_full_name || parsed.fullName;
+            organizationName = parsed.u_organization_name || parsed.organizationName;
           }
 
-          console.warn("No valid user found in localStorage");
-          return null;
-        } catch (error) {
-          console.error("Error getting user ID:", error);
-          return null;
-        }
-      };
+          const orgPhoto =
+            parsed.u_profile_image ||
+            parsed.profileImage ||
+            parsed.profile_photo ||
+            parsed.u_profile_photo ||
+            null;
 
-      const userId = getUserId();
-      console.log("Using user ID for appointment:", userId);
+          console.log("✅ Extracted org info:", {
+            displayName: displayName,
+            category: parsed.u_category || parsed.category,
+            barangay: barangayName,
+            organizationName: organizationName,
+            photo: orgPhoto
+          });
 
-      const appointmentData = {
-        id: currentAppointment
-          ? currentAppointment.appointment_id || currentAppointment.id
-          : Date.now(),
-        title: `Blood Drive Partnership - ${lastName}`,
-        date: formatDate(selectedDate),
-        time: selectedTime,
-        type: "blood-donation",
-        notes: "Schedule pending approval. Please await confirmation.",
-        status: "pending",
-        contactInfo: {
-          ...contactInfo,
-          type: selectedType,
-        },
-      };
-
-      const isEditing = !!currentAppointment;
-
-      if (typeof window !== "undefined" && window.electronAPI) {
-        if (isEditing) {
-          // Editing logic here...
-          setIsLoading(false);
-        } else {
-          // Create appointment - pass numeric user ID (or null)
-          const localAppointment = await window.electronAPI.addAppointment(
-            appointmentData,
-            userId // Will be null if no valid user found
-          );
-          console.log("Local appointment added successfully", localAppointment);
-
-          // Get organization info for partnership request
-          const getOrgInfo = () => {
-            try {
-              const userData =
-                localStorage.getItem("currentOrgUser") ||
-                localStorage.getItem("currentUser");
-              if (userData) {
-                const parsed = JSON.parse(userData);
-                console.log("User data for partnership request:", parsed);
-
-                const orgName =
-                  parsed.fullName ||
-                  parsed.u_full_name ||
-                  parsed.organizationName ||
-                  parsed.u_organization_name ||
-                  "Unknown Organization";
-
-                const orgPhoto =
-                  parsed.profileImage ||
-                  parsed.u_profile_image ||
-                  parsed.profile_photo ||
-                  parsed.u_profile_photo ||
-                  null;
-
-                return { name: orgName, photo: orgPhoto };
-              }
-            } catch (error) {
-              console.error("Error getting organization info:", error);
-            }
-            return { name: "Unknown Organization", photo: null };
+          return { 
+            name: displayName,
+            category: parsed.u_category || parsed.category,
+            barangay: barangayName,
+            organizationName: organizationName,
+            photo: orgPhoto 
           };
+        }
+      } catch (error) {
+        console.error("Error getting organization info:", error);
+      }
+      return { 
+        name: "Unknown Organization", 
+        category: null,
+        barangay: null,
+        organizationName: null,
+        photo: null 
+      };
+    };
 
-          const orgInfo = getOrgInfo();
+    // Get organization info
+    const orgInfo = getOrgInfo();
+    console.log("Organization info retrieved:", orgInfo);
 
-          // Send Request to Main Server
+    // Get user ID
+    const getUserId = () => {
+      try {
+        const possibleKeys = [
+          "currentOrgUser",
+          "currentUser",
+          "user",
+          "orgUser",
+        ];
+
+        for (const key of possibleKeys) {
+          const userData = localStorage.getItem(key);
+          if (userData) {
+            try {
+              const parsed = JSON.parse(userData);
+              const userId =
+                parsed.id || parsed.u_id || parsed.userId || parsed.user_id;
+
+              if (userId && typeof userId === "number") {
+                console.log(`Found valid user ID in ${key}:`, userId);
+                return userId;
+              }
+            } catch (parseError) {
+              console.warn(`Failed to parse ${key}:`, parseError);
+              continue;
+            }
+          }
+        }
+
+        console.warn("No valid user found in localStorage");
+        return null;
+      } catch (error) {
+        console.error("Error getting user ID:", error);
+        return null;
+      }
+    };
+
+    const userId = getUserId();
+    console.log("Using user ID for appointment:", userId);
+
+    // ✅ CRITICAL FIX: Use orgInfo.name for the title and organizationName field
+    const appointmentData = {
+      id: currentAppointment
+        ? currentAppointment.appointment_id || currentAppointment.id
+        : Date.now(),
+      title: `Blood Drive Partnership - ${orgInfo.name}`, // ✅ Use orgInfo.name, not contactInfo.lastName
+      date: formatDate(selectedDate),
+      time: selectedTime,
+      type: "blood-donation",
+      notes: "Schedule pending approval. Please await confirmation.",
+      status: "pending",
+      contactInfo: {
+        ...contactInfo,
+        type: selectedType,
+        organizationName: orgInfo.name, // ✅ Store the actual organization/barangay name
+        category: orgInfo.category,
+      },
+    };
+
+    const isEditing = !!currentAppointment;
+
+    if (typeof window !== "undefined" && window.electronAPI) {
+      if (isEditing) {
+        // Editing logic here...
+        setIsLoading(false);
+      } else {
+        // Create appointment
+        const localAppointment = await window.electronAPI.addAppointment(
+          appointmentData,
+          userId
+        );
+        console.log("✅ Local appointment added successfully", localAppointment);
+
+        // ✅ CRITICAL FIX: Use orgInfo values for partnership request
         const requestData = {
           appointmentId: localAppointment.id,
-          // FIXED: Always send organization name (required field), never null
-          organizationName: orgInfo.name || orgInfo.organizationName || orgInfo.barangay || appointmentData.contactInfo.lastName || "Unknown Organization",
-          // Only set barangay if it's actually a Barangay category
-          organizationBarangay: orgInfo.category === 'Barangay' ? (orgInfo.name || orgInfo.barangay) : null,
-          contactName: appointmentData.contactInfo.lastName || orgInfo.contactName || "Contact Person",
-          contactEmail: appointmentData.contactInfo.email || "",
-          contactPhone: appointmentData.contactInfo.phone || "",
+          organizationName: orgInfo.name, // ✅ Use orgInfo.name (organization or barangay name)
+          organizationBarangay: orgInfo.category === 'Barangay' ? orgInfo.barangay : null,
+          contactName: contactInfo.lastName, // This is the contact person's name, NOT organization name
+          contactEmail: contactInfo.email || "",
+          contactPhone: contactInfo.phone || "",
           eventDate: appointmentData.date,
           eventTime: appointmentData.time,
-          eventAddress: appointmentData.contactInfo.address || "",
+          eventAddress: contactInfo.address || "",
           profilePhoto: orgInfo.photo || null,
         };
 
-        console.log('📤 Sending partnership request:', requestData);
+        console.log('📤 Sending partnership request with correct data:', requestData);
 
         const serverResult = await window.electronAPI.createPartnershipRequest(requestData);
 
-          if (!serverResult || !serverResult.id) {
-            throw new Error(
-              "Failed to submit partnership request to main server."
-            );
-          }
-          console.log(
-            "Partnership request submitted successfully:",
-            serverResult
+        if (!serverResult || !serverResult.id) {
+          throw new Error(
+            "Failed to submit partnership request to main server."
           );
-
-          // CRITICAL: Call onSubmit to update parent component's appointments list IMMEDIATELY
-          if (onSubmit) {
-            onSubmit({
-              id: appointmentData.id,
-              appointment_id: appointmentData.id,
-              title: appointmentData.title,
-              date: appointmentData.date,
-              time: appointmentData.time,
-              type: appointmentData.type,
-              notes: appointmentData.notes,
-              status: appointmentData.status,
-              contactInfo: appointmentData.contactInfo,
-            });
-          }
-
-          // STOP LOADING BEFORE showing thank you
-          setIsLoading(false);
-          
-          // Show thank you message
-          setTimeout(() => {
-            setShowThankYou(true);
-          }, 300);
         }
-      } else {
-        console.warn("ElectronAPI not available. Simulating success.");
-        
-        // CRITICAL: Call onSubmit even in simulation mode
+        console.log(
+          "✅ Partnership request submitted successfully:",
+          serverResult
+        );
+
+        // Update parent component's appointments list
         if (onSubmit) {
           onSubmit({
             id: appointmentData.id,
@@ -351,21 +399,43 @@ const NewAppointmentForm = ({
           });
         }
 
-        // STOP LOADING BEFORE showing thank you
         setIsLoading(false);
         
         setTimeout(() => {
           setShowThankYou(true);
         }, 300);
       }
-    } catch (error) {
-      console.error("Error saving appointment:", error);
+    } else {
+      console.warn("ElectronAPI not available. Simulating success.");
+      
+      if (onSubmit) {
+        onSubmit({
+          id: appointmentData.id,
+          appointment_id: appointmentData.id,
+          title: appointmentData.title,
+          date: appointmentData.date,
+          time: appointmentData.time,
+          type: appointmentData.type,
+          notes: appointmentData.notes,
+          status: appointmentData.status,
+          contactInfo: appointmentData.contactInfo,
+        });
+      }
+
       setIsLoading(false);
-      alert(
-        `Failed to save appointment: ${error.message}. Please try again.`
-      );
+      
+      setTimeout(() => {
+        setShowThankYou(true);
+      }, 300);
     }
-  };
+  } catch (error) {
+    console.error("Error saving appointment:", error);
+    setIsLoading(false);
+    alert(
+      `Failed to save appointment: ${error.message}. Please try again.`
+    );
+  }
+};
 
 
   const selectDate = (date) => {
@@ -1296,6 +1366,8 @@ const NewAppointmentForm = ({
                           type="text"
                           placeholder="Contact Person's Full Name"
                           value={contactInfo.lastName}
+                          readOnly
+                          disabled
                           onChange={(e) =>
                             setContactInfo({
                               ...contactInfo,
@@ -1308,6 +1380,8 @@ const NewAppointmentForm = ({
                           type="email"
                           placeholder="Email Address"
                           value={contactInfo.email}
+                          readOnly
+                          disabled
                           onChange={(e) =>
                             setContactInfo({
                               ...contactInfo,

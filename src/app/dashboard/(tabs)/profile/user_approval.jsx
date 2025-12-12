@@ -734,8 +734,8 @@ const UserApproval = () => {
                       value={user.role}
                       onChange={(e) => handleRoleChange(user.id, e.target.value, user.fullName)}
                     >
-                      <option value="Medical Tech">Medical Tech</option>
-                      <option value="Doctor">Doctor</option>
+                      <option value="Inventory Staff">Inventory Staff</option>
+                      <option value="Non-Conforming Staff">Non-Conforming Staff</option>
                       <option value="Scheduler">Scheduler</option>
                       <option value="Admin">Admin</option>
                     </select>

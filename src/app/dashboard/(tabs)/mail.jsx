@@ -121,14 +121,14 @@ const MailComponent = ({ onNavigate }) => {
             : "organization");
 
         const displayName = r.organization_barangay && r.organization_barangay !== "N/A"
-          ? `${r.contact_name} (${r.organization_barangay})`
-          : r.contact_name;
+          ? `${r.organization_name} (${r.organization_barangay})`
+          : r.organization_name;
 
         return {
           id: r.id,
           requestId: r.id,
           type: "partnership",
-          from: displayName,
+          from: r.contact_name,
           fromEmail: r.contact_email,
           avatar: avatar,
           avatarColor: getAvatarColor(avatar),
@@ -145,7 +145,7 @@ const MailComponent = ({ onNavigate }) => {
           status: r.status,
           declineReason: r.decline_reason || null,
           requestInfo: {
-            organizationName: r.contact_name,
+            organizationName: r.organization_name,
             organizationBarangay: r.organization_barangay,
             contactName: r.contact_name,
             contactEmail: r.contact_email,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, RefreshCw, Filter, User, Calendar, UserPlus, Edit, Trash2, CheckCircle, Clock, Eye, Droplet, Package, Users } from 'lucide-react';
+import { Search, RefreshCw, ArchiveRestore, Filter, User, Calendar, UserPlus, Edit, Trash2, PackageX, CheckCircle, Clock, Eye, Droplet, Package, Users, Droplets } from 'lucide-react';
 
 const Loader = () => (
   <div style={{
@@ -76,57 +76,62 @@ const RecentActivity = () => {
   }, [viewMode]);
 
   const loadActivities = async () => {
-    try {
-      setError(null);
+  try {
+    setError(null);
 
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        let activitiesData;
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      let activitiesData;
 
-        if (isAdmin && viewMode === 'all') {
-          activitiesData = await window.electronAPI.getAllActivities(100, 0);
-        } else if (currentUserId) {
-          activitiesData = await window.electronAPI.getUserActivities(currentUserId, 100, 0);
-        } else {
-          activitiesData = await window.electronAPI.getAllActivities(100, 0);
-        }
-
-        console.log('Loaded activities:', activitiesData);
-        setActivities(activitiesData || []);
+      if (isAdmin && viewMode === 'all') {
+        // ✅ CHANGED: null instead of 100 for unlimited
+        activitiesData = await window.electronAPI.getAllActivities(null, 0);
+      } else if (currentUserId) {
+        // ✅ CHANGED: null instead of 100 for unlimited
+        activitiesData = await window.electronAPI.getUserActivities(currentUserId, null, 0);
       } else {
-        console.warn('ElectronAPI not available');
-        setActivities([]);
+        // ✅ CHANGED: null instead of 100 for unlimited
+        activitiesData = await window.electronAPI.getAllActivities(null, 0);
       }
-    } catch (error) {
-      console.error('Error loading activities:', error);
-      setError('Failed to load activities. Please try again.');
+
+      console.log('Loaded activities:', activitiesData);
+      setActivities(activitiesData || []);
+    } else {
+      console.warn('ElectronAPI not available');
+      setActivities([]);
     }
-  };
+  } catch (error) {
+    console.error('Error loading activities:', error);
+    setError('Failed to load activities. Please try again.');
+  }
+};
+
 
   const handleSearch = async (term) => {
-    try {
-      setIsSearching(true);
-      setError(null);
-      setCurrentPage(1);
+  try {
+    setIsSearching(true);
+    setError(null);
+    setCurrentPage(1);
 
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        if (term.trim() === '') {
-          await loadActivities();
-        } else {
-          const results = await window.electronAPI.searchActivities(term, 100);
-          let filteredResults = results || [];
-          if (viewMode === 'my' && currentUserId) {
-            filteredResults = filteredResults.filter(a => a.user_id === currentUserId);
-          }
-          setActivities(filteredResults);
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      if (term.trim() === '') {
+        await loadActivities();
+      } else {
+        // ✅ CHANGED: null instead of 100 for unlimited
+        const results = await window.electronAPI.searchActivities(term, null);
+        let filteredResults = results || [];
+        if (viewMode === 'my' && currentUserId) {
+          filteredResults = filteredResults.filter(a => a.user_id === currentUserId);
         }
+        setActivities(filteredResults);
       }
-    } catch (error) {
-      console.error('Error searching activities:', error);
-      setError('Failed to search activities. Please try again.');
-    } finally {
-      setIsSearching(false);
     }
-  };
+  } catch (error) {
+    console.error('Error searching activities:', error);
+    setError('Failed to search activities. Please try again.');
+  } finally {
+    setIsSearching(false);
+  }
+};
 
   const handleRefresh = async () => {
     try {
@@ -208,24 +213,26 @@ const RecentActivity = () => {
   };
 
   const getActivityIcon = (actionType) => {
-    const type = (actionType || '').toLowerCase();
-    if (type.includes('add')) return <UserPlus size={20} />;
-    if (type.includes('update') || type.includes('edit')) return <Edit size={20} />;
-    if (type.includes('delete')) return <Trash2 size={20} />;
-    if (type.includes('approve')) return <CheckCircle size={20} />;
-    if (type.includes('release')) return <Package size={20} />;
-    return <Clock size={20} />;
-  };
+  const type = (actionType || '').toLowerCase();
+  if (type.includes('add')) return <Droplets size={20} />;
+  if (type.includes('update') || type.includes('edit')) return <Edit size={20} />;
+  if (type.includes('delete')) return <Trash2 size={20} />;
+  if (type.includes('approve')) return <CheckCircle size={20} />;
+  if (type.includes('release')) return <Package size={20} />;
+  if (type.includes('restore')) return <ArchiveRestore size={20} />;
+  return <PackageX size={20} />;
+};
 
-  const getActivityColor = (actionType) => {
-    const type = (actionType || '').toLowerCase();
-    if (type.includes('add')) return '#10b981';
-    if (type.includes('update')) return '#3b82f6';
-    if (type.includes('delete')) return '#ef4444';
-    if (type.includes('release')) return '#f59e0b';
-    if (type.includes('approve')) return '#8b5cf6';
-    return '#6b7280';
-  };
+ const getActivityColor = (actionType) => {
+  const type = (actionType || '').toLowerCase();
+  if (type.includes('add')) return '#10b981';
+  if (type.includes('update')) return '#3b82f6';
+  if (type.includes('delete')) return '#ef4444';
+  if (type.includes('release')) return '#f59e0b';
+  if (type.includes('approve')) return '#8b5cf6';
+  if (type.includes('restore')) return '#06b6d4'; 
+  return '#6b7280';
+};
 
   const getEntityDisplayName = (entityType) => {
     switch (entityType) {
@@ -417,6 +424,7 @@ const RecentActivity = () => {
             <option value="update">Updated</option>
             <option value="delete">Deleted</option>
             <option value="release">Released</option>
+            <option value="restore">Restored</option> 
             <option value="approve">Approved</option>
           </select>
         </div>

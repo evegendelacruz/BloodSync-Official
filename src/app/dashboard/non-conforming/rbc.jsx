@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Trash2, Plus } from "lucide-react";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const Loader = () => (
   <div
@@ -44,11 +46,11 @@ const RedBloodCellNC = () => {
     responsiblePersonnel: "",
     reasonForDiscarding: "",
     authorizedBy: "",
-    dateOfDiscard: "",
-    timeOfDiscard: "",
+    dateOfDiscard: new Date().toISOString().split('T')[0],
+    timeOfDiscard: new Date().toTimeString().slice(0, 5),
     methodOfDisposal: "",
     remarks: "",
-  });
+    });
   const [currentUser, setCurrentUser] = useState(null);
   const [showDiscardConfirmModal, setShowDiscardConfirmModal] = useState(false);
   const [showDiscardSuccessModal, setShowDiscardSuccessModal] = useState(false);
@@ -69,6 +71,9 @@ const RedBloodCellNC = () => {
   const [filterConfig, setFilterConfig] = useState({ field: "", value: "" });
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [newlyCreatedInvoiceId, setNewlyCreatedInvoiceId] = useState(null); 
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewInvoice, setPreviewInvoice] = useState(null);
   const [nonConformingItems, setNonConformingItems] = useState([
     {
       id: 1,
@@ -89,11 +94,19 @@ const RedBloodCellNC = () => {
   const searchTimeoutsRef = useRef({});
 
   useEffect(() => {
-    const userData = JSON.parse(localStorage.getItem('currentUser'));
-    setCurrentUser(userData);
-    loadNonConformingData();
-  }, []);
-
+  const userData = JSON.parse(localStorage.getItem('currentUser'));
+  setCurrentUser(userData);
+  
+  // Set responsible personnel to current user's full name
+  if (userData && userData.fullName) {
+    setDiscardFormData(prev => ({
+      ...prev,
+      responsiblePersonnel: userData.fullName
+    }));
+  }
+  
+  loadNonConformingData();
+}, []);
 
   useEffect(() => {
     if (window.electronAPI) {
@@ -606,14 +619,14 @@ const RedBloodCellNC = () => {
       }
       
       const discardData = {
-        serialIds: validItems.map((item) => item.serialId),
-        responsiblePersonnel: discardFormData.responsiblePersonnel,
-        reasonForDiscarding: discardFormData.reasonForDiscarding,
-        authorizedBy: discardFormData.authorizedBy,
-        dateOfDiscard: discardFormData.dateOfDiscard,
-        timeOfDiscard: discardFormData.timeOfDiscard,
-        methodOfDisposal: discardFormData.methodOfDisposal,
-        remarks: discardFormData.remarks,
+      serialIds: validItems.map((item) => item.serialId),
+      responsiblePersonnel: discardFormData.responsiblePersonnel,
+      reasonForDiscarding: discardFormData.reasonForDiscarding,
+      authorizedBy: discardFormData.authorizedBy,
+      dateOfDiscard: discardFormData.dateOfDiscard,
+      timeOfDiscard: discardFormData.timeOfDiscard,
+      methodOfDisposal: discardFormData.methodOfDisposal,
+      remarks: discardFormData.remarks,
       };
       
       // ADDED: Pass currentUser to the discard function
@@ -638,30 +651,335 @@ const RedBloodCellNC = () => {
           },
         ]);
         setDiscardFormData({
-          responsiblePersonnel: "",
-          reasonForDiscarding: "",
-          authorizedBy: "",
-          dateOfDiscard: "",
-          timeOfDiscard: "",
-          methodOfDisposal: "",
-          remarks: "",
-        });
-        await loadNonConformingData();
-        setError(null);
-        setSuccessMessage({
-          title: "Non-Conforming Records Discarded!",
-          description: `${result.discardedCount} blood unit(s) have been successfully discarded.`,
-        });
-        setShowSuccessModal(true);
-      }
-    } catch (err) {
-      console.error("Error discarding non-conforming stock:", err);
-      setDiscardValidationErrors({ save: `Failed to discard non-conforming stock: ${err.message}` });
-    } finally {
-      setSaving(false);
-    }
-  };
+        responsiblePersonnel: currentUser?.fullName || "",
+        reasonForDiscarding: "",
+        authorizedBy: "",
+        dateOfDiscard: new Date().toISOString().split('T')[0],
+        timeOfDiscard: new Date().toTimeString().slice(0, 5),
+        methodOfDisposal: "",
+        remarks: "",
+      });
+      await loadNonConformingData();
+      setError(null);
 
+      if (result.invoiceDbId) {
+        setNewlyCreatedInvoiceId(result.invoiceDbId);
+        // Load the invoice details and show preview
+        const invoiceDetails = await window.electronAPI.viewDiscardedBloodInvoice(result.invoiceDbId);
+        setPreviewInvoice(invoiceDetails);
+        setShowPreviewModal(true);
+      }
+    }
+  } catch (err) {
+    console.error("Error discarding non-conforming stock:", err);
+    setDiscardValidationErrors({ save: `Failed to discard non-conforming stock: ${err.message}` });
+  } finally {
+    setSaving(false);
+  }
+};
+
+  const generateDiscardInvoicePDF = () => {
+  if (!previewInvoice) return;
+
+  const { header, items } = previewInvoice;
+
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "in",
+    format: [8.5, 13],
+  });
+
+  // Load logos
+  const dohMainLogo = "./assets/doh-main-logo.jpg";
+  const dohPurpleLogo = "./assets/doh-purple-logo.png";
+  const bagongPilipinasLogo = "./assets/bagong-pilipinas-logo.png";
+
+  // Add logos
+  try {
+    doc.addImage(dohMainLogo, "JPEG", 0.5, 0.3, 1.0, 1.0);
+    doc.addImage(dohPurpleLogo, "PNG", 1.7, 0.3, 0.97, 0.97);
+    doc.addImage(bagongPilipinasLogo, "PNG", 2.7, 0.15, 1.4, 1.3);
+  } catch (e) {
+    console.error("Error loading logos:", e);
+  }
+
+  // Header text
+  const textStartX = 4.25;
+  const textStartY = 0.4;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text("DEPARTMENT OF HEALTH", textStartX, textStartY);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text(
+    "CENTER FOR HEALTH DEVELOPMENT- NORTHERN MINDANAO",
+    textStartX,
+    textStartY + 0.16
+  );
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.text(
+    "J. V. Serina Street, Carmen, Cagayan de Oro City",
+    textStartX,
+    textStartY + 0.32
+  );
+  doc.setFontSize(6.5);
+  doc.text(
+    "PABX (088) 8587123/ (088) 858 4000/ (088) 855 0430/ (+63) 917-148-3298/",
+    textStartX,
+    textStartY + 0.46
+  );
+  doc.text(
+    "(+63) 968-882-4092/ (088) 858-7132/ (088) 858-2639/ (088)-1601",
+    textStartX,
+    textStartY + 0.57
+  );
+
+  doc.setTextColor(0, 0, 0);
+  doc.text("Email address: ", textStartX, textStartY + 0.68);
+  const emailLabelWidth = doc.getTextWidth("Email address: ");
+  doc.setTextColor(0, 115, 230);
+  doc.text(
+    "pacd@ro10.doh.gov.ph",
+    textStartX + emailLabelWidth,
+    textStartY + 0.68
+  );
+
+  doc.setTextColor(0, 0, 0);
+  doc.text("Website: ", textStartX, textStartY + 0.79);
+  const websiteLabelWidth = doc.getTextWidth("Website: ");
+  doc.setTextColor(0, 115, 230);
+  doc.text(
+    "http://www.ro10.doh.gov.ph",
+    textStartX + websiteLabelWidth,
+    textStartY + 0.79
+  );
+
+  // Title
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(0, 0, 0);
+  doc.text("DISCARDED NON-CONFORMING UNIT FORM", 4.25, 1.75, {
+    align: "center",
+  });
+
+  // Info Section
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(0, 0, 0);
+
+  // Date of Discard - Left side
+  const dateLabelText = "Date of Discard:";
+  doc.text(dateLabelText, 0.5, 2.1);
+  doc.setFont("helvetica", "normal");
+  const dateText = header.dateOfDiscard;
+  const dateLabelWidth = doc.getTextWidth(dateLabelText);
+  const dateSpacing = 0.15;
+  doc.text(dateText, 0.5 + dateLabelWidth + dateSpacing, 2.1);
+  const dateWidth = doc.getTextWidth(dateText);
+  doc.setLineWidth(0.01);
+  doc.line(
+    0.5 + dateLabelWidth + dateSpacing,
+    2.13,
+    0.5 + dateLabelWidth + dateSpacing + dateWidth,
+    2.13
+  );
+
+  // Reference Number - Right side
+  doc.setFont("helvetica", "bold");
+  const refLabelText = "Reference no.:";
+  const refStartX = 5.5;
+  doc.text(refLabelText, refStartX, 2.1);
+  doc.setFont("helvetica", "normal");
+  
+  const refText = header.referenceNumber || "";
+  const refLabelWidth = doc.getTextWidth(refLabelText);
+  const refSpacing = 0.15;
+  const refTextStartX = refStartX + refLabelWidth + refSpacing;
+  const maxRefWidth = 8.0 - refTextStartX;
+  
+  let refWidth = doc.getTextWidth(refText);
+  
+  if (refWidth > maxRefWidth) {
+    const currentFontSize = doc.getFontSize();
+    const newFontSize = (maxRefWidth / refWidth) * currentFontSize;
+    doc.setFontSize(newFontSize);
+    refWidth = doc.getTextWidth(refText);
+    doc.text(refText, refTextStartX, 2.1);
+    doc.setFontSize(currentFontSize);
+  } else {
+    doc.text(refText, refTextStartX, 2.1);
+  }
+  
+  doc.setLineWidth(0.01);
+  doc.line(refTextStartX, 2.13, refTextStartX + refWidth, 2.13);
+
+  // Responsible Personnel
+  doc.setFont("helvetica", "bold");
+  const personnelLabelText = "Responsible Personnel:";
+  doc.text(personnelLabelText, 0.5, 2.35);
+  doc.setFont("helvetica", "normal");
+  const personnelText = header.responsiblePersonnel || "";
+  const personnelLabelWidth = doc.getTextWidth(personnelLabelText);
+  const personnelSpacing = 0.15;
+  doc.text(personnelText, 0.5 + personnelLabelWidth + personnelSpacing, 2.35);
+  const personnelWidth = doc.getTextWidth(personnelText);
+  doc.line(
+    0.5 + personnelLabelWidth + personnelSpacing,
+    2.38,
+    0.5 + personnelLabelWidth + personnelSpacing + personnelWidth,
+    2.38
+  );
+
+  // Table data
+  const tableData = items.map((item, index) => [
+    index + 1,
+    item.serialId,
+    `${item.bloodType}${item.rhFactor}`,
+    item.dateOfCollection,
+    item.dateOfExpiration,
+    `${item.volume} ML`,
+    "",
+  ]);
+
+  // Create table
+  autoTable(doc, {
+    startY: 2.55,
+    head: [
+      [
+        "NO.",
+        "SERIAL NO.",
+        "BLOOD\nTYPE",
+        "DATE OF\nCOLLECTION",
+        "DATE OF\nEXPIRY",
+        "VOLUME",
+        "REMARKS",
+      ],
+    ],
+    body: tableData,
+    theme: "grid",
+    styles: {
+      font: "helvetica",
+      fontSize: 9,
+      cellPadding: 0.05,
+      lineColor: [0, 0, 0],
+      lineWidth: 0.01,
+      halign: "center",
+      valign: "middle",
+      textColor: [0, 0, 0],
+    },
+    headStyles: {
+      fillColor: [201, 201, 201],
+      fontStyle: "bold",
+      halign: "center",
+      valign: "middle",
+      fontSize: 8,
+    },
+    bodyStyles: {
+      textColor: [0, 0, 0],
+      fontSize: 8,
+    },
+    columnStyles: {
+      0: { cellWidth: 0.35 },
+      1: { cellWidth: 1.4 },
+      2: { cellWidth: 0.6 },
+      3: { cellWidth: 1.0 },
+      4: { cellWidth: 1.0 },
+      5: { cellWidth: 0.6 },
+      6: { cellWidth: "auto" },
+    },
+    margin: { left: 0.5, right: 0.5 },
+  });
+
+  // Get the Y position after the table
+  const afterTableY = doc.lastAutoTable.finalY + 0.4;
+  doc.setFont("helvetica", "bold");
+
+  // Reason for Discarding
+  const reasonLabelText = "Reason for Discarding:";
+  doc.text(reasonLabelText, 0.5, afterTableY);
+  doc.setFont("helvetica", "normal");
+  const reasonText = header.reasonForDiscarding || "";
+  const reasonLabelWidth = doc.getTextWidth(reasonLabelText);
+  const reasonSpacing = 0.15;
+  doc.text(reasonText, 0.5 + reasonLabelWidth + reasonSpacing, afterTableY);
+  const reasonWidth = doc.getTextWidth(reasonText);
+  doc.setLineWidth(0.01);
+  doc.line(
+    0.5 + reasonLabelWidth + reasonSpacing,
+    afterTableY + 0.03,
+    0.5 + reasonLabelWidth + reasonSpacing + reasonWidth,
+    afterTableY + 0.03
+  );
+
+  // Footer section
+  const finalY = afterTableY + 0.4;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+
+  // Left side - Prepared by
+  doc.text("PREPARED BY:", 0.5, finalY);
+  doc.setFont("helvetica", "normal");
+  const preparedByText = header.responsiblePersonnel || "";
+  doc.text(preparedByText, 0.5, finalY + 0.25);
+  const preparedByWidth = Math.max(doc.getTextWidth(preparedByText), 2.5);
+  doc.setLineWidth(0.01);
+  doc.line(0.5, finalY + 0.28, 0.5 + preparedByWidth, finalY + 0.28);
+
+  doc.setFont("helvetica", "bold");
+  doc.text("AUTHORIZED BY:", 0.5, finalY + 0.65);
+  doc.setFont("helvetica", "normal");
+  const authorizedByText = header.authorizedBy || "";
+  doc.text(authorizedByText, 0.5, finalY + 0.9);
+  const authorizedByWidth = Math.max(doc.getTextWidth(authorizedByText), 2.5);
+  doc.line(0.5, finalY + 0.93, 0.5 + authorizedByWidth, finalY + 0.93);
+
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "italic");
+  const centerXAuthorized = 0.5 + authorizedByWidth / 2;
+  doc.text("Name/Signature/Date", centerXAuthorized, finalY + 1.05, {
+    align: "center",
+  });
+
+  // Right side - Method of Disposal
+  doc.setFont("helvetica", "bold");
+  doc.text("METHOD OF DISPOSAL:", 5.0, finalY);
+  doc.setFont("helvetica", "normal");
+  const methodText = header.methodOfDisposal || "";
+  doc.text(methodText, 5.0, finalY + 0.25);
+  doc.setLineWidth(0.01);
+  doc.line(5.0, finalY + 0.28, 7.9, finalY + 0.28);
+
+  // Note at bottom
+  const noteY = 12.5;
+  const noteText = "NOTE:";
+  const restText =
+    " All discarded units have been properly disposed following DOH guidelines and regulations.";
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  const noteWidth = doc.getTextWidth(noteText);
+
+  doc.setFont("helvetica", "normal");
+  const restWidth = doc.getTextWidth(restText);
+
+  const totalWidth = noteWidth + restWidth;
+  const startX = 4.25 - totalWidth / 2;
+
+  doc.setFont("helvetica", "bold");
+  doc.text(noteText, startX, noteY);
+
+  doc.setFont("helvetica", "normal");
+  doc.text(restText, startX + noteWidth, noteY);
+
+  // Save PDF
+  doc.save(`Discarded-Invoice-${header.invoiceId}.pdf`);
+  setShowPreviewModal(false);
+};
   const handleEditItemChange = (field, value) => {
     const updated = { ...editingItem, [field]: value };
     if (field === "collection") {
@@ -1051,7 +1369,7 @@ const RedBloodCellNC = () => {
       padding: "8px 16px",
       backgroundColor: "#E53C3C",
       color: "white",
-      border: "none",
+      borderStyle: "none",
       borderRadius: "6px",
       cursor: "pointer",
       fontSize: "14px",
@@ -1073,7 +1391,9 @@ const RedBloodCellNC = () => {
       paddingRight: "16px",
       paddingTop: "8px",
       paddingBottom: "8px",
-      border: "1px solid #d1d5db",
+      borderStyle: "solid",
+      borderWidth: "1px",
+      borderColor: "#d1d5db",
       borderRadius: "6px",
       width: "100%",
       fontSize: "14px",
@@ -1488,6 +1808,15 @@ const RedBloodCellNC = () => {
       borderTop: "1px solid #e5e7eb",
       display: "flex",
       justifyContent: "center",
+      gap: "12px",
+      backgroundColor: "white",
+    },
+
+    modalFooterDiscard: {
+      padding: "20px 30px",
+      borderTop: "1px solid #e5e7eb",
+      display: "flex",
+      justifyContent: "right",
       gap: "12px",
       backgroundColor: "white",
     },
@@ -2204,6 +2533,235 @@ const RedBloodCellNC = () => {
         </div>
       )}
 
+      {/* Invoice Preview Modal */}
+      {showPreviewModal && previewInvoice && (
+        <div style={styles.modalOverlay} onClick={() => setShowPreviewModal(false)}>
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <div style={styles.modalTitleSection}>
+                <h3 style={styles.modalTitle}>Discard Invoice Generated</h3>
+                <p style={styles.modalSubtitle}>Discarded Non-Conforming Unit Form</p>
+              </div>
+              <button
+                style={{
+                  ...styles.modalCloseButton,
+                  ...(hoverStates.closeInvoiceModal ? styles.modalCloseButtonHover : {}),
+                }}
+                onClick={() => setShowPreviewModal(false)}
+                onMouseEnter={() => handleMouseEnter("closeInvoiceModal")}
+                onMouseLeave={() => handleMouseLeave("closeInvoiceModal")}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ 
+              flex: 1, 
+              padding: "40px 20px", 
+              overflowY: "auto", 
+              overflowX: "auto",
+              backgroundColor: "#f3f4f6",
+              display: "flex",
+              justifyContent: "center" 
+            }}>
+              <div style={{
+                backgroundColor: "white",
+                width: "8.5in",
+                height: "13in",
+                padding: "0.5in",
+                boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+                fontFamily: "Arial, sans-serif",
+                margin: "0 auto",
+                boxSizing: "border-box",
+                position: "relative",
+              }}>
+                {/* Header Section with logos */}
+                <div style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  marginBottom: "25px",
+                  gap: "12px",
+                }}>
+                  <img
+                    src="./assets/doh-main-logo.jpg"
+                    alt="DOH Logo"
+                    style={{ width: "100px", height: "100px", objectFit: "contain" }}
+                  />
+                  <img
+                    src="./assets/doh-purple-logo.png"
+                    alt="DOH Purple Logo"
+                    style={{ width: "97px", height: "97px", objectFit: "contain", marginLeft: "3px" }}
+                  />
+                  <img
+                    src="./assets/bagong-pilipinas-logo.png"
+                    alt="Bagong Pilipinas Logo"
+                    style={{ width: "140px", height: "130px", objectFit: "contain", marginTop: "-15px" }}
+                  />
+                  <div style={{ flex: 1, paddingTop: "8px", paddingLeft: "10px" }}>
+                    <div style={{ fontSize: "11px", margin: "3px 0", color: "#000" }}>
+                      DEPARTMENT OF HEALTH
+                    </div>
+                    <div style={{ fontSize: "10px", fontWeight: "bold", margin: "3px 0", color: "#000" }}>
+                      CENTER FOR HEALTH DEVELOPMENT- NORTHERN MINDANAO
+                    </div>
+                    <div style={{ fontSize: "8.5px", margin: "2px 0", color: "#000", lineHeight: "1.4" }}>
+                      J. V. Serina Street, Carmen, Cagayan de Oro City
+                    </div>
+                    <div style={{ fontSize: "7.5px", margin: "2px 0", color: "#000", lineHeight: "1.4" }}>
+                      PABX (088) 8587123/ (088) 858 4000/ (088) 855 0430/ (+63) 917-148-3298/
+                    </div>
+                    <div style={{ fontSize: "7.5px", margin: "2px 0", color: "#000", lineHeight: "1.4" }}>
+                      (+63) 968-882-4092/ (088) 858-7132/ (088) 858-2639/ (088)-1601
+                    </div>
+                    <div style={{ fontSize: "7.5px", margin: "2px 0", color: "#000", lineHeight: "1.4" }}>
+                      Email address: <span style={{ color: "#0073e6" }}>pacd@ro10.doh.gov.ph</span>
+                    </div>
+                    <div style={{ fontSize: "7.5px", margin: "2px 0", color: "#000", lineHeight: "1.4" }}>
+                      Website: <span style={{ color: "#0073e6" }}>http://www.ro10.doh.gov.ph</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Title */}
+                <div style={{ fontSize: "16px", fontWeight: "bold", marginTop: "15px", marginBottom: "20px", textAlign: "center", color: "#000" }}>
+                  DISCARDED NON-CONFORMING UNIT FORM
+                </div>
+
+                {/* Info Section */}
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px", fontSize: "11px" }}>
+                  <div>
+                    <span style={{ fontWeight: "bold" }}>Date of Discard: </span>
+                    <span style={{ borderBottom: "1px solid #000", display: "inline-block" }}>
+                      {previewInvoice.header.dateOfDiscard}
+                    </span>
+                  </div>
+                  <div>
+                    <span style={{ fontWeight: "bold" }}>Reference no.: </span>
+                    <span style={{ borderBottom: "1px solid #000", display: "inline-block" }}>
+                      {previewInvoice.header.referenceNumber}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: "15px", fontSize: "11px" }}>
+                  <span style={{ fontWeight: "bold" }}>Responsible Personnel: </span>
+                  <span style={{ borderBottom: "1px solid #000", display: "inline-block" }}>
+                    {previewInvoice.header.responsiblePersonnel}
+                  </span>
+                </div>
+
+                {/* Table */}
+                <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "15px", fontSize: "10px" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ backgroundColor: "#c9c9c9", fontWeight: "bold", border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>NO.</th>
+                      <th style={{ backgroundColor: "#c9c9c9", fontWeight: "bold", border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>SERIAL NO.</th>
+                      <th style={{ backgroundColor: "#c9c9c9", fontWeight: "bold", border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>BLOOD<br/>TYPE</th>
+                      <th style={{ backgroundColor: "#c9c9c9", fontWeight: "bold", border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>DATE OF<br/>COLLECTION</th>
+                      <th style={{ backgroundColor: "#c9c9c9", fontWeight: "bold", border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>DATE OF<br/>EXPIRY</th>
+                      <th style={{ backgroundColor: "#c9c9c9", fontWeight: "bold", border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>VOLUME</th>
+                      <th style={{ backgroundColor: "#c9c9c9", fontWeight: "bold", border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>REMARKS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewInvoice.items.map((item, index) => (
+                      <tr key={index}>
+                        <td style={{ border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>{index + 1}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>{item.serialId}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>{item.bloodType}{item.rhFactor}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>{item.dateOfCollection}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>{item.dateOfExpiration}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>{item.volume} ML</td>
+                        <td style={{ border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {/* Reason for Discarding */}
+                <div style={{ marginTop: "15px", marginBottom: "20px", fontSize: "11px" }}>
+                  <span style={{ fontWeight: "bold" }}>Reason for Discarding: </span>
+                  <span style={{ borderBottom: "1px solid #000", display: "inline-block" }}>
+                    {previewInvoice.header.reasonForDiscarding}
+                  </span>
+                </div>
+
+                {/* Footer Section */}
+                <div style={{ marginTop: "20px", display: "flex", justifyContent: "space-between", fontSize: "11px", minHeight: "120px" }}>
+                  <div style={{ width: "45%" }}>
+                    <div style={{ marginBottom: "25px" }}>
+                      <div style={{ fontWeight: "bold", marginBottom: "3px" }}>PREPARED BY:</div>
+                      <div style={{ marginTop: "15px" }}>{previewInvoice.header.responsiblePersonnel || ""}</div>
+                      <div style={{ borderBottom: "1px solid #000", marginTop: "2px" }}></div>
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: "bold", marginBottom: "3px" }}>AUTHORIZED BY:</div>
+                      <div style={{ marginTop: "15px" }}>{previewInvoice.header.authorizedBy || ""}</div>
+                      <div style={{ borderBottom: "1px solid #000", marginTop: "2px" }}></div>
+                      <div style={{ fontSize: "9px", fontStyle: "italic", marginTop: "5px", textAlign: "center" }}>
+                        Name/Signature/Date
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ width: "45%" }}>
+                    <div>
+                      <div style={{ fontWeight: "bold", marginBottom: "3px" }}>METHOD OF DISPOSAL:</div>
+                      <div style={{ marginTop: "15px" }}>{previewInvoice.header.methodOfDisposal || ""}</div>
+                      <div style={{ borderBottom: "1px solid #000", marginTop: "2px", width: "100%" }}></div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Note */}
+                <div style={{ position: "absolute", bottom: "0.5in", left: "0.5in", right: "0.5in", fontSize: "9px", color: "#000", textAlign: "center" }}>
+                  <strong>NOTE:</strong> All discarded units have been properly disposed following DOH guidelines and regulations.
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.modalFooterDiscard}>
+              <button
+                style={{
+                  padding: "10px 24px",
+                  backgroundColor: "white",
+                  color: "#374151",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  fontWeight: "600",
+                  fontFamily: "Barlow",
+                }}
+                onClick={() => setShowPreviewModal(false)}
+              >
+                Close
+              </button>
+              <button
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "10px 24px",
+                  backgroundColor: "#FFC200",
+                  color: "black",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  fontWeight: "600",
+                  fontFamily: "Barlow",
+                }}
+                onClick={generateDiscardInvoicePDF}
+              >
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+                Download PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* SUCCESS MODAL */}
       {showSuccessModal && (
         <div style={styles.successModalOverlay}>
@@ -2941,9 +3499,13 @@ const RedBloodCellNC = () => {
                     type="text"
                     style={{
                       ...styles.fieldInput,
+                      backgroundColor: "#f9fafb",
+                      cursor: "not-allowed",
                       borderColor: discardValidationErrors.responsiblePersonnel ? '#ef4444' : '#d1d5db'
                     }}
                     value={discardFormData.responsiblePersonnel}
+                    readOnly
+                    disabled
                     onChange={(e) =>
                       handleDiscardFormDataChange("responsiblePersonnel", e.target.value)
                     }
@@ -2981,8 +3543,7 @@ const RedBloodCellNC = () => {
               <div style={styles.filterContainer}>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Authorized by</label>
-                  <input
-                    type="text"
+                  <select
                     style={{
                       ...styles.fieldInput,
                       borderColor: discardValidationErrors.authorizedBy ? '#ef4444' : '#d1d5db'
@@ -2991,8 +3552,12 @@ const RedBloodCellNC = () => {
                     onChange={(e) =>
                       handleDiscardFormDataChange("authorizedBy", e.target.value)
                     }
-                    placeholder="Enter name"
-                  />
+                  >
+                    <option value="">Select Authorized Personnel</option>
+                  <option value="Mr. Michille V. Flaviano, RMT">Mr. Michille V. Flaviano, RMT</option>
+                  <option value="Mr. Roeben Dem P. Perez, RMT">Mr. Roeben Dem P. Perez, RMT</option>
+                  <option value="Mrs. Sheila Marie P. Ybañez, RMTM MSHHM">Mrs. Sheila Marie P. Ybañez, RMTM MSHHM</option>
+                </select>
                 </div>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Date of Discard</label>

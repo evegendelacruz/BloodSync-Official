@@ -523,32 +523,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return await ipcRenderer.invoke("db:generateNextDonorId");
   },
   // ========== RESTORE BLOOD STOCK METHODS ==========
-  restoreBloodStock: async (serialIds) => {
-    try {
-      return await ipcRenderer.invoke("db:restoreBloodStock", serialIds);
-    } catch (error) {
-      console.error("Preload Error - restoreBloodStock:", error);
-      throw error;
-    }
-  },
-
-  restorePlasmaStock: async (serialIds) => {
-    try {
-      return await ipcRenderer.invoke("db:restorePlasmaStock", serialIds);
-    } catch (error) {
-      console.error("Preload Error - restorePlasmaStock:", error);
-      throw error;
-    }
-  },
-
-  restorePlateletStock: async (serialIds) => {
-    try {
-      return await ipcRenderer.invoke("db:restorePlateletStock", serialIds);
-    } catch (error) {
-      console.error("Preload Error - restorePlateletStock:", error);
-      throw error;
-    }
-  },
+  restoreBloodStock: (serialIds, userData) => 
+    ipcRenderer.invoke("db:restoreBloodStock", serialIds, userData),
+  
+  restorePlasmaStock: (serialIds, userData) => 
+    ipcRenderer.invoke("db:restorePlasmaStock", serialIds, userData),
+  
+  restorePlateletStock: (serialIds, userData) => 
+    ipcRenderer.invoke("db:restorePlateletStock", serialIds, userData),
 
   // ========== NON-CONFORMING METHODS ==========
 
@@ -1314,6 +1296,78 @@ contextBridge.exposeInMainWorld("electronAPI", {
   
   getUserActivityLogCountOrg: (userId) => 
     ipcRenderer.invoke('db-org:getUserActivityLogCountOrg', userId),
+
+
+
+  //==================RELEASED BLOOD REPORT QUARTERLY METHODS ==================  
+
+   generateReleasedBloodQuarterlyReport: (quarter, year) => 
+    ipcRenderer.invoke('generate-released-blood-quarterly-report', quarter, year),
+  
+  getAllReleasedBloodReports: () => 
+    ipcRenderer.invoke('get-all-released-blood-reports'),
+  
+  generateAllReleasedBloodQuarterlyReports: (year) => 
+    ipcRenderer.invoke('generate-all-released-blood-quarterly-reports', year),
+  
+  getAllYearsWithReleasedBloodData: () => 
+    ipcRenderer.invoke('get-all-years-with-released-blood-data'),
+  
+  generateAllHistoricalReleasedBloodReports: () => 
+    ipcRenderer.invoke('generate-all-historical-released-blood-reports'),
+  
+  searchReleasedBloodReports: (searchTerm) => 
+    ipcRenderer.invoke('search-released-blood-reports', searchTerm),
+  
+  deleteReleasedBloodReports: (reportIds) => 
+    ipcRenderer.invoke('delete-released-blood-reports', reportIds),
+
+  // ========== DISCARDED BLOOD REPORTS PRELOAD API ==========
+
+getAllDiscardedBloodReports: () => 
+  ipcRenderer.invoke('get-all-discarded-blood-reports'),
+
+generateDiscardedBloodQuarterlyReport: (quarter, year) => 
+  ipcRenderer.invoke('generate-discarded-blood-quarterly-report', quarter, year),
+
+generateAllDiscardedBloodQuarterlyReports: (year) => 
+  ipcRenderer.invoke('generate-all-discarded-blood-quarterly-reports', year),
+
+getAllYearsWithDiscardedBloodData: () => 
+  ipcRenderer.invoke('get-all-years-with-discarded-blood-data'),
+
+generateAllHistoricalDiscardedBloodReports: () => 
+  ipcRenderer.invoke('generate-all-historical-discarded-blood-reports'),
+
+searchDiscardedBloodReports: (searchTerm) => 
+  ipcRenderer.invoke('search-discarded-blood-reports', searchTerm),
+
+deleteDiscardedBloodReports: (reportIds) => 
+  ipcRenderer.invoke('delete-discarded-blood-reports', reportIds),
+
+//=========== PARTNERSHIP EVENT REPORT =======================
+getAllPartnershipEventReports: () => 
+    ipcRenderer.invoke("getAllPartnershipEventReports"),
+  
+  generateAllHistoricalPartnershipReports: () => 
+    ipcRenderer.invoke("generateAllHistoricalPartnershipReports"),
+  
+  searchPartnershipEventReports: (searchTerm) => 
+    ipcRenderer.invoke("searchPartnershipEventReports", searchTerm),
+  
+  deleteReports: (reportIds) => 
+    ipcRenderer.invoke("deleteReports", reportIds),
+
+  // ==================== APPROVED EVENTS ====================
+getAllApprovedEvents: () => ipcRenderer.invoke('db:getAllApprovedEvents'),
+getApprovedEventsByDateRange: (startDate, endDate) => 
+  ipcRenderer.invoke('db:getApprovedEventsByDateRange', startDate, endDate),
+getApprovedEventsByOrganization: (organizationName) => 
+  ipcRenderer.invoke('db:getApprovedEventsByOrganization', organizationName),
+searchApprovedEvents: (searchTerm) => 
+  ipcRenderer.invoke('db:searchApprovedEvents', searchTerm),
+deleteApprovedEvent: (eventId) => 
+  ipcRenderer.invoke('db:deleteApprovedEvent', eventId),
 });
 
 

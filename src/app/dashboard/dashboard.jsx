@@ -6,7 +6,7 @@ import SidePanel from "../../components/SidePanel";
 import MailComponent from "./(tabs)/mail";
 import CalendarComponent from "./(tabs)/calendar";
 import NotificationComponent from "./(tabs)/notification";
-import ProfileComponent from "./(tabs)/profile/profile"; // FIXED: Removed extra dot
+import ProfileComponent from "./(tabs)/profile/profile"; 
 import Login from "../login";
 import Plasma from "./blood_stock/plasma";
 import Platelet from "./blood_stock/platelet";
@@ -16,10 +16,13 @@ import Discarded from "./invoice/discarded_blood";
 import ReleasedInvoice from "./invoice/released_blood";
 import RecentActivity from "./recent_activity";
 import ReleasedBlood from "./released_blood";
-import Reports from "./reports";
 import PlasmaNC from "./non-conforming/plasma";
 import PlateletNC from "./non-conforming/platelet";
 import RedBloodCellNC from "./non-conforming/rbc";
+import Reports from "./reports/bddr_reports";
+import ReleaseReports from "./reports/release_reports";
+import DiscardReports from "./reports/discard_reports";
+import EventReports from "./reports/event_reports";
 
 const DashboardContent = () => {
   const [dashboardData, setDashboardData] = useState({
@@ -91,7 +94,7 @@ const fetchUpcomingDrive = async () => {
           date: apt.date,
           time: apt.time,
           location: apt.contactInfo?.address || 'Location TBD',
-          organization: apt.contactInfo?.lastName || 'Unknown Organization',
+          organization: apt.contactInfo?.organization_name || 'Unknown Organization',
         }));
       
       const upcomingPartnerships = partnershipRequests
@@ -105,7 +108,7 @@ const fetchUpcomingDrive = async () => {
           date: req.event_date,
           time: req.event_time,
           location: req.event_address || 'Location TBD',
-          organization: req.contact_name,
+          organization: req.organization_name,
         }));
       
       const allUpcoming = [...upcomingAppointments, ...upcomingPartnerships]
@@ -1995,7 +1998,7 @@ const Dashboard = () => {
           date: apt.date,
           time: apt.time,
           location: apt.contactInfo?.address || 'Location TBD',
-          organization: apt.contactInfo?.lastName || 'Unknown Organization',
+          organization: apt.contactInfo?.organization_name || 'Unknown Organization',
           type: 'appointment',
           is_viewed: apt.is_viewed || false
         }));
@@ -2542,6 +2545,10 @@ useEffect(() => {
     "released-invoice": "Invoice",
     "discard-invoice-nc": "Invoice",
     "reports": "Reports",
+    "bddr-reports": "Reports",
+    "release-reports": "Reports",
+    "event-reports": "Reports",
+    "discard-reports": "Reports",
     "recent-activity": "Recent Activity",
   };
 
@@ -2694,8 +2701,14 @@ const handleNavigate = (screen) => {
         return <ReleasedInvoice />;
       case "discard-invoice-nc":
         return <Discarded />;
-      case "reports":
+      case "bddr-reports":
         return <Reports />;
+      case "release-reports":
+        return <ReleaseReports />;
+      case "event-reports":
+        return <EventReports />;
+      case "discard-reports":
+        return <DiscardReports />;
       case "recent-activity":
         return <RecentActivity />;
       default:
@@ -2944,147 +2957,148 @@ const handleNavigate = (screen) => {
                     </div>
                     <div style={styles.dropdownContent}>
                       {partnershipRequests.length > 0 ? (
-                      partnershipRequests.map((request) => {
-                        const displayName = request.displayName;
-                        const organizationType = request.organizationType;
-                        
-                        const avatar = displayName
-                          .split(' ')
-                          .map(word => word[0])
-                          .join('')
-                          .substring(0, 2)
-                          .toUpperCase();
-                        
-                        // Check if this mail is truly unread from database
-                        const isUnread = !request.is_viewed;
-                        
-                        return (
-                          <div 
-                            key={request.id} 
-                            style={{
-                              ...styles.dropdownItem,
-                              backgroundColor: isUnread ? 'white' : 'white',
-                              position: 'relative',
-                              cursor: 'pointer'
-                            }}
-                            onClick={async () => {
-                              // Mark as viewed when clicked
-                              if (isUnread) {
-                                try {
-                                  if (window.electronAPI && typeof window.electronAPI.markPartnershipRequestAsViewed === 'function') {
-                                    await window.electronAPI.markPartnershipRequestAsViewed(request.id);
-                                  } else {
-                                    // Fallback: store in localStorage
-                                    const viewedIds = JSON.parse(localStorage.getItem('viewedMailIds') || '[]');
-                                    if (!viewedIds.includes(request.id)) {
-                                      viewedIds.push(request.id);
-                                      localStorage.setItem('viewedMailIds', JSON.stringify(viewedIds));
+                        partnershipRequests.map((request) => {
+                          const displayName = request.displayName;
+                          const organizationType = request.organizationType;
+                          
+                          const avatar = displayName
+                            .split(' ')
+                            .map(word => word[0])
+                            .join('')
+                            .substring(0, 2)
+                            .toUpperCase();
+                          
+                          // Check if this mail is truly unread from database
+                          const isUnread = !request.is_viewed;
+                          
+                          return (
+                            <div 
+                              key={request.id} 
+                              style={{
+                                ...styles.dropdownItem,
+                                backgroundColor: isUnread ? 'white' : 'white',
+                                position: 'relative',
+                                cursor: 'pointer'
+                              }}
+                              onClick={async () => {
+                                // Mark as viewed when clicked
+                                if (isUnread) {
+                                  try {
+                                    if (window.electronAPI && typeof window.electronAPI.markPartnershipRequestAsViewed === 'function') {
+                                      await window.electronAPI.markPartnershipRequestAsViewed(request.id);
+                                    } else {
+                                      // Fallback: store in localStorage
+                                      const viewedIds = JSON.parse(localStorage.getItem('viewedMailIds') || '[]');
+                                      if (!viewedIds.includes(request.id)) {
+                                        viewedIds.push(request.id);
+                                        localStorage.setItem('viewedMailIds', JSON.stringify(viewedIds));
+                                      }
                                     }
+                                    await loadPartnershipRequests();
+                                  } catch (err) {
+                                    console.warn('Could not mark as viewed:', err.message);
+                                    // Still reload to update UI
+                                    await loadPartnershipRequests();
                                   }
-                                  await loadPartnershipRequests();
-                                } catch (err) {
-                                  console.warn('Could not mark as viewed:', err.message);
-                                  // Still reload to update UI
-                                  await loadPartnershipRequests();
                                 }
-                              }
-                            }}
-                          >
-                            {/* Avatar/Profile Photo */}
-                            <div style={{ position: 'relative', flexShrink: 0 }}>
-                              {request.profile_photo ? (
-                                <img
-                                  src={request.profile_photo}
-                                  alt={displayName}
+                              }}
+                            >
+                              {/* Avatar/Profile Photo */}
+                              <div style={{ position: 'relative', flexShrink: 0 }}>
+                                {request.profile_photo ? (
+                                  <img
+                                    src={request.profile_photo}
+                                    alt={displayName}
+                                    style={{
+                                      width: '32px',
+                                      height: '32px',
+                                      borderRadius: '50%',
+                                      objectFit: 'cover',
+                                    }}
+                                    onError={(e) => {
+                                      e.target.style.display = 'none';
+                                      e.target.nextElementSibling.style.display = 'flex';
+                                    }}
+                                  />
+                                ) : null}
+                                <div
                                   style={{
-                                    width: '32px',
-                                    height: '32px',
-                                    borderRadius: '50%',
-                                    objectFit: 'cover',
+                                    ...styles.messageAvatar,
+                                    ...styles.blueAvatar,
+                                    display: request.profile_photo ? 'none' : 'flex',
+                                    fontFamily: 'Barlow', 
+                                    fontWeight: 'bold',
+                                    fontSize: '12px', 
                                   }}
-                                  onError={(e) => {
-                                    e.target.style.display = 'none';
-                                    e.target.nextElementSibling.style.display = 'flex';
-                                  }}
-                                />
-                              ) : null}
-                              <div
-                                style={{
-                                  ...styles.messageAvatar,
-                                  ...styles.blueAvatar,
-                                  display: request.profile_photo ? 'none' : 'flex',
-                                  fontFamily: 'Barlow', 
-                                  fontWeight: 'bold',
-                                  fontSize: '12px', 
-                                }}
-                              >
-                                {avatar}
+                                >
+                                  {avatar}
+                                </div>
                               </div>
-                            </div>
-                            
-                            {/* Message Details */}
-                            <div style={{...styles.requestDetails, flex: 1}}>
-                              <p style={{
-                                ...styles.requestTitle,
-                                fontWeight: isUnread ? '600' : '400',
-                                color: isUnread ? '#111827' : '#000000ff',
-                                fontFamily: 'Barlow'
-                              }}>
-                                {displayName}
-                                {organizationType === 'barangay' && (
-                                  <span style={{ fontSize: '11px', color: '#000000ff', marginLeft: '6px' }}>
-                                    (Barangay)
-                                  </span>
-                                )}
-                              </p>
-                              <p style={{
-                                ...styles.requestSubtitle,
-                                color: isUnread ? '#6b7280' : '#000000ff',
-                                fontFamily: 'Barlow',
-                                fontWeight: 'bold'
-                              }}>
-                                Blood Drive - {new Date(request.event_date).toLocaleDateString('en-US', {
-                                  month: 'short',
-                                  day: 'numeric',
-                                  year: 'numeric'
-                                })}
-                              </p>
-                              {request.event_address && (
+                              
+                              {/* Message Details */}
+                              <div style={{...styles.requestDetails, flex: 1}}>
                                 <p style={{
-                                  ...styles.requestSubtitle,
-                                  fontSize: '11px',
-                                  marginTop: '2px',
-                                  color: isUnread ? '#9ca3af' : '#85898fff',
+                                  ...styles.requestTitle,
+                                  fontWeight: isUnread ? '600' : '400',
+                                  color: isUnread ? '#111827' : '#000000ff',
                                   fontFamily: 'Barlow'
                                 }}>
-                                  Organization: {request.event_address}
+                                  {displayName}
+                                  {organizationType === 'barangay' && (
+                                    <span style={{ fontSize: '11px', color: '#000000ff', marginLeft: '6px' }}>
+                                      (Barangay)
+                                    </span>
+                                  )}
                                 </p>
+                                <p style={{
+                                  ...styles.requestSubtitle,
+                                  color: isUnread ? '#6b7280' : '#000000ff',
+                                  fontFamily: 'Barlow',
+                                  fontWeight: 'bold'
+                                }}>
+                                  Blood Drive - {new Date(request.event_date).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric'
+                                  })}
+                                </p>
+                                {/* MODIFIED: Display organization_name instead of event_address */}
+                                {request.organization_name && (
+                                  <p style={{
+                                    ...styles.requestSubtitle,
+                                    fontSize: '11px',
+                                    marginTop: '2px',
+                                    color: isUnread ? '#9ca3af' : '#85898fff',
+                                    fontFamily: 'Barlow'
+                                  }}>
+                                    Organization: {request.organization_name}
+                                  </p>
+                                )}
+                              </div>
+                              
+                              {/* Unread indicator - only show if truly unread */}
+                              {isUnread && (
+                                <div style={{
+                                  width: '8px',
+                                  height: '8px',
+                                  backgroundColor: '#10b981',
+                                  borderRadius: '50%',
+                                  marginLeft: '8px',
+                                  flexShrink: 0
+                                }} />
                               )}
                             </div>
-                            
-                            {/* Unread indicator - only show if truly unread */}
-                            {isUnread && (
-                              <div style={{
-                                width: '8px',
-                                height: '8px',
-                                backgroundColor: '#10b981',
-                                borderRadius: '50%',
-                                marginLeft: '8px',
-                                flexShrink: 0
-                              }} />
-                            )}
+                          );
+                        })
+                      ) : (
+                        <div style={styles.dropdownItem}>
+                          <div style={styles.requestDetails}>
+                            <p style={{...styles.requestSubtitle, fontFamily: 'Barlow'}}>
+                              No partnership requests
+                            </p>
                           </div>
-                        );
-                      })
-                    ) : (
-                      <div style={styles.dropdownItem}>
-                        <div style={styles.requestDetails}>
-                          <p style={{...styles.requestSubtitle, fontFamily: 'Barlow'}}>
-                            No partnership requests
-                          </p>
                         </div>
-                      </div>
-                    )}
+                      )}
                     </div>
                     <div style={styles.dropdownFooter}>
                       <button

@@ -88,7 +88,8 @@ const dbService = {
           ELSE '-'
         END as modified,
         bs_category as category,
-        bs_source as source
+        bs_source as source,
+        bs_remarks as remarks
       FROM blood_stock 
       WHERE bs_category = 'Red Blood Cell' AND bs_status = 'Stored'
       ORDER BY bs_created_at DESC
@@ -125,7 +126,8 @@ const dbService = {
           ELSE '-'
         END as modified,
         bs_category as category,
-        bs_source as source
+        bs_source as source,
+        bs_remarks as remarks
       FROM blood_stock 
       WHERE bs_serial_id = $1 AND bs_category = 'Red Blood Cell' AND bs_status = 'Stored'
     `;
@@ -154,7 +156,8 @@ const dbService = {
             ELSE '-'
           END as modified,
           bs_category as category,
-          bs_source as source
+          bs_source as source, 
+          bs_remarks as remarks
         FROM blood_stock 
         WHERE bs_serial_id ILIKE $1 AND bs_category = 'Red Blood Cell' AND bs_status = 'Stored'
         ORDER BY bs_serial_id
@@ -385,7 +388,8 @@ const dbService = {
           ELSE '-'
         END as modified,
         bs_category as category,
-        bs_source as source
+        bs_source as source,
+        bs_remarks as remarks
       FROM blood_stock 
       WHERE 
         bs_category = 'Red Blood Cell' AND bs_status = 'Stored' AND (
@@ -393,7 +397,8 @@ const dbService = {
           bs_blood_type ILIKE $1 OR 
           bs_status ILIKE $1 OR
           bs_rh_factor ILIKE $1 OR
-          bs_source ILIKE $1
+          bs_source ILIKE $1 OR
+          bs_remarks ILIKE $1
         )
       ORDER BY bs_created_at DESC
     `;
@@ -697,7 +702,8 @@ const dbService = {
             ELSE '-'
           END as modified,
           bs_category as category,
-          bs_source as source  -- THIS LINE WAS MISSING
+          bs_source as source,
+          bs_remarks as remarks
         FROM blood_stock 
         WHERE bs_category = 'Platelet'
         ORDER BY bs_created_at DESC
@@ -902,6 +908,7 @@ const dbService = {
           bs_status as status,
           TO_CHAR(bs_created_at, 'MM/DD/YYYY-HH24:MI:SS') as created,
           bs_source as source,
+          bs_remarks as remarks,
           CASE 
             WHEN bs_modified_at IS NOT NULL 
             THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
@@ -914,7 +921,9 @@ const dbService = {
             bs_serial_id ILIKE $1 OR 
             bs_blood_type ILIKE $1 OR 
             bs_status ILIKE $1 OR
-            bs_rh_factor ILIKE $1
+            bs_rh_factor ILIKE $1 OR
+            bs_source ILIKE $1 OR
+            bs_remarks ILIKE $1
           )
         ORDER BY bs_created_at DESC
       `;
@@ -1063,6 +1072,7 @@ const dbService = {
           THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
           ELSE '-'
         END as modified,
+        bs_remarks as remarks,
         bs_category as category
       FROM blood_stock 
       WHERE bs_serial_id = $1 AND bs_category = 'Platelet' AND bs_status = 'Stored'
@@ -1092,7 +1102,8 @@ const dbService = {
             THEN TO_CHAR(bs_modified_at, 'MM/DD/YYYY-HH24:MI:SS')
             ELSE '-'
           END as modified,
-          bs_category as category
+          bs_category as category,
+          bs_remarks as remarks
         FROM blood_stock 
         WHERE bs_serial_id ILIKE $1 AND bs_category = 'Platelet' AND bs_status = 'Stored'
         ORDER BY bs_serial_id
@@ -1314,7 +1325,8 @@ const dbService = {
           ELSE '-'
         END as modified,
         bs_category as category,
-        bs_source as source
+        bs_source as source,
+        bs_remarks as remarks
       FROM blood_stock 
       WHERE bs_category = 'Plasma' AND bs_status = 'Stored'
       ORDER BY bs_created_at DESC
@@ -1351,7 +1363,8 @@ const dbService = {
           ELSE '-'
         END as modified,
         bs_category as category,
-        bs_source as source
+        bs_source as source,
+        bs_remarks as remarks
       FROM blood_stock 
       WHERE bs_serial_id = $1 AND bs_category = 'Plasma' AND bs_status = 'Stored'
     `;
@@ -1380,7 +1393,8 @@ const dbService = {
             ELSE '-'
           END as modified,
           bs_category as category,
-          bs_source as source
+          bs_source as source,
+          bs_remarks as remarks
         FROM blood_stock 
         WHERE bs_serial_id ILIKE $1 AND bs_category = 'Plasma' AND bs_status = 'Stored'
         ORDER BY bs_serial_id
@@ -1659,7 +1673,8 @@ const dbService = {
           ELSE '-'
         END as modified,
         bs_category as category,
-        bs_source as source
+        bs_source as source,
+        bs_remarks as remarks
       FROM blood_stock 
       WHERE 
         bs_category = 'Plasma' AND bs_status = 'Stored' AND (
@@ -1667,7 +1682,8 @@ const dbService = {
           bs_blood_type ILIKE $1 OR 
           bs_status ILIKE $1 OR
           bs_rh_factor ILIKE $1 OR
-          bs_source ILIKE $1
+          bs_source ILIKE $1 OR
+          bs_remarks ILIKE $1
         )
       ORDER BY bs_created_at DESC
     `;
@@ -2751,246 +2767,382 @@ const dbService = {
 
   // ========== RESTORE BLOOD STOCK METHODS ==========
 
-  async restoreBloodStock(serialIds) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
+async restoreBloodStock(serialIds, userData) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
 
-      const getReleasedQuery = `
-        SELECT * FROM released_blood 
+    const getReleasedQuery = `
+      SELECT * FROM released_blood 
+      WHERE rb_serial_id = ANY($1) AND rb_category = 'Red Blood Cell'
+    `;
+    const releasedResult = await client.query(getReleasedQuery, [serialIds]);
+
+    if (releasedResult.rows.length === 0) {
+      throw new Error("No released blood records found to restore");
+    }
+
+    let restoredCount = 0;
+    const serialIdsToDelete = [];
+
+    for (const record of releasedResult.rows) {
+      const checkExistingQuery = `
+        SELECT bs_id FROM blood_stock 
+        WHERE bs_serial_id = $1 AND bs_category = 'Red Blood Cell'
+      `;
+      const existingResult = await client.query(checkExistingQuery, [
+        record.rb_serial_id,
+      ]);
+
+      if (existingResult.rows.length > 0) {
+        console.warn(
+          `Serial ID ${record.rb_serial_id} already exists in blood_stock for Red Blood Cell category, will only remove from released_blood`
+        );
+        serialIdsToDelete.push(record.rb_serial_id);
+        continue;
+      }
+
+      const insertQuery = `
+        INSERT INTO blood_stock (
+          bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
+          bs_timestamp, bs_expiration_date, bs_status, bs_created_at, 
+          bs_category, bs_source, bs_remarks
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `;
+
+      const values = [
+        record.rb_serial_id,
+        record.rb_blood_type,
+        record.rb_rh_factor,
+        record.rb_volume,
+        record.rb_timestamp,
+        record.rb_expiration_date,
+        "Stored",
+        record.rb_created_at,
+        "Red Blood Cell",
+        record.rb_source || "Walk-In",
+        "Restored", 
+      ];
+
+      await client.query(insertQuery, values);
+      restoredCount++;
+      serialIdsToDelete.push(record.rb_serial_id);
+
+      const updateInvoiceItemQuery = `
+        UPDATE blood_invoice_items
+        SET bii_remarks = 'Restored'
+        WHERE bii_serial_id = $1
+      `;
+      await client.query(updateInvoiceItemQuery, [record.rb_serial_id]);
+    }
+
+    if (serialIdsToDelete.length > 0) {
+      const deleteQuery = `
+        DELETE FROM released_blood 
         WHERE rb_serial_id = ANY($1) AND rb_category = 'Red Blood Cell'
       `;
-      const releasedResult = await client.query(getReleasedQuery, [serialIds]);
+      await client.query(deleteQuery, [serialIdsToDelete]);
+    }
 
-      if (releasedResult.rows.length === 0) {
-        throw new Error("No released blood records found to restore");
-      }
-
-      let restoredCount = 0;
-      const serialIdsToDelete = [];
-
-      for (const record of releasedResult.rows) {
-        // Check if serial ID already exists in blood_stock for this category
-        const checkExistingQuery = `
-          SELECT bs_id FROM blood_stock 
-          WHERE bs_serial_id = $1 AND bs_category = 'Red Blood Cell'
-        `;
-        const existingResult = await client.query(checkExistingQuery, [
-          record.rb_serial_id,
-        ]);
-
-        if (existingResult.rows.length > 0) {
-          console.warn(
-            `Serial ID ${record.rb_serial_id} already exists in blood_stock for Red Blood Cell category, will only remove from released_blood`
-          );
-          serialIdsToDelete.push(record.rb_serial_id);
-          continue;
-        }
-
-        const insertQuery = `
-          INSERT INTO blood_stock (
-            bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
-            bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category, bs_source
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    // ✅ FIXED: Actually record the activity (was just logging before)
+    if (userData && userData.id && userData.fullName && restoredCount > 0) {
+      try {
+        const serialIdsList = serialIdsToDelete.join(", ");
+        const activityQuery = `
+          INSERT INTO recent_activity (
+            ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+            ra_entity_type, ra_entity_id, ra_details, ra_created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+          RETURNING ra_id
         `;
 
-        const values = [
-          record.rb_serial_id,
-          record.rb_blood_type,
-          record.rb_rh_factor,
-          record.rb_volume,
-          record.rb_timestamp,
-          record.rb_expiration_date,
-          "Stored",
-          record.rb_created_at,
-          "Red Blood Cell",
-          record.rb_source || "Walk-In",
+        const activityValues = [
+          userData.id,
+          userData.fullName,
+          "RESTORE",
+          `Restored ${restoredCount} Red Blood Cell unit(s): ${serialIdsList}`,
+          "blood_stock_rbc",
+          serialIdsList,
+          JSON.stringify({
+            restoredCount: restoredCount,
+            serialIds: serialIdsToDelete,
+            category: "Red Blood Cell",
+          }),
         ];
 
-        await client.query(insertQuery, values);
-        restoredCount++;
-        serialIdsToDelete.push(record.rb_serial_id);
+        const activityResult = await client.query(activityQuery, activityValues);
+        console.log("✓ Activity logged for RBC restore:", activityResult.rows[0]);
+      } catch (activityError) {
+        console.error(
+          "Failed to record restore activity (non-critical):",
+          activityError
+        );
       }
-
-      if (serialIdsToDelete.length > 0) {
-        const deleteQuery = `
-          DELETE FROM released_blood 
-          WHERE rb_serial_id = ANY($1) AND rb_category = 'Red Blood Cell'
-        `;
-        await client.query(deleteQuery, [serialIdsToDelete]);
-      }
-
-      await client.query("COMMIT");
-      return { success: true, restoredCount: restoredCount };
-    } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("Error restoring blood stock:", error);
-      throw error;
-    } finally {
-      client.release();
+    } else {
+      console.warn("⚠ No userData or no items restored - activity not logged");
     }
-  },
 
-  async restorePlasmaStock(serialIds) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
+    await client.query("COMMIT");
+    return { success: true, restoredCount: restoredCount };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error restoring blood stock:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
 
-      const getReleasedQuery = `
-        SELECT * FROM released_blood 
+async restorePlasmaStock(serialIds, userData) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const getReleasedQuery = `
+      SELECT * FROM released_blood 
+      WHERE rb_serial_id = ANY($1) AND rb_category = 'Plasma'
+    `;
+    const releasedResult = await client.query(getReleasedQuery, [serialIds]);
+
+    if (releasedResult.rows.length === 0) {
+      throw new Error("No released plasma records found to restore");
+    }
+
+    let restoredCount = 0;
+    const serialIdsToDelete = [];
+
+    for (const record of releasedResult.rows) {
+      const checkExistingQuery = `
+        SELECT bs_id FROM blood_stock 
+        WHERE bs_serial_id = $1 AND bs_category = 'Plasma'
+      `;
+      const existingResult = await client.query(checkExistingQuery, [
+        record.rb_serial_id,
+      ]);
+
+      if (existingResult.rows.length > 0) {
+        console.warn(
+          `Serial ID ${record.rb_serial_id} already exists in blood_stock for Plasma category, will only remove from released_blood`
+        );
+        serialIdsToDelete.push(record.rb_serial_id);
+        continue;
+      }
+
+      const insertQuery = `
+        INSERT INTO blood_stock (
+          bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
+          bs_timestamp, bs_expiration_date, bs_status, bs_created_at, 
+          bs_category, bs_source, bs_remarks
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `;
+
+      const values = [
+        record.rb_serial_id,
+        record.rb_blood_type,
+        record.rb_rh_factor,
+        record.rb_volume,
+        record.rb_timestamp,
+        record.rb_expiration_date,
+        "Stored",
+        record.rb_created_at,
+        "Plasma",
+        record.rb_source || "Walk-In",
+        "Restored",
+      ];
+
+      await client.query(insertQuery, values);
+      restoredCount++;
+      serialIdsToDelete.push(record.rb_serial_id);
+
+      const updateInvoiceItemQuery = `
+        UPDATE blood_invoice_items
+        SET bii_remarks = 'Restored'
+        WHERE bii_serial_id = $1
+      `;
+      await client.query(updateInvoiceItemQuery, [record.rb_serial_id]);
+    }
+
+    if (serialIdsToDelete.length > 0) {
+      const deleteQuery = `
+        DELETE FROM released_blood 
         WHERE rb_serial_id = ANY($1) AND rb_category = 'Plasma'
       `;
-      const releasedResult = await client.query(getReleasedQuery, [serialIds]);
+      await client.query(deleteQuery, [serialIdsToDelete]);
+    }
 
-      if (releasedResult.rows.length === 0) {
-        throw new Error("No released plasma records found to restore");
-      }
-
-      let restoredCount = 0;
-      const serialIdsToDelete = [];
-
-      for (const record of releasedResult.rows) {
-        // Check if serial ID already exists in blood_stock for this category
-        const checkExistingQuery = `
-          SELECT bs_id FROM blood_stock 
-          WHERE bs_serial_id = $1 AND bs_category = 'Plasma'
-        `;
-        const existingResult = await client.query(checkExistingQuery, [
-          record.rb_serial_id,
-        ]);
-
-        if (existingResult.rows.length > 0) {
-          console.warn(
-            `Serial ID ${record.rb_serial_id} already exists in blood_stock for Plasma category, will only remove from released_blood`
-          );
-          serialIdsToDelete.push(record.rb_serial_id);
-          continue;
-        }
-
-        const insertQuery = `
-          INSERT INTO blood_stock (
-            bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
-            bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category, bs_source
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    // ✅ FIXED: Actually record the activity
+    if (userData && userData.id && userData.fullName && restoredCount > 0) {
+      try {
+        const serialIdsList = serialIdsToDelete.join(", ");
+        const activityQuery = `
+          INSERT INTO recent_activity (
+            ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+            ra_entity_type, ra_entity_id, ra_details, ra_created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+          RETURNING ra_id
         `;
 
-        const values = [
-          record.rb_serial_id,
-          record.rb_blood_type,
-          record.rb_rh_factor,
-          record.rb_volume,
-          record.rb_timestamp,
-          record.rb_expiration_date,
-          "Stored",
-          record.rb_created_at,
-          "Plasma",
-          record.rb_source || "Walk-In",
+        const activityValues = [
+          userData.id,
+          userData.fullName,
+          "RESTORE",
+          `Restored ${restoredCount} Plasma unit(s): ${serialIdsList}`,
+          "blood_stock_plasma",
+          serialIdsList,
+          JSON.stringify({
+            restoredCount: restoredCount,
+            serialIds: serialIdsToDelete,
+            category: "Plasma",
+          }),
         ];
 
-        await client.query(insertQuery, values);
-        restoredCount++;
-        serialIdsToDelete.push(record.rb_serial_id);
+        const activityResult = await client.query(activityQuery, activityValues);
+        console.log("✓ Activity logged for Plasma restore:", activityResult.rows[0]);
+      } catch (activityError) {
+        console.error(
+          "Failed to record restore activity (non-critical):",
+          activityError
+        );
       }
-
-      if (serialIdsToDelete.length > 0) {
-        const deleteQuery = `
-          DELETE FROM released_blood 
-          WHERE rb_serial_id = ANY($1) AND rb_category = 'Plasma'
-        `;
-        await client.query(deleteQuery, [serialIdsToDelete]);
-      }
-
-      await client.query("COMMIT");
-      return { success: true, restoredCount: restoredCount };
-    } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("Error restoring plasma stock:", error);
-      throw error;
-    } finally {
-      client.release();
+    } else {
+      console.warn("⚠ No userData or no items restored - activity not logged");
     }
-  },
 
-  // Restore Platelet from released_blood back to blood_stock
-  async restorePlateletStock(serialIds) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
+    await client.query("COMMIT");
+    return { success: true, restoredCount: restoredCount };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error restoring plasma stock:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
 
-      const getReleasedQuery = `
-        SELECT * FROM released_blood 
+async restorePlateletStock(serialIds, userData) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const getReleasedQuery = `
+      SELECT * FROM released_blood 
+      WHERE rb_serial_id = ANY($1) AND rb_category = 'Platelet'
+    `;
+    const releasedResult = await client.query(getReleasedQuery, [serialIds]);
+
+    if (releasedResult.rows.length === 0) {
+      throw new Error("No released platelet records found to restore");
+    }
+
+    let restoredCount = 0;
+    const serialIdsToDelete = [];
+
+    for (const record of releasedResult.rows) {
+      const checkExistingQuery = `
+        SELECT bs_id FROM blood_stock 
+        WHERE bs_serial_id = $1 AND bs_category = 'Platelet'
+      `;
+      const existingResult = await client.query(checkExistingQuery, [
+        record.rb_serial_id,
+      ]);
+
+      if (existingResult.rows.length > 0) {
+        console.warn(
+          `Serial ID ${record.rb_serial_id} already exists in blood_stock for Platelet category, will only remove from released_blood`
+        );
+        serialIdsToDelete.push(record.rb_serial_id);
+        continue;
+      }
+
+      const insertQuery = `
+        INSERT INTO blood_stock (
+          bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
+          bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category, bs_source, bs_remarks
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `;
+
+      const values = [
+        record.rb_serial_id,
+        record.rb_blood_type,
+        record.rb_rh_factor,
+        record.rb_volume,
+        record.rb_timestamp,
+        record.rb_expiration_date,
+        "Stored",
+        record.rb_created_at,
+        "Platelet",
+        record.rb_source || "Walk-In",
+        "Restored",
+      ];
+
+      await client.query(insertQuery, values);
+      restoredCount++;
+      serialIdsToDelete.push(record.rb_serial_id);
+
+      const updateInvoiceItemQuery = `
+        UPDATE blood_invoice_items
+        SET bii_remarks = 'Restored'
+        WHERE bii_serial_id = $1
+      `;
+      await client.query(updateInvoiceItemQuery, [record.rb_serial_id]);
+    }
+
+    if (serialIdsToDelete.length > 0) {
+      const deleteQuery = `
+        DELETE FROM released_blood 
         WHERE rb_serial_id = ANY($1) AND rb_category = 'Platelet'
       `;
-      const releasedResult = await client.query(getReleasedQuery, [serialIds]);
+      await client.query(deleteQuery, [serialIdsToDelete]);
+    }
 
-      if (releasedResult.rows.length === 0) {
-        throw new Error("No released platelet records found to restore");
-      }
-
-      let restoredCount = 0;
-      const serialIdsToDelete = [];
-
-      for (const record of releasedResult.rows) {
-        // Check if serial ID already exists in blood_stock for this category
-        const checkExistingQuery = `
-          SELECT bs_id FROM blood_stock 
-          WHERE bs_serial_id = $1 AND bs_category = 'Platelet'
-        `;
-        const existingResult = await client.query(checkExistingQuery, [
-          record.rb_serial_id,
-        ]);
-
-        if (existingResult.rows.length > 0) {
-          console.warn(
-            `Serial ID ${record.rb_serial_id} already exists in blood_stock for Platelet category, will only remove from released_blood`
-          );
-          serialIdsToDelete.push(record.rb_serial_id);
-          continue;
-        }
-
-        const insertQuery = `
-          INSERT INTO blood_stock (
-            bs_serial_id, bs_blood_type, bs_rh_factor, bs_volume,
-            bs_timestamp, bs_expiration_date, bs_status, bs_created_at, bs_category, bs_source
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    // ✅ FIXED: Actually record the activity
+    if (userData && userData.id && userData.fullName && restoredCount > 0) {
+      try {
+        const serialIdsList = serialIdsToDelete.join(", ");
+        const activityQuery = `
+          INSERT INTO recent_activity (
+            ra_user_id, ra_user_name, ra_action_type, ra_action_description,
+            ra_entity_type, ra_entity_id, ra_details, ra_created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+          RETURNING ra_id
         `;
 
-        const values = [
-          record.rb_serial_id,
-          record.rb_blood_type,
-          record.rb_rh_factor,
-          record.rb_volume,
-          record.rb_timestamp,
-          record.rb_expiration_date,
-          "Stored",
-          record.rb_created_at,
-          "Platelet",
-          record.rb_source || "Walk-In",
+        const activityValues = [
+          userData.id,
+          userData.fullName,
+          "RESTORE",
+          `Restored ${restoredCount} Platelet unit(s): ${serialIdsList}`,
+          "blood_stock_platelet",
+          serialIdsList,
+          JSON.stringify({
+            restoredCount: restoredCount,
+            serialIds: serialIdsToDelete,
+            category: "Platelet",
+          }),
         ];
 
-        await client.query(insertQuery, values);
-        restoredCount++;
-        serialIdsToDelete.push(record.rb_serial_id);
+        const activityResult = await client.query(activityQuery, activityValues);
+        console.log("✓ Activity logged for Platelet restore:", activityResult.rows[0]);
+      } catch (activityError) {
+        console.error(
+          "Failed to record restore activity (non-critical):",
+          activityError
+        );
       }
-
-      if (serialIdsToDelete.length > 0) {
-        const deleteQuery = `
-          DELETE FROM released_blood 
-          WHERE rb_serial_id = ANY($1) AND rb_category = 'Platelet'
-        `;
-        await client.query(deleteQuery, [serialIdsToDelete]);
-      }
-
-      await client.query("COMMIT");
-      return { success: true, restoredCount: restoredCount };
-    } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("Error restoring platelet stock:", error);
-      throw error;
-    } finally {
-      client.release();
+    } else {
+      console.warn("⚠ No userData or no items restored - activity not logged");
     }
-  },
+
+    await client.query("COMMIT");
+    return { success: true, restoredCount: restoredCount };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error restoring platelet stock:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
 
   // ========== NON-CONFORMING METHODS ==========
 
@@ -5447,7 +5599,7 @@ const dbService = {
         releaseData.releasedBy || "",
         releaseData.requestReference || "",
         releaseData.releasedBy || "",
-        releaseData.verifiedBy || "",
+        releaseData.recipientDesignation || "",
       ];
 
       const invoiceResult = await client.query(
@@ -8291,91 +8443,165 @@ async getAllPartnershipRequests(status = null) {
     throw error;
   }
 },
-
   // Update partnership request status
   async updatePartnershipRequestStatus(requestId, status, approvedBy = null, declineReason = null) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      const updateQuery = `
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    
+    // Get the partnership request details first
+    const getRequestQuery = `
+      SELECT * FROM partnership_requests WHERE id = $1
+    `;
+    const requestResult = await client.query(getRequestQuery, [requestId]);
+    
+    if (requestResult.rows.length === 0) {
+      throw new Error('Partnership request not found');
+    }
+    
+    const partnershipRequest = requestResult.rows[0];
+    
+    // Update partnership request status
+    const updateQuery = `
       UPDATE partnership_requests
-      SET status = $1, approved_by = $2, approved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      SET status = $1, 
+          approved_by = $2, 
+          approved_at = CURRENT_TIMESTAMP, 
+          updated_at = CURRENT_TIMESTAMP
       WHERE id = $3
       RETURNING *
     `;
 
-      const result = await client.query(updateQuery, [
-        status,
-        approvedBy,
+    const result = await client.query(updateQuery, [
+      status,
+      approvedBy,
+      requestId,
+    ]);
+
+    // ✅ NEW: If approved, insert into event_approved_items table
+    if (status === 'approved') {
+      const insertEventQuery = `
+        INSERT INTO event_approved_items (
+          eai_partnership_request_id,
+          eai_organization_name,
+          eai_organization_barangay,
+          eai_contact_name,
+          eai_event_date,
+          eai_event_time,
+          eai_event_address,
+          eai_approved_by,
+          eai_approved_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      `;
+      
+      await client.query(insertEventQuery, [
         requestId,
+        partnershipRequest.organization_name,
+        partnershipRequest.organization_barangay,
+        partnershipRequest.contact_name,
+        partnershipRequest.event_date,
+        partnershipRequest.event_time,
+        partnershipRequest.event_address,
+        approvedBy
       ]);
-
-      const partnershipRequest = result.rows[0];
-
-      // Create a mail entry in the organization database
-      try {
-        const mailId = `MAIL-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const subject = status === 'approved'
-          ? `Partnership Request Approved - Blood Drive at ${partnershipRequest.event_address || 'Your Location'}`
-          : `Partnership Request Declined - Blood Drive Application`;
-
-        const preview = status === 'approved'
-          ? 'Your partnership request has been approved by the Regional Blood Center...'
-          : 'Your partnership request has been declined by the Regional Blood Center...';
-
-        const body = status === 'approved'
-          ? `Dear ${partnershipRequest.contact_name},\n\nWe are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center.\n\nBlood Drive Details:\n- Organization: ${partnershipRequest.organization_name}\n- Date: ${new Date(partnershipRequest.event_date).toLocaleDateString()}\n- Time: ${partnershipRequest.event_time}\n- Location: ${partnershipRequest.event_address}\n\nNext Steps:\n- Your blood drive is now scheduled in the system\n- Our team will contact you shortly to coordinate the details\n- Please prepare the necessary documentation and venue arrangements\n- Check your calendar for the scheduled appointment\n\nIf you have any questions, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team`
-          : `Dear ${partnershipRequest.contact_name},\n\nWe regret to inform you that your partnership request has been DECLINED by the Regional Blood Center.\n\n${declineReason ? `Reason: ${declineReason}\n\n` : ''}If you have any questions or would like to discuss this decision, please contact us at admin@regionalbloodcenter.org\n\nBest regards,\nRegional Blood Center Team`;
-
-        const insertMailQuery = `
-          INSERT INTO mails (
-            mail_id, from_name, from_email, subject, preview, body,
-            status, appointment_id, decline_reason,
-            request_title, requestor, request_organization, date_submitted,
-            contact_name, contact_email, contact_phone, event_address,
-            organization_type, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
-          RETURNING *
-        `;
-
-        const mailValues = [
-          mailId,
-          'Regional Blood Center',
-          'admin@regionalbloodcenter.org',
-          subject,
-          preview,
-          body,
-          status,
-          partnershipRequest.appointment_id,
-          declineReason,
-          `Blood Drive Partnership - ${partnershipRequest.organization_name}`,
-          approvedBy || 'RBC Admin',
-          partnershipRequest.organization_name,
-          partnershipRequest.created_at,
-          partnershipRequest.contact_name,
-          partnershipRequest.contact_email,
-          partnershipRequest.contact_phone,
-          partnershipRequest.event_address,
-          'organization'
-        ];
-
-        await orgPool.query(insertMailQuery, mailValues);
-        console.log(`[DB] Mail created for organization: ${partnershipRequest.organization_name} with status: ${status}`);
-      } catch (mailError) {
-        console.error('[DB] Error creating mail for organization:', mailError);
-        // Don't fail the whole transaction if mail creation fails
-      }
-
-      await client.query("COMMIT");
-      return partnershipRequest;
-    } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("[DB] Error updating partnership request status:", error);
-      throw error;
-    } finally {
-      client.release();
+      
+      console.log(`✅ Event approved item created for partnership request ${requestId}`);
     }
-  },
+
+    // Create mail notification (existing code)
+    try {
+      const mailId = `MAIL-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Determine display name
+      const displayName = partnershipRequest.organization_barangay 
+        ? `${partnershipRequest.organization_barangay} (Barangay)`
+        : partnershipRequest.organization_name;
+      
+      const subject = status === 'approved'
+        ? `Partnership Request Approved - Blood Drive at ${partnershipRequest.event_address || 'Your Location'}`
+        : `Partnership Request Declined - Blood Drive Application`;
+
+      const preview = status === 'approved'
+        ? 'Your partnership request has been approved by the Regional Blood Center...'
+        : 'Your partnership request has been declined by the Regional Blood Center...';
+
+      const body = status === 'approved'
+        ? `Dear ${partnershipRequest.contact_name},\n\nWe are pleased to inform you that your partnership request has been APPROVED by the Regional Blood Center.\n\nBlood Drive Details:\n- Organization: ${displayName}\n- Date: ${new Date(partnershipRequest.event_date).toLocaleDateString()}\n- Time: ${partnershipRequest.event_time}\n- Location: ${partnershipRequest.event_address}\n\nNext Steps:\n- Your blood drive is now scheduled in the system\n- Our team will contact you shortly to coordinate the details\n- Please prepare the necessary documentation and venue arrangements\n- Check your calendar for the scheduled appointment\n\nBest regards,\nRegional Blood Center Team`
+        : `Dear ${partnershipRequest.contact_name},\n\nWe regret to inform you that your partnership request has been DECLINED.\n\n${declineReason ? `Reason: ${declineReason}\n\n` : ''}If you have any questions, please contact us.\n\nBest regards,\nRegional Blood Center Team`;
+
+      const insertMailQuery = `
+        INSERT INTO mails (
+          mail_id, from_name, from_email, subject, preview, body,
+          status, appointment_id, decline_reason,
+          request_title, requestor, request_organization, date_submitted,
+          contact_name, contact_email, contact_phone, event_address,
+          organization_type, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
+      `;
+
+      await orgPool.query(insertMailQuery, [
+        mailId,
+        'Regional Blood Center',
+        'admin@regionalbloodcenter.org',
+        subject,
+        preview,
+        body,
+        status,
+        partnershipRequest.appointment_id,
+        declineReason,
+        `Blood Drive Partnership - ${displayName}`,
+        approvedBy || 'RBC Admin',
+        displayName,
+        partnershipRequest.created_at,
+        partnershipRequest.contact_name,
+        partnershipRequest.contact_email,
+        partnershipRequest.contact_phone,
+        partnershipRequest.event_address,
+        'organization'
+      ]);
+      
+      console.log(`📧 Mail sent to ${displayName}`);
+    } catch (mailError) {
+      console.error('[DB] Error creating mail:', mailError);
+    }
+
+    await client.query("COMMIT");
+    return partnershipRequest;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("[DB] Error updating partnership request status:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
+// Get all approved events
+async getAllApprovedEvents() {
+  try {
+    const query = `
+      SELECT 
+        eai_id as id,
+        eai_partnership_request_id as "partnershipRequestId",
+        eai_organization_name as "organizationName",
+        eai_organization_barangay as "organizationBarangay",
+        eai_contact_name as "contactName",
+        TO_CHAR(eai_event_date, 'YYYY-MM-DD') as "eventDate",
+        eai_event_time as "eventTime",
+        eai_event_address as "eventAddress",
+        eai_approved_by as "approvedBy",
+        TO_CHAR(eai_approved_at, 'YYYY-MM-DD HH24:MI:SS') as "approvedAt"
+      FROM event_approved_items
+      ORDER BY eai_event_date DESC
+    `;
+    
+    const result = await pool.query(query);
+    return result.rows;
+  } catch (error) {
+    console.error("[DB] Error fetching approved events:", error);
+    throw error;
+  }
+},
 
   // Get pending partnership requests count
   async getPendingPartnershipRequestsCount() {
@@ -8971,60 +9197,114 @@ async declineTempDonorRecords(tdrIds, declinedBy, declineReason) {
     }
   },
 
-  async getAllActivities(limit = 100, offset = 0) {
-    try {
-      const query = `
-        SELECT 
-          ra_id as id,
-          ra_user_id as user_id,
-          ra_user_name as user_name,
-          ra_action_type as action_type,
-          ra_action_description as action_description,
-          ra_entity_type as entity_type,
-          ra_entity_id as entity_id,
-          ra_details as details,
-          ra_created_at as created_at
-        FROM recent_activity
-        ORDER BY ra_created_at DESC
-        LIMIT $1 OFFSET $2
-      `;
+  async getAllActivities(limit = null, offset = 0) {
+  try {
+    let query = `
+      SELECT 
+        ra_id as id,
+        ra_user_id as user_id,
+        ra_user_name as user_name,
+        ra_action_type as action_type,
+        ra_action_description as action_description,
+        ra_entity_type as entity_type,
+        ra_entity_id as entity_id,
+        ra_details as details,
+        ra_created_at as created_at
+      FROM recent_activity
+      ORDER BY ra_created_at DESC
+    `;
+    
+    // Only add LIMIT if specified
+    if (limit !== null) {
+      query += ` LIMIT $1 OFFSET $2`;
       const result = await pool.query(query, [limit, offset]);
-      console.log(`Fetched ${result.rows.length} activities`);
+      console.log(`Fetched ${result.rows.length} activities (limited)`);
       return result.rows;
-    } catch (error) {
-      console.error("Error fetching all activities:", error);
-      throw error;
+    } else {
+      const result = await pool.query(query);
+      console.log(`Fetched ${result.rows.length} activities (unlimited)`);
+      return result.rows;
     }
-  },
+  } catch (error) {
+    console.error("Error fetching all activities:", error);
+    throw error;
+  }
+},
 
-  async getUserActivities(userId, limit = 100, offset = 0) {
-    try {
-      const query = `
-        SELECT 
-          ra_id as id,
-          ra_user_id as user_id,
-          ra_user_name as user_name,
-          ra_action_type as action_type,
-          ra_action_description as action_description,
-          ra_entity_type as entity_type,
-          ra_entity_id as entity_id,
-          ra_details as details,
-          ra_created_at as created_at
-        FROM recent_activity
-        WHERE ra_user_id = $1
-        ORDER BY ra_created_at DESC
-        LIMIT $2 OFFSET $3
-      `;
+async getUserActivities(userId, limit = null, offset = 0) {
+  try {
+    let query = `
+      SELECT 
+        ra_id as id,
+        ra_user_id as user_id,
+        ra_user_name as user_name,
+        ra_action_type as action_type,
+        ra_action_description as action_description,
+        ra_entity_type as entity_type,
+        ra_entity_id as entity_id,
+        ra_details as details,
+        ra_created_at as created_at
+      FROM recent_activity
+      WHERE ra_user_id = $1
+      ORDER BY ra_created_at DESC
+    `;
+    
+    // Only add LIMIT if specified
+    if (limit !== null) {
+      query += ` LIMIT $2 OFFSET $3`;
       const result = await pool.query(query, [userId, limit, offset]);
-      console.log(
-        `Fetched ${result.rows.length} activities for user ${userId}`
-      );
+      console.log(`Fetched ${result.rows.length} activities for user ${userId} (limited)`);
       return result.rows;
-    } catch (error) {
-      console.error("Error fetching user activities:", error);
-      throw error;
+    } else {
+      const result = await pool.query(query, [userId]);
+      console.log(`Fetched ${result.rows.length} activities for user ${userId} (unlimited)`);
+      return result.rows;
     }
-  },
+  } catch (error) {
+    console.error("Error fetching user activities:", error);
+    throw error;
+  }
+},
+
+async searchActivities(searchTerm, limit = null) {
+  try {
+    let query = `
+      SELECT 
+        ra_id as id,
+        ra_user_id as user_id,
+        ra_user_name as user_name,
+        ra_action_type as action_type,
+        ra_action_description as action_description,
+        ra_entity_type as entity_type,
+        ra_entity_id as entity_id,
+        ra_details as details,
+        ra_created_at as created_at
+      FROM recent_activity
+      WHERE 
+        ra_user_name ILIKE $1 OR
+        ra_action_type ILIKE $1 OR
+        ra_action_description ILIKE $1 OR
+        ra_entity_type ILIKE $1 OR
+        ra_entity_id ILIKE $1
+      ORDER BY ra_created_at DESC
+    `;
+    
+    // Only add LIMIT if specified
+    if (limit !== null) {
+      query += ` LIMIT $2`;
+      const result = await pool.query(query, [`%${searchTerm}%`, limit]);
+      console.log(`Search found ${result.rows.length} activities (limited)`);
+      return result.rows;
+    } else {
+      const result = await pool.query(query, [`%${searchTerm}%`]);
+      console.log(`Search found ${result.rows.length} activities (unlimited)`);
+      return result.rows;
+    }
+  } catch (error) {
+    console.error("Error searching activities:", error);
+    throw error;
+  }
+},
 
   async searchActivities(searchTerm, limit = 100) {
     try {
@@ -9523,6 +9803,1505 @@ async checkAndCreateStockAlerts() {
       throw error;
     }
   },
+
+  // ========== RELEASED BLOOD REPORTS METHODS ==========
+
+async generateReleasedBloodQuarterlyReport(quarter, year) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Determine quarter months
+    let monthStart, monthEnd, monthLabels;
+    switch (quarter) {
+      case "1st Quarter":
+        monthStart = 1;
+        monthEnd = 3;
+        monthLabels = ["Jan", "Feb", "Mar"];
+        break;
+      case "2nd Quarter":
+        monthStart = 4;
+        monthEnd = 6;
+        monthLabels = ["Apr", "May", "Jun"];
+        break;
+      case "3rd Quarter":
+        monthStart = 7;
+        monthEnd = 9;
+        monthLabels = ["Jul", "Aug", "Sep"];
+        break;
+      case "4th Quarter":
+        monthStart = 10;
+        monthEnd = 12;
+        monthLabels = ["Oct", "Nov", "Dec"];
+        break;
+      default:
+        throw new Error("Invalid quarter");
+    }
+
+    const yearInt = parseInt(year);
+
+    // Check if quarter has ended
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    if (yearInt > currentYear) {
+      throw new Error(`Cannot generate report for future year ${yearInt}`);
+    }
+
+    if (yearInt === currentYear && currentMonth <= monthEnd) {
+      throw new Error(`Quarter ${quarter} of ${yearInt} has not ended yet`);
+    }
+
+    // Check if there's any data for this quarter
+    const dataCheckQuery = `
+      SELECT COUNT(*) as count
+      FROM released_blood
+      WHERE 
+        EXTRACT(YEAR FROM rb_date_of_release)::integer = $1::integer
+        AND EXTRACT(MONTH FROM rb_date_of_release)::integer BETWEEN $2::integer AND $3::integer
+        AND rb_status = 'Released'
+        AND rb_category = 'Red Blood Cell'
+    `;
+
+    const dataCheckResult = await client.query(dataCheckQuery, [
+      yearInt,
+      monthStart,
+      monthEnd,
+    ]);
+    const hasData = parseInt(dataCheckResult.rows[0].count) > 0;
+
+    if (!hasData) {
+      console.log(`No released blood data found for ${quarter} ${yearInt}, skipping...`);
+      await client.query("ROLLBACK");
+      return {
+        success: false,
+        message: `No released blood data available for ${quarter} ${yearInt}`,
+      };
+    }
+
+    // Generate report ID
+    const reportIdQuery = `
+      SELECT COALESCE(
+        'REL-DOC-' || $1::text || '-' || 
+        LPAD((
+          SELECT COUNT(*) + 1 
+          FROM released_blood_reports 
+          WHERE rbr_year = $1::integer
+        )::text, 3, '0'),
+        'REL-DOC-' || $1::text || '-001'
+      ) as report_id
+    `;
+    const reportIdResult = await client.query(reportIdQuery, [yearInt]);
+    const reportId = reportIdResult.rows[0].report_id;
+
+    // Query to get released blood data by blood type and month
+    const statsQuery = `
+      WITH quarter_data AS (
+        SELECT 
+          rb_blood_type,
+          rb_rh_factor,
+          EXTRACT(MONTH FROM rb_date_of_release)::integer as month_num,
+          COUNT(*)::integer as count
+        FROM released_blood
+        WHERE 
+          EXTRACT(YEAR FROM rb_date_of_release)::integer = $1::integer
+          AND EXTRACT(MONTH FROM rb_date_of_release)::integer BETWEEN $2::integer AND $3::integer
+          AND rb_status = 'Released'
+          AND rb_category = 'Red Blood Cell'
+        GROUP BY rb_blood_type, rb_rh_factor, EXTRACT(MONTH FROM rb_date_of_release)
+      )
+      SELECT 
+        rb_blood_type || rb_rh_factor as blood_type,
+        month_num,
+        SUM(count)::integer as total
+      FROM quarter_data
+      GROUP BY rb_blood_type, rb_rh_factor, month_num
+    `;
+
+    const statsResult = await client.query(statsQuery, [
+      yearInt,
+      monthStart,
+      monthEnd,
+    ]);
+
+    // Initialize counters
+    const bloodTypes = ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"];
+    const monthlyCounts = {
+      [monthStart]: {},
+      [monthStart + 1]: {},
+      [monthStart + 2]: {},
+    };
+    const quarterTotals = {};
+
+    // Initialize all blood types to 0
+    bloodTypes.forEach((type) => {
+      quarterTotals[type] = 0;
+      monthlyCounts[monthStart][type] = 0;
+      monthlyCounts[monthStart + 1][type] = 0;
+      monthlyCounts[monthStart + 2][type] = 0;
+    });
+
+    // Process query results
+    statsResult.rows.forEach((row) => {
+      const type = row.blood_type;
+      const month = parseInt(row.month_num);
+      const count = parseInt(row.total);
+
+      if (!bloodTypes.includes(type)) return;
+
+      if (monthlyCounts[month]) {
+        monthlyCounts[month][type] = count;
+        quarterTotals[type] += count;
+      }
+    });
+
+    // Calculate grand total
+    const grandTotal = Object.values(quarterTotals).reduce(
+      (sum, val) => sum + val,
+      0
+    );
+
+    // Calculate monthly percentages
+    const monthlyPercentages = {};
+    Object.keys(monthlyCounts).forEach((month) => {
+      monthlyPercentages[month] = {};
+      bloodTypes.forEach((type) => {
+        monthlyPercentages[month][type] =
+          grandTotal > 0
+            ? ((monthlyCounts[month][type] / grandTotal) * 100).toFixed(2)
+            : "0.00";
+      });
+    });
+
+    // Calculate overall percentages
+    const percentages = {};
+    bloodTypes.forEach((type) => {
+      percentages[type] =
+        grandTotal > 0
+          ? ((quarterTotals[type] / grandTotal) * 100).toFixed(2)
+          : "0.00";
+    });
+
+    // Prepare monthly data as JSONB
+    const month1Data = {
+      counts: monthlyCounts[monthStart],
+      percentages: monthlyPercentages[monthStart],
+      total: Object.values(monthlyCounts[monthStart]).reduce(
+        (sum, val) => sum + val,
+        0
+      ),
+    };
+    const month2Data = {
+      counts: monthlyCounts[monthStart + 1],
+      percentages: monthlyPercentages[monthStart + 1],
+      total: Object.values(monthlyCounts[monthStart + 1]).reduce(
+        (sum, val) => sum + val,
+        0
+      ),
+    };
+    const month3Data = {
+      counts: monthlyCounts[monthStart + 2],
+      percentages: monthlyPercentages[monthStart + 2],
+      total: Object.values(monthlyCounts[monthStart + 2]).reduce(
+        (sum, val) => sum + val,
+        0
+      ),
+    };
+
+    // Calculate monthly total percentages
+    month1Data.totalPct =
+      grandTotal > 0
+        ? ((month1Data.total / grandTotal) * 100).toFixed(1)
+        : "0.0";
+    month2Data.totalPct =
+      grandTotal > 0
+        ? ((month2Data.total / grandTotal) * 100).toFixed(1)
+        : "0.0";
+    month3Data.totalPct =
+      grandTotal > 0
+        ? ((month3Data.total / grandTotal) * 100).toFixed(1)
+        : "0.0";
+
+    // Insert or update report
+    const insertQuery = `
+      INSERT INTO released_blood_reports (
+        rbr_report_id, rbr_quarter, rbr_year, rbr_month_start, rbr_month_end, rbr_month_labels,
+        rbr_o_positive, rbr_o_negative, rbr_a_positive, rbr_a_negative,
+        rbr_b_positive, rbr_b_negative, rbr_ab_positive, rbr_ab_negative,
+        rbr_o_positive_pct, rbr_o_negative_pct, rbr_a_positive_pct, rbr_a_negative_pct,
+        rbr_b_positive_pct, rbr_b_negative_pct, rbr_ab_positive_pct, rbr_ab_negative_pct,
+        rbr_total_count, rbr_month1_data, rbr_month2_data, rbr_month3_data,
+        rbr_created_by, rbr_created_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6::text[],
+        $7, $8, $9, $10, $11, $12, $13, $14,
+        $15, $16, $17, $18, $19, $20, $21, $22,
+        $23, $24::jsonb, $25::jsonb, $26::jsonb, $27, NOW()
+      )
+      ON CONFLICT (rbr_quarter, rbr_year)
+      DO UPDATE SET
+        rbr_report_id = $1,
+        rbr_month_start = $4,
+        rbr_month_end = $5,
+        rbr_month_labels = $6::text[],
+        rbr_o_positive = $7, 
+        rbr_o_negative = $8, 
+        rbr_a_positive = $9, 
+        rbr_a_negative = $10,
+        rbr_b_positive = $11, 
+        rbr_b_negative = $12, 
+        rbr_ab_positive = $13, 
+        rbr_ab_negative = $14,
+        rbr_o_positive_pct = $15, 
+        rbr_o_negative_pct = $16, 
+        rbr_a_positive_pct = $17, 
+        rbr_a_negative_pct = $18,
+        rbr_b_positive_pct = $19, 
+        rbr_b_negative_pct = $20, 
+        rbr_ab_positive_pct = $21, 
+        rbr_ab_negative_pct = $22,
+        rbr_total_count = $23, 
+        rbr_month1_data = $24::jsonb, 
+        rbr_month2_data = $25::jsonb, 
+        rbr_month3_data = $26::jsonb,
+        rbr_modified_at = NOW()
+      RETURNING rbr_id
+    `;
+
+    const values = [
+      reportId,
+      quarter,
+      yearInt,
+      monthStart,
+      monthEnd,
+      monthLabels,
+      quarterTotals["O+"],
+      quarterTotals["O-"],
+      quarterTotals["A+"],
+      quarterTotals["A-"],
+      quarterTotals["B+"],
+      quarterTotals["B-"],
+      quarterTotals["AB+"],
+      quarterTotals["AB-"],
+      percentages["O+"],
+      percentages["O-"],
+      percentages["A+"],
+      percentages["A-"],
+      percentages["B+"],
+      percentages["B-"],
+      percentages["AB+"],
+      percentages["AB-"],
+      grandTotal,
+      JSON.stringify(month1Data),
+      JSON.stringify(month2Data),
+      JSON.stringify(month3Data),
+      "Auto-generated",
+    ];
+
+    await client.query(insertQuery, values);
+    await client.query("COMMIT");
+
+    console.log(`✓ Generated released blood report for ${quarter} ${yearInt}`);
+
+    return {
+      success: true,
+      reportId,
+      quarter,
+      year: yearInt,
+      total: grandTotal,
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error generating released blood quarterly report:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
+// Get all released blood reports
+async getAllReleasedBloodReports() {
+  try {
+    const query = `
+      SELECT 
+        rbr_id as id,
+        rbr_report_id as "docId",
+        rbr_quarter as quarter,
+        rbr_year as year,
+        rbr_month_start as "monthStart",
+        rbr_month_end as "monthEnd",
+        rbr_month_labels as "monthLabels",
+        rbr_o_positive as "oPositive",
+        rbr_o_negative as "oNegative",
+        rbr_a_positive as "aPositive",
+        rbr_a_negative as "aNegative",
+        rbr_b_positive as "bPositive",
+        rbr_b_negative as "bNegative",
+        rbr_ab_positive as "abPositive",
+        rbr_ab_negative as "abNegative",
+        rbr_o_positive_pct as "oPositivePct",
+        rbr_o_negative_pct as "oNegativePct",
+        rbr_a_positive_pct as "aPositivePct",
+        rbr_a_negative_pct as "aNegativePct",
+        rbr_b_positive_pct as "bPositivePct",
+        rbr_b_negative_pct as "bNegativePct",
+        rbr_ab_positive_pct as "abPositivePct",
+        rbr_ab_negative_pct as "abNegativePct",
+        rbr_total_count as total,
+        rbr_month1_data as "month1Data",
+        rbr_month2_data as "month2Data",
+        rbr_month3_data as "month3Data",
+        rbr_created_by as "createdBy",
+        TO_CHAR(rbr_created_at, 'MM/DD/YYYY') as "dateCreated"
+      FROM released_blood_reports
+      ORDER BY rbr_year DESC, rbr_month_start DESC
+    `;
+
+    const result = await pool.query(query);
+    return result.rows.map((row) => ({
+      ...row,
+      selected: false,
+    }));
+  } catch (error) {
+    console.error("Error fetching released blood reports:", error);
+    throw error;
+  }
+},
+
+// Generate all released blood quarterly reports for a year
+async generateAllReleasedBloodQuarterlyReports(year) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+
+  const quarters = [
+    { name: "1st Quarter", endMonth: 3 },
+    { name: "2nd Quarter", endMonth: 6 },
+    { name: "3rd Quarter", endMonth: 9 },
+    { name: "4th Quarter", endMonth: 12 },
+  ];
+
+  const generatedReports = [];
+
+  for (const quarter of quarters) {
+    try {
+      if (
+        year < currentYear ||
+        (year === currentYear && currentMonth > quarter.endMonth)
+      ) {
+        const report = await this.generateReleasedBloodQuarterlyReport(
+          quarter.name,
+          year
+        );
+        if (report.success) {
+          generatedReports.push(report);
+        }
+      }
+    } catch (error) {
+      console.log(
+        `Error generating released blood ${quarter.name} ${year}: ${error.message}`
+      );
+    }
+  }
+
+  return generatedReports;
+},
+
+// Get all years with released blood data
+async getAllYearsWithReleasedBloodData() {
+  try {
+    const query = `
+      SELECT DISTINCT EXTRACT(YEAR FROM rb_date_of_release)::integer as year
+      FROM released_blood
+      WHERE rb_status = 'Released' AND rb_category = 'Red Blood Cell'
+      ORDER BY year DESC
+    `;
+
+    const result = await pool.query(query);
+    return result.rows.map((row) => row.year);
+  } catch (error) {
+    console.error("Error fetching years with released blood data:", error);
+    throw error;
+  }
+},
+
+// Generate all historical released blood reports
+async generateAllHistoricalReleasedBloodReports() {
+  try {
+    const years = await this.getAllYearsWithReleasedBloodData();
+    console.log("Found released blood data for years:", years);
+
+    const allGeneratedReports = [];
+
+    for (const year of years) {
+      console.log(`Generating released blood reports for year ${year}...`);
+      const yearReports = await this.generateAllReleasedBloodQuarterlyReports(year);
+      allGeneratedReports.push(...yearReports);
+    }
+
+    return allGeneratedReports;
+  } catch (error) {
+    console.error("Error generating all historical released blood reports:", error);
+    throw error;
+  }
+},
+
+// Search released blood reports
+async searchReleasedBloodReports(searchTerm) {
+  try {
+    const query = `
+      SELECT 
+        rbr_id as id,
+        rbr_report_id as "docId",
+        rbr_quarter as quarter,
+        rbr_year as year,
+        rbr_total_count as total,
+        rbr_created_by as "createdBy",
+        TO_CHAR(rbr_created_at, 'MM/DD/YYYY') as "dateCreated"
+      FROM released_blood_reports
+      WHERE 
+        rbr_report_id ILIKE $1 OR
+        rbr_quarter ILIKE $1 OR
+        CAST(rbr_year AS TEXT) ILIKE $1 OR
+        rbr_created_by ILIKE $1
+      ORDER BY rbr_year DESC, rbr_month_start DESC
+    `;
+
+    const result = await pool.query(query, [`%${searchTerm}%`]);
+    return result.rows.map((row) => ({
+      ...row,
+      selected: false,
+    }));
+  } catch (error) {
+    console.error("Error searching released blood reports:", error);
+    throw error;
+  }
+},
+
+// Delete released blood reports
+async deleteReleasedBloodReports(reportIds) {
+  try {
+    const query = `DELETE FROM released_blood_reports WHERE rbr_id = ANY($1)`;
+    await pool.query(query, [reportIds]);
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting released blood reports:", error);
+    throw error;
+  }
+},
+
+// ========== DISCARDED BLOOD REPORTS METHODS ==========
+
+// FIXED: Generate discarded blood quarterly report with proper ID generation
+async generateDiscardedBloodQuarterlyReport(quarter, year) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Determine quarter months
+    let monthStart, monthEnd, monthLabels;
+    switch (quarter) {
+      case "1st Quarter":
+        monthStart = 1;
+        monthEnd = 3;
+        monthLabels = ["Jan", "Feb", "Mar"];
+        break;
+      case "2nd Quarter":
+        monthStart = 4;
+        monthEnd = 6;
+        monthLabels = ["Apr", "May", "Jun"];
+        break;
+      case "3rd Quarter":
+        monthStart = 7;
+        monthEnd = 9;
+        monthLabels = ["Jul", "Aug", "Sep"];
+        break;
+      case "4th Quarter":
+        monthStart = 10;
+        monthEnd = 12;
+        monthLabels = ["Oct", "Nov", "Dec"];
+        break;
+      default:
+        throw new Error("Invalid quarter");
+    }
+
+    const yearInt = parseInt(year);
+
+    // Check if there's any data for this quarter
+    const dataCheckQuery = `
+      SELECT COUNT(*) as count
+      FROM discarded_blood
+      WHERE 
+        EXTRACT(YEAR FROM db_date_of_discard)::integer = $1::integer
+        AND EXTRACT(MONTH FROM db_date_of_discard)::integer BETWEEN $2::integer AND $3::integer
+        AND db_status = 'Discarded'
+        AND db_category = 'Red Blood Cell'
+    `;
+
+    const dataCheckResult = await client.query(dataCheckQuery, [
+      yearInt,
+      monthStart,
+      monthEnd,
+    ]);
+    const hasData = parseInt(dataCheckResult.rows[0].count) > 0;
+
+    if (!hasData) {
+      console.log(`No discarded blood data found for ${quarter} ${yearInt}, skipping...`);
+      await client.query("ROLLBACK");
+      return {
+        success: false,
+        message: `No discarded blood data available for ${quarter} ${yearInt}`,
+      };
+    }
+
+    // FIXED: Check if report already exists BEFORE deleting
+    const existingReportQuery = `
+      SELECT dbr_id, dbr_report_id as report_id
+      FROM discarded_blood_reports
+      WHERE dbr_quarter = $1 AND dbr_year = $2
+    `;
+    const existingReportResult = await client.query(existingReportQuery, [quarter, yearInt]);
+
+    let reportId;
+    let isUpdate = false;
+
+    if (existingReportResult.rows.length > 0) {
+      // Use existing report ID and mark as update
+      reportId = existingReportResult.rows[0].report_id;
+      isUpdate = true;
+      console.log(`Updating existing report: ${reportId}`);
+      
+      // Delete the existing report
+      const deleteQuery = `
+        DELETE FROM discarded_blood_reports 
+        WHERE dbr_id = $1
+      `;
+      await client.query(deleteQuery, [existingReportResult.rows[0].dbr_id]);
+    } else {
+      // FIXED: Generate new report ID by finding the MAX number, not COUNT
+      const reportIdQuery = `
+        SELECT COALESCE(
+          'DISC-DOC-' || $1::text || '-' || 
+          LPAD((
+            COALESCE(
+              (SELECT MAX(CAST(SUBSTRING(dbr_report_id FROM 'DISC-DOC-[0-9]+-([0-9]+)') AS INTEGER))
+               FROM discarded_blood_reports 
+               WHERE dbr_year = $1::integer
+              ), 0
+            ) + 1
+          )::text, 3, '0'),
+          'DISC-DOC-' || $1::text || '-001'
+        ) as report_id
+      `;
+      const reportIdResult = await client.query(reportIdQuery, [yearInt]);
+      reportId = reportIdResult.rows[0].report_id;
+      console.log(`Creating new report: ${reportId}`);
+    }
+
+    // Query to get discarded blood data by blood type and month
+    const statsQuery = `
+      WITH quarter_data AS (
+        SELECT 
+          db_blood_type,
+          db_rh_factor,
+          EXTRACT(MONTH FROM db_date_of_discard)::integer as month_num,
+          COUNT(*)::integer as count
+        FROM discarded_blood
+        WHERE 
+          EXTRACT(YEAR FROM db_date_of_discard)::integer = $1::integer
+          AND EXTRACT(MONTH FROM db_date_of_discard)::integer BETWEEN $2::integer AND $3::integer
+          AND db_status = 'Discarded'
+          AND db_category = 'Red Blood Cell'
+        GROUP BY db_blood_type, db_rh_factor, EXTRACT(MONTH FROM db_date_of_discard)
+      )
+      SELECT 
+        db_blood_type || db_rh_factor as blood_type,
+        month_num,
+        SUM(count)::integer as total
+      FROM quarter_data
+      GROUP BY db_blood_type, db_rh_factor, month_num
+    `;
+
+    const statsResult = await client.query(statsQuery, [
+      yearInt,
+      monthStart,
+      monthEnd,
+    ]);
+
+    // Initialize counters
+    const bloodTypes = ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"];
+    const monthlyCounts = {
+      [monthStart]: {},
+      [monthStart + 1]: {},
+      [monthStart + 2]: {},
+    };
+    const quarterTotals = {};
+
+    // Initialize all blood types to 0
+    bloodTypes.forEach((type) => {
+      quarterTotals[type] = 0;
+      monthlyCounts[monthStart][type] = 0;
+      monthlyCounts[monthStart + 1][type] = 0;
+      monthlyCounts[monthStart + 2][type] = 0;
+    });
+
+    // Process query results
+    statsResult.rows.forEach((row) => {
+      const type = row.blood_type;
+      const month = parseInt(row.month_num);
+      const count = parseInt(row.total);
+
+      if (!bloodTypes.includes(type)) return;
+
+      if (monthlyCounts[month]) {
+        monthlyCounts[month][type] = count;
+        quarterTotals[type] += count;
+      }
+    });
+
+    // Calculate grand total
+    const grandTotal = Object.values(quarterTotals).reduce(
+      (sum, val) => sum + val,
+      0
+    );
+
+    // Calculate monthly percentages
+    const monthlyPercentages = {};
+    Object.keys(monthlyCounts).forEach((month) => {
+      monthlyPercentages[month] = {};
+      bloodTypes.forEach((type) => {
+        monthlyPercentages[month][type] =
+          grandTotal > 0
+            ? ((monthlyCounts[month][type] / grandTotal) * 100).toFixed(2)
+            : "0.00";
+      });
+    });
+
+    // Calculate overall percentages
+    const percentages = {};
+    bloodTypes.forEach((type) => {
+      percentages[type] =
+        grandTotal > 0
+          ? ((quarterTotals[type] / grandTotal) * 100).toFixed(2)
+          : "0.00";
+    });
+
+    // Prepare monthly data as JSONB
+    const month1Data = {
+      counts: monthlyCounts[monthStart],
+      percentages: monthlyPercentages[monthStart],
+      total: Object.values(monthlyCounts[monthStart]).reduce(
+        (sum, val) => sum + val,
+        0
+      ),
+    };
+    const month2Data = {
+      counts: monthlyCounts[monthStart + 1],
+      percentages: monthlyPercentages[monthStart + 1],
+      total: Object.values(monthlyCounts[monthStart + 1]).reduce(
+        (sum, val) => sum + val,
+        0
+      ),
+    };
+    const month3Data = {
+      counts: monthlyCounts[monthStart + 2],
+      percentages: monthlyPercentages[monthStart + 2],
+      total: Object.values(monthlyCounts[monthStart + 2]).reduce(
+        (sum, val) => sum + val,
+        0
+      ),
+    };
+
+    // Calculate monthly total percentages
+    month1Data.totalPct =
+      grandTotal > 0
+        ? ((month1Data.total / grandTotal) * 100).toFixed(1)
+        : "0.0";
+    month2Data.totalPct =
+      grandTotal > 0
+        ? ((month2Data.total / grandTotal) * 100).toFixed(1)
+        : "0.0";
+    month3Data.totalPct =
+      grandTotal > 0
+        ? ((month3Data.total / grandTotal) * 100).toFixed(1)
+        : "0.0";
+
+    // Insert new report
+    const insertQuery = `
+      INSERT INTO discarded_blood_reports (
+        dbr_report_id, dbr_quarter, dbr_year, dbr_month_start, dbr_month_end, dbr_month_labels,
+        dbr_o_positive, dbr_o_negative, dbr_a_positive, dbr_a_negative,
+        dbr_b_positive, dbr_b_negative, dbr_ab_positive, dbr_ab_negative,
+        dbr_o_positive_pct, dbr_o_negative_pct, dbr_a_positive_pct, dbr_a_negative_pct,
+        dbr_b_positive_pct, dbr_b_negative_pct, dbr_ab_positive_pct, dbr_ab_negative_pct,
+        dbr_total_count, dbr_month1_data, dbr_month2_data, dbr_month3_data,
+        dbr_created_by, dbr_created_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6::text[],
+        $7, $8, $9, $10, $11, $12, $13, $14,
+        $15, $16, $17, $18, $19, $20, $21, $22,
+        $23, $24::jsonb, $25::jsonb, $26::jsonb, $27, NOW()
+      )
+      RETURNING dbr_id
+    `;
+
+    const values = [
+      reportId,
+      quarter,
+      yearInt,
+      monthStart,
+      monthEnd,
+      monthLabels,
+      quarterTotals["O+"],
+      quarterTotals["O-"],
+      quarterTotals["A+"],
+      quarterTotals["A-"],
+      quarterTotals["B+"],
+      quarterTotals["B-"],
+      quarterTotals["AB+"],
+      quarterTotals["AB-"],
+      percentages["O+"],
+      percentages["O-"],
+      percentages["A+"],
+      percentages["A-"],
+      percentages["B+"],
+      percentages["B-"],
+      percentages["AB+"],
+      percentages["AB-"],
+      grandTotal,
+      JSON.stringify(month1Data),
+      JSON.stringify(month2Data),
+      JSON.stringify(month3Data),
+      "Auto-generated",
+    ];
+
+    await client.query(insertQuery, values);
+    await client.query("COMMIT");
+
+    console.log(`✓ ${isUpdate ? 'Updated' : 'Generated'} discarded blood report for ${quarter} ${yearInt}`);
+
+    return {
+      success: true,
+      reportId,
+      quarter,
+      year: yearInt,
+      total: grandTotal,
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error generating discarded blood quarterly report:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
+// Get all discarded blood reports
+async getAllDiscardedBloodReports() {
+  try {
+    const query = `
+      SELECT 
+        dbr_id as id,
+        dbr_report_id as "docId",
+        dbr_quarter as quarter,
+        dbr_year as year,
+        dbr_month_start as "monthStart",
+        dbr_month_end as "monthEnd",
+        dbr_month_labels as "monthLabels",
+        dbr_o_positive as "oPositive",
+        dbr_o_negative as "oNegative",
+        dbr_a_positive as "aPositive",
+        dbr_a_negative as "aNegative",
+        dbr_b_positive as "bPositive",
+        dbr_b_negative as "bNegative",
+        dbr_ab_positive as "abPositive",
+        dbr_ab_negative as "abNegative",
+        dbr_o_positive_pct as "oPositivePct",
+        dbr_o_negative_pct as "oNegativePct",
+        dbr_a_positive_pct as "aPositivePct",
+        dbr_a_negative_pct as "aNegativePct",
+        dbr_b_positive_pct as "bPositivePct",
+        dbr_b_negative_pct as "bNegativePct",
+        dbr_ab_positive_pct as "abPositivePct",
+        dbr_ab_negative_pct as "abNegativePct",
+        dbr_total_count as total,
+        dbr_month1_data as "month1Data",
+        dbr_month2_data as "month2Data",
+        dbr_month3_data as "month3Data",
+        dbr_created_by as "createdBy",
+        TO_CHAR(dbr_created_at, 'MM/DD/YYYY') as "dateCreated"
+      FROM discarded_blood_reports
+      ORDER BY dbr_year DESC, dbr_month_start DESC
+    `;
+
+    const result = await pool.query(query);
+    return result.rows.map((row) => ({
+      ...row,
+      selected: false,
+    }));
+  } catch (error) {
+    console.error("Error fetching discarded blood reports:", error);
+    throw error;
+  }
+},
+
+async generateAllDiscardedBloodQuarterlyReports(year) {
+  const quarters = [
+    { name: "1st Quarter", endMonth: 3 },
+    { name: "2nd Quarter", endMonth: 6 },
+    { name: "3rd Quarter", endMonth: 9 },
+    { name: "4th Quarter", endMonth: 12 },
+  ];
+
+  const generatedReports = [];
+
+  for (const quarter of quarters) {
+    try {
+      // REMOVED: Date check - always try to generate/update report
+      const report = await this.generateDiscardedBloodQuarterlyReport(
+        quarter.name,
+        year
+      );
+      if (report.success) {
+        generatedReports.push(report);
+      }
+    } catch (error) {
+      console.log(
+        `Error generating discarded blood ${quarter.name} ${year}: ${error.message}`
+      );
+    }
+  }
+
+  return generatedReports;
+},
+
+// Get all years with discarded blood data
+async getAllYearsWithDiscardedBloodData() {
+  try {
+    const query = `
+      SELECT DISTINCT EXTRACT(YEAR FROM db_date_of_discard)::integer as year
+      FROM discarded_blood
+      WHERE db_status = 'Discarded' AND db_category = 'Red Blood Cell'
+      ORDER BY year DESC
+    `;
+
+    const result = await pool.query(query);
+    return result.rows.map((row) => row.year);
+  } catch (error) {
+    console.error("Error fetching years with discarded blood data:", error);
+    throw error;
+  }
+},
+
+// Generate all historical discarded blood reports
+async generateAllHistoricalDiscardedBloodReports() {
+  try {
+    const years = await this.getAllYearsWithDiscardedBloodData();
+    console.log("Found discarded blood data for years:", years);
+
+    const allGeneratedReports = [];
+
+    for (const year of years) {
+      console.log(`Generating discarded blood reports for year ${year}...`);
+      const yearReports = await this.generateAllDiscardedBloodQuarterlyReports(year);
+      allGeneratedReports.push(...yearReports);
+    }
+
+    return allGeneratedReports;
+  } catch (error) {
+    console.error("Error generating all historical discarded blood reports:", error);
+    throw error;
+  }
+},
+
+// Search discarded blood reports
+async searchDiscardedBloodReports(searchTerm) {
+  try {
+    const query = `
+      SELECT 
+        dbr_id as id,
+        dbr_report_id as "docId",
+        dbr_quarter as quarter,
+        dbr_year as year,
+        dbr_total_count as total,
+        dbr_created_by as "createdBy",
+        TO_CHAR(dbr_created_at, 'MM/DD/YYYY') as "dateCreated"
+      FROM discarded_blood_reports
+      WHERE 
+        dbr_report_id ILIKE $1 OR
+        dbr_quarter ILIKE $1 OR
+        CAST(dbr_year AS TEXT) ILIKE $1 OR
+        dbr_created_by ILIKE $1
+      ORDER BY dbr_year DESC, dbr_month_start DESC
+    `;
+
+    const result = await pool.query(query, [`%${searchTerm}%`]);
+    return result.rows.map((row) => ({
+      ...row,
+      selected: false,
+    }));
+  } catch (error) {
+    console.error("Error searching discarded blood reports:", error);
+    throw error;
+  }
+},
+
+// Delete discarded blood reports
+async deleteDiscardedBloodReports(reportIds) {
+  try {
+    const query = `DELETE FROM discarded_blood_reports WHERE dbr_id = ANY($1)`;
+    await pool.query(query, [reportIds]);
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting discarded blood reports:", error);
+    throw error;
+  }
+},
+
+// ========== PARTNERSHIP EVENT REPORTS METHODS ==========
+
+async generatePartnershipQuarterlyReport(quarter, year) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Determine quarter months
+    let monthStart, monthEnd, monthLabels;
+    switch (quarter) {
+      case "1st Quarter":
+        monthStart = 1;
+        monthEnd = 3;
+        monthLabels = ["Jan", "Feb", "Mar"];
+        break;
+      case "2nd Quarter":
+        monthStart = 4;
+        monthEnd = 6;
+        monthLabels = ["Apr", "May", "Jun"];
+        break;
+      case "3rd Quarter":
+        monthStart = 7;
+        monthEnd = 9;
+        monthLabels = ["Jul", "Aug", "Sep"];
+        break;
+      case "4th Quarter":
+        monthStart = 10;
+        monthEnd = 12;
+        monthLabels = ["Oct", "Nov", "Dec"];
+        break;
+      default:
+        throw new Error("Invalid quarter");
+    }
+
+    const yearInt = parseInt(year);
+
+    // Check if there's any data for this quarter
+    const dataCheckQuery = `
+      SELECT COUNT(*) as count
+      FROM partnership_requests
+      WHERE 
+        EXTRACT(YEAR FROM event_date)::integer = $1::integer
+        AND EXTRACT(MONTH FROM event_date)::integer BETWEEN $2::integer AND $3::integer
+        AND status = 'approved'
+    `;
+
+    const dataCheckResult = await client.query(dataCheckQuery, [
+      yearInt,
+      monthStart,
+      monthEnd,
+    ]);
+    const hasData = parseInt(dataCheckResult.rows[0].count) > 0;
+
+    if (!hasData) {
+      console.log(`No partnership data found for ${quarter} ${yearInt}, skipping...`);
+      await client.query("ROLLBACK");
+      return {
+        success: false,
+        message: `No partnership data available for ${quarter} ${yearInt}`,
+      };
+    }
+
+    // Check if report already exists
+    const existingReportQuery = `
+      SELECT per_id, per_report_id as report_id
+      FROM partnership_event_reports
+      WHERE per_quarter = $1 AND per_year = $2
+    `;
+    const existingReportResult = await client.query(existingReportQuery, [quarter, yearInt]);
+
+    let reportId;
+    if (existingReportResult.rows.length > 0) {
+      reportId = existingReportResult.rows[0].report_id;
+      const deleteQuery = `DELETE FROM partnership_event_reports WHERE per_id = $1`;
+      await client.query(deleteQuery, [existingReportResult.rows[0].per_id]);
+    } else {
+      const reportIdQuery = `
+        SELECT COALESCE(
+          'EVENT-DOC-' || $1::text || '-' || 
+          LPAD((
+            COALESCE(
+              (SELECT MAX(CAST(SUBSTRING(per_report_id FROM 'EVENT-DOC-[0-9]+-([0-9]+)') AS INTEGER))
+               FROM partnership_event_reports 
+               WHERE per_year = $1::integer
+              ), 0
+            ) + 1
+          )::text, 3, '0'),
+          'EVENT-DOC-' || $1::text || '-001'
+        ) as report_id
+      `;
+      const reportIdResult = await client.query(reportIdQuery, [yearInt]);
+      reportId = reportIdResult.rows[0].report_id;
+    }
+
+    const statsQuery = `
+      WITH quarter_data AS (
+        SELECT 
+          -- Use organization_barangay if available, otherwise use organization_name
+          COALESCE(
+            NULLIF(TRIM(organization_barangay), ''), 
+            NULLIF(TRIM(organization_name), ''),
+            'Unknown Organization'
+          ) as partner_name,
+          EXTRACT(MONTH FROM event_date)::integer as month_num,
+          COUNT(*)::integer as count
+        FROM partnership_requests
+        WHERE 
+          EXTRACT(YEAR FROM event_date)::integer = $1::integer
+          AND EXTRACT(MONTH FROM event_date)::integer BETWEEN $2::integer AND $3::integer
+          AND status = 'approved'
+        GROUP BY COALESCE(
+          NULLIF(TRIM(organization_barangay), ''), 
+          NULLIF(TRIM(organization_name), ''),
+          'Unknown Organization'
+        ), 
+        EXTRACT(MONTH FROM event_date)
+      )
+      SELECT 
+        partner_name,
+        month_num,
+        SUM(count)::integer as total
+      FROM quarter_data
+      GROUP BY partner_name, month_num
+      ORDER BY partner_name, month_num
+    `;
+
+    const statsResult = await client.query(statsQuery, [yearInt, monthStart, monthEnd]);
+
+    // Get unique partners (dynamically from the data)
+    const partnersSet = new Set(statsResult.rows.map(row => row.partner_name));
+    const partners = Array.from(partnersSet).sort(); // Sort alphabetically
+
+    // If no partners found, return early
+    if (partners.length === 0) {
+      console.log(`No approved partnerships found for ${quarter} ${yearInt}`);
+      await client.query("ROLLBACK");
+      return {
+        success: false,
+        message: `No approved partnerships found for ${quarter} ${yearInt}`,
+      };
+    }
+
+    // Initialize counters for the three months in the quarter
+    const monthlyCounts = {
+      [monthStart]: {},
+      [monthStart + 1]: {},
+      [monthStart + 2]: {},
+    };
+    const quarterTotals = {};
+
+    // Initialize all partners to 0
+    partners.forEach((partner) => {
+      quarterTotals[partner] = 0;
+      monthlyCounts[monthStart][partner] = 0;
+      monthlyCounts[monthStart + 1][partner] = 0;
+      monthlyCounts[monthStart + 2][partner] = 0;
+    });
+
+    // Process query results - populate actual counts
+    statsResult.rows.forEach((row) => {
+      const partner = row.partner_name;
+      const month = parseInt(row.month_num);
+      const count = parseInt(row.total);
+
+      if (monthlyCounts[month]) {
+        monthlyCounts[month][partner] = count;
+        quarterTotals[partner] += count;
+      }
+    });
+
+    // Calculate grand total
+    const grandTotal = Object.values(quarterTotals).reduce((sum, val) => sum + val, 0);
+
+    // Calculate monthly totals
+    const monthlyTotals = {
+      [monthStart]: Object.values(monthlyCounts[monthStart]).reduce((sum, val) => sum + val, 0),
+      [monthStart + 1]: Object.values(monthlyCounts[monthStart + 1]).reduce((sum, val) => sum + val, 0),
+      [monthStart + 2]: Object.values(monthlyCounts[monthStart + 2]).reduce((sum, val) => sum + val, 0),
+    };
+
+    // Calculate monthly percentages (percentage of partner events within that month)
+    const monthlyPercentages = {};
+    Object.keys(monthlyCounts).forEach((month) => {
+      monthlyPercentages[month] = {};
+      const monthTotal = monthlyTotals[month];
+      partners.forEach((partner) => {
+        monthlyPercentages[month][partner] =
+          monthTotal > 0
+            ? ((monthlyCounts[month][partner] / monthTotal) * 100).toFixed(1)
+            : "0.0";
+      });
+    });
+
+    // Calculate overall percentages (percentage of partner events in the entire quarter)
+    const percentages = {};
+    partners.forEach((partner) => {
+      percentages[partner] =
+        grandTotal > 0
+          ? ((quarterTotals[partner] / grandTotal) * 100).toFixed(1)
+          : "0.0";
+    });
+
+    // Prepare monthly data as JSONB
+    const month1Data = {
+      counts: monthlyCounts[monthStart],
+      percentages: monthlyPercentages[monthStart],
+      total: monthlyTotals[monthStart],
+      totalPct: grandTotal > 0 ? ((monthlyTotals[monthStart] / grandTotal) * 100).toFixed(1) : "0.0",
+    };
+    
+    const month2Data = {
+      counts: monthlyCounts[monthStart + 1],
+      percentages: monthlyPercentages[monthStart + 1],
+      total: monthlyTotals[monthStart + 1],
+      totalPct: grandTotal > 0 ? ((monthlyTotals[monthStart + 1] / grandTotal) * 100).toFixed(1) : "0.0",
+    };
+    
+    const month3Data = {
+      counts: monthlyCounts[monthStart + 2],
+      percentages: monthlyPercentages[monthStart + 2],
+      total: monthlyTotals[monthStart + 2],
+      totalPct: grandTotal > 0 ? ((monthlyTotals[monthStart + 2] / grandTotal) * 100).toFixed(1) : "0.0",
+    };
+
+    // Insert new report
+    const insertQuery = `
+      INSERT INTO partnership_event_reports (
+        per_report_id, per_quarter, per_year, per_month_start, per_month_end, per_month_labels,
+        per_partners, per_counts, per_percentages,
+        per_total_count, per_month1_data, per_month2_data, per_month3_data,
+        per_created_by, per_created_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6::text[],
+        $7::jsonb, $8::jsonb, $9::jsonb,
+        $10, $11::jsonb, $12::jsonb, $13::jsonb, $14, NOW()
+      )
+      RETURNING per_id
+    `;
+
+    const values = [
+      reportId,
+      quarter,
+      yearInt,
+      monthStart,
+      monthEnd,
+      monthLabels,
+      JSON.stringify(partners),
+      JSON.stringify(quarterTotals),
+      JSON.stringify(percentages),
+      grandTotal,
+      JSON.stringify(month1Data),
+      JSON.stringify(month2Data),
+      JSON.stringify(month3Data),
+      "Auto-generated",
+    ];
+
+    await client.query(insertQuery, values);
+    await client.query("COMMIT");
+
+    console.log(`✓ Generated partnership event report for ${quarter} ${yearInt}`);
+    console.log(`  Partners found: ${partners.join(', ')}`);
+    console.log(`  Total events: ${grandTotal}`);
+
+    return {
+      success: true,
+      reportId,
+      quarter,
+      year: yearInt,
+      total: grandTotal,
+      partners: partners,
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error generating partnership quarterly report:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
+// Get all partnership event reports
+async getAllPartnershipEventReports() {
+  try {
+    const query = `
+      SELECT 
+        per_id as id,
+        per_report_id as "docId",
+        per_quarter as quarter,
+        per_year as year,
+        per_month_start as "monthStart",
+        per_month_end as "monthEnd",
+        per_month_labels as "monthLabels",
+        per_partners as partners,
+        per_counts as counts,
+        per_percentages as percentages,
+        per_total_count as total,
+        per_month1_data as "month1Data",
+        per_month2_data as "month2Data",
+        per_month3_data as "month3Data",
+        per_created_by as "createdBy",
+        TO_CHAR(per_created_at, 'MM/DD/YYYY') as "dateCreated"
+      FROM partnership_event_reports
+      ORDER BY per_year DESC, per_month_start DESC
+    `;
+
+    const result = await pool.query(query);
+    return result.rows.map((row) => ({
+      ...row,
+      selected: false,
+    }));
+  } catch (error) {
+    console.error("Error fetching partnership event reports:", error);
+    throw error;
+  }
+},
+
+// Generate all partnership quarterly reports for a year
+async generateAllPartnershipQuarterlyReports(year) {
+  const quarters = [
+    { name: "1st Quarter", endMonth: 3 },
+    { name: "2nd Quarter", endMonth: 6 },
+    { name: "3rd Quarter", endMonth: 9 },
+    { name: "4th Quarter", endMonth: 12 },
+  ];
+
+  const generatedReports = [];
+
+  for (const quarter of quarters) {
+    try {
+      const report = await this.generatePartnershipQuarterlyReport(quarter.name, year);
+      if (report.success) {
+        generatedReports.push(report);
+      }
+    } catch (error) {
+      console.log(`Error generating partnership ${quarter.name} ${year}: ${error.message}`);
+    }
+  }
+
+  return generatedReports;
+},
+
+// Get all years with partnership data
+async getAllYearsWithPartnershipData() {
+  try {
+    const query = `
+      SELECT DISTINCT EXTRACT(YEAR FROM event_date)::integer as year
+      FROM partnership_requests
+      WHERE status = 'approved'
+      ORDER BY year DESC
+    `;
+
+    const result = await pool.query(query);
+    return result.rows.map((row) => row.year);
+  } catch (error) {
+    console.error("Error fetching years with partnership data:", error);
+    throw error;
+  }
+},
+
+// Generate all historical partnership reports
+async generateAllHistoricalPartnershipReports() {
+  try {
+    const years = await this.getAllYearsWithPartnershipData();
+    console.log("Found partnership data for years:", years);
+
+    const allGeneratedReports = [];
+
+    for (const year of years) {
+      console.log(`Generating partnership reports for year ${year}...`);
+      const yearReports = await this.generateAllPartnershipQuarterlyReports(year);
+      allGeneratedReports.push(...yearReports);
+    }
+
+    return allGeneratedReports;
+  } catch (error) {
+    console.error("Error generating all historical partnership reports:", error);
+    throw error;
+  }
+},
+
+// Search partnership event reports
+async searchPartnershipEventReports(searchTerm) {
+  try {
+    const query = `
+      SELECT 
+        per_id as id,
+        per_report_id as "docId",
+        per_quarter as quarter,
+        per_year as year,
+        per_total_count as total,
+        per_created_by as "createdBy",
+        TO_CHAR(per_created_at, 'MM/DD/YYYY') as "dateCreated"
+      FROM partnership_event_reports
+      WHERE 
+        per_report_id ILIKE $1 OR
+        per_quarter ILIKE $1 OR
+        CAST(per_year AS TEXT) ILIKE $1 OR
+        per_created_by ILIKE $1
+      ORDER BY per_year DESC, per_month_start DESC
+    `;
+
+    const result = await pool.query(query, [`%${searchTerm}%`]);
+    return result.rows.map((row) => ({
+      ...row,
+      selected: false,
+    }));
+  } catch (error) {
+    console.error("Error searching partnership event reports:", error);
+    throw error;
+  }
+},
+
+// Delete partnership event reports
+async deletePartnershipEventReports(reportIds) {
+  try {
+    const query = `DELETE FROM partnership_event_reports WHERE per_id = ANY($1)`;
+    await pool.query(query, [reportIds]);
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting partnership event reports:", error);
+    throw error;
+  }
+},
+
+// Get approved events by date range
+async getApprovedEventsByDateRange(startDate, endDate) {
+  try {
+    const query = `
+      SELECT 
+        eai_id as id,
+        eai_partnership_request_id as "partnershipRequestId",
+        eai_organization_name as "organizationName",
+        eai_organization_barangay as "organizationBarangay",
+        eai_contact_name as "contactName",
+        TO_CHAR(eai_event_date, 'YYYY-MM-DD') as "eventDate",
+        eai_event_time as "eventTime",
+        eai_event_address as "eventAddress",
+        eai_approved_by as "approvedBy",
+        TO_CHAR(eai_approved_at, 'YYYY-MM-DD HH24:MI:SS') as "approvedAt"
+      FROM event_approved_items
+      WHERE eai_event_date BETWEEN $1 AND $2
+      ORDER BY eai_event_date DESC
+    `;
+    
+    const result = await pool.query(query, [startDate, endDate]);
+    return result.rows;
+  } catch (error) {
+    console.error("[DB] Error fetching approved events by date range:", error);
+    throw error;
+  }
+},
+
+// Get approved events by organization
+async getApprovedEventsByOrganization(organizationName) {
+  try {
+    const query = `
+      SELECT 
+        eai_id as id,
+        eai_partnership_request_id as "partnershipRequestId",
+        eai_organization_name as "organizationName",
+        eai_organization_barangay as "organizationBarangay",
+        eai_contact_name as "contactName",
+        TO_CHAR(eai_event_date, 'YYYY-MM-DD') as "eventDate",
+        eai_event_time as "eventTime",
+        eai_event_address as "eventAddress",
+        eai_approved_by as "approvedBy",
+        TO_CHAR(eai_approved_at, 'YYYY-MM-DD HH24:MI:SS') as "approvedAt"
+      FROM event_approved_items
+      WHERE eai_organization_name ILIKE $1
+         OR eai_organization_barangay ILIKE $1
+      ORDER BY eai_event_date DESC
+    `;
+    
+    const result = await pool.query(query, [`%${organizationName}%`]);
+    return result.rows;
+  } catch (error) {
+    console.error("[DB] Error fetching approved events by organization:", error);
+    throw error;
+  }
+},
+
+// Search approved events
+async searchApprovedEvents(searchTerm) {
+  try {
+    const query = `
+      SELECT 
+        eai_id as id,
+        eai_partnership_request_id as "partnershipRequestId",
+        eai_organization_name as "organizationName",
+        eai_organization_barangay as "organizationBarangay",
+        eai_contact_name as "contactName",
+        TO_CHAR(eai_event_date, 'YYYY-MM-DD') as "eventDate",
+        eai_event_time as "eventTime",
+        eai_event_address as "eventAddress",
+        eai_approved_by as "approvedBy",
+        TO_CHAR(eai_approved_at, 'YYYY-MM-DD HH24:MI:SS') as "approvedAt"
+      FROM event_approved_items
+      WHERE eai_organization_name ILIKE $1
+         OR eai_organization_barangay ILIKE $1
+         OR eai_contact_name ILIKE $1
+         OR eai_event_address ILIKE $1
+         OR eai_approved_by ILIKE $1
+      ORDER BY eai_event_date DESC
+    `;
+    
+    const result = await pool.query(query, [`%${searchTerm}%`]);
+    return result.rows;
+  } catch (error) {
+    console.error("[DB] Error searching approved events:", error);
+    throw error;
+  }
+},
+
+// Delete approved event
+async deleteApprovedEvent(eventId) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    
+    const query = `
+      DELETE FROM event_approved_items
+      WHERE eai_id = $1
+      RETURNING *
+    `;
+    
+    const result = await client.query(query, [eventId]);
+    
+    if (result.rows.length === 0) {
+      throw new Error('Approved event not found');
+    }
+    
+    await client.query("COMMIT");
+    return result.rows[0];
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("[DB] Error deleting approved event:", error);
+    throw error;
+  } finally {
+    client.release();
+  }
+},
+
+
 };
 
 module.exports = dbService;

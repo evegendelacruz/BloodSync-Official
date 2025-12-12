@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Loader from "../../../components/Loader";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const RedBloodCell = () => {
   const [bloodData, setBloodData] = useState([]);
@@ -14,6 +16,8 @@ const RedBloodCell = () => {
   const [showReleaseModal, setShowReleaseModal] = useState(false);
   const [showReleaseDetailsModal, setShowReleaseDetailsModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showInvoicePreview, setShowInvoicePreview] = useState(false);
+  const [previewInvoiceData, setPreviewInvoiceData] = useState(null);
   const [successMessage, setSuccessMessage] = useState({
     title: "",
     description: "",
@@ -58,6 +62,27 @@ const RedBloodCell = () => {
   const [releaseValidationErrors, setReleaseValidationErrors] = useState({});
   const sortDropdownRef = useRef(null);
   const filterDropdownRef = useRef(null);
+  const facilityAddresses = {
+  "Northern Mindanao Medical Center": "Capitol Compound, Cagayan de Oro City, Misamis Oriental",
+  "J.R. Borja General Hospital": "J.V. Serina St., Carmen, Cagayan de Oro City, Misamis Oriental",
+  "Cagayan de Oro Medical Center, Inc.": "Tiano-Nacalaban Sts., Cagayan de Oro City, Misamis Oriental",
+  "Maria Reyna‑Xavier University Hospital, Inc.": "Msgr. Santiago Hayes St., Cagayan de Oro City, Misamis Oriental",
+  "Madonna and Child Medical Center": "J. Serina St., Carmen, Cagayan de Oro City, Misamis Oriental",
+  "Sabal Hospital, Inc.": "292 Don Apolinar Velez St., Cagayan de Oro City, Misamis Oriental",
+  "Cagayan de Oro Polymedic General Hospital, Inc.": "Don Apolinar Velez St., Cagayan de Oro City, Misamis Oriental",
+  "Capitol University Medical Center Foundation of Cagayan, Inc.": "San Pedro, Gusa, Cagayan de Oro City, Misamis Oriental",
+  "Adventist Medical Center–Iligan City, Inc.": "Andres Bonifacio Ave., Brgy. San Miguel, Iligan City, Lanao del Norte",
+  "Mercy Community Hospital, Inc.": "Sisters of Mercy Road, Camague, Iligan City, Lanao del Norte",
+  "Iligan Medical Center Hospital": "San Miguel Village, Pala-o, Iligan City, Lanao del Norte",
+  "Gregorio T. Lluch Memorial Hospital": "Quezon Ave. Extension, Pala-o, Iligan City, Lanao del Norte",
+  "Lanao del Norte Provincial Hospital": "Lower Sagadan, Baroy, Lanao del Norte",
+  "Bukidnon Provincial Hospital - Manolo Fortich": "San Miguel, Manolo Fortich, Bukidnon",
+  "Valencia Polymedic General Hospital, Inc.": "P-13, Sayre Highway, Poblacion, Valencia, Bukidnon",
+  "Camiguin General Hospital": "Lacas, Poblacion, Mambajao, Camiguin Province",
+  "Mayor Hilarion A. Ramiro Sr. Medical Center": "Maningcol, Ozamiz City, Misamis Occidental",
+  "Tobias Feliciano Faith General Hospital, Inc.": "Feliciano St., Las Aguadas, Ozamiz City, Misamis Occidental",
+  "Medina General Hospital": "Gov. Angel N. Medina Sr. Avenue, Carmen Annex, Ozamiz City, Misamis Occidental"
+};
   
   useEffect(() => {
     // Get current user from localStorage
@@ -742,127 +767,159 @@ const getUserData = () => {
   };
 
   const handleReleaseDataChange = (field, value) => {
-    setReleaseData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-    
-    // Clear validation error for this field when user starts typing
-    if (releaseValidationErrors[field]) {
-      setReleaseValidationErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors[field];
-        return newErrors;
-      });
+    if (field === "receivingFacility") {
+      // Auto-fill address when facility is selected
+      const address = facilityAddresses[value] || "";
+      setReleaseData((prev) => ({
+        ...prev,
+        receivingFacility: value,
+        address: address,
+      }));
+      
+      // Clear validation errors for both fields
+      if (releaseValidationErrors.receivingFacility) {
+        setReleaseValidationErrors((prev) => {
+          const newErrors = { ...prev };
+          delete newErrors.receivingFacility;
+          delete newErrors.address;
+          return newErrors;
+        });
+      }
+    } else {
+      setReleaseData((prev) => ({
+        ...prev,
+        [field]: value,
+      }));
+      
+      // Clear validation error for this field when user starts typing
+      if (releaseValidationErrors[field]) {
+        setReleaseValidationErrors((prev) => {
+          const newErrors = { ...prev };
+          delete newErrors[field];
+          return newErrors;
+        });
+      }
     }
   };
 
   const confirmRelease = async () => {
-    // Validate all fields
-    const errors = {};
-    if (!releaseData.receivingFacility || releaseData.receivingFacility.trim() === "") {
-      errors.receivingFacility = "Receiving facility is required";
-    }
-    if (!releaseData.classification) {
-      errors.classification = "Classification is required";
-    }
-    if (!releaseData.authorizedRecipient || releaseData.authorizedRecipient.trim() === "") {
-      errors.authorizedRecipient = "Authorized recipient is required";
-    }
-    if (!releaseData.address || releaseData.address.trim() === "") {
-      errors.address = "Address is required";
-    }
-    if (!releaseData.contactNumber || releaseData.contactNumber === "+63") {
-      errors.contactNumber = "Contact number is required";
-    }
-    if (!releaseData.recipientDesignation || releaseData.recipientDesignation.trim() === "") {
-      errors.recipientDesignation = "Recipient designation is required";
-    }
-    if (!releaseData.dateOfRelease) {
-      errors.dateOfRelease = "Date of release is required";
-    }
-    if (!releaseData.conditionUponRelease) {
-      errors.conditionUponRelease = "Condition upon release is required";
-    }
-    if (!releaseData.releasedBy || releaseData.releasedBy.trim() === "") {
-      errors.releasedBy = "Released by is required";
-    }
-    
-    if (Object.keys(errors).length > 0) {
-      setReleaseValidationErrors(errors);
+  // Validate all fields
+  const errors = {};
+  if (!releaseData.receivingFacility || releaseData.receivingFacility.trim() === "") {
+    errors.receivingFacility = "Receiving facility is required";
+  }
+  if (!releaseData.classification) {
+    errors.classification = "Classification is required";
+  }
+  if (!releaseData.authorizedRecipient || releaseData.authorizedRecipient.trim() === "") {
+    errors.authorizedRecipient = "Authorized recipient is required";
+  }
+  if (!releaseData.address || releaseData.address.trim() === "") {
+    errors.address = "Address is required";
+  }
+  if (!releaseData.contactNumber || releaseData.contactNumber === "+63") {
+    errors.contactNumber = "Contact number is required";
+  }
+  if (!releaseData.recipientDesignation || releaseData.recipientDesignation.trim() === "") {
+    errors.recipientDesignation = "Recipient designation is required";
+  }
+  if (!releaseData.dateOfRelease) {
+    errors.dateOfRelease = "Date of release is required";
+  }
+  if (!releaseData.conditionUponRelease) {
+    errors.conditionUponRelease = "Condition upon release is required";
+  }
+  if (!releaseData.releasedBy || releaseData.releasedBy.trim() === "") {
+    errors.releasedBy = "Released by is required";
+  }
+  
+  if (Object.keys(errors).length > 0) {
+    setReleaseValidationErrors(errors);
+    return;
+  }
+  
+  try {
+    setReleasing(true);
+    if (!window.electronAPI) {
+      setReleaseValidationErrors({ api: "Electron API not available" });
       return;
     }
+
+    const validItems = selectedItems.filter(
+      (item) => item.found && item.serialId
+    );
+
+    if (validItems.length === 0) {
+      setReleaseValidationErrors({ items: "No valid items to release" });
+      setReleasing(false);
+      return;
+    }
+
+    const serialIds = validItems.map((item) => item.serialId);
     
-    try {
-      setReleasing(true);
-      if (!window.electronAPI) {
-        setReleaseValidationErrors({ api: "Electron API not available" });
-        return;
-      }
-  
-      const validItems = selectedItems.filter(
-        (item) => item.found && item.serialId
-      );
-  
-      if (validItems.length === 0) {
-        setReleaseValidationErrors({ items: "No valid items to release" });
-        setReleasing(false);
-        return;
-      }
-  
-      const serialIds = validItems.map((item) => item.serialId);
-      
-      // Get userData using helper function
-      const userData = getUserData();
-      
-      if (!userData) {
-        setReleaseValidationErrors({ api: "User information not available. Please log in again." });
-        return;
-      }
+    // Get userData using helper function
+    const userData = getUserData();
     
-      
-      // FIXED: Pass releaseData and userData as SEPARATE parameters
-      const releasePayload = {
-        ...releaseData,
-        serialIds: serialIds,
-      };
+    if (!userData) {
+      setReleaseValidationErrors({ api: "User information not available. Please log in again." });
+      return;
+    }
   
-      const result = await window.electronAPI.releaseBloodStock(releasePayload, userData);
-  
-      if (result.success) {
-        setShowReleaseDetailsModal(false);
-        setShowReleaseModal(false);
-        setReleaseValidationErrors({});
-  
-        setSelectedItems([
-          {
-            serialId: "",
-            bloodType: "O",
-            rhFactor: "+",
-            volume: 100,
-            collection: "",
-            expiration: "",
-            status: "Stored",
-            found: false,
-          },
-        ]);
-  
-        setReleaseData({
-          receivingFacility: "",
-          address: "",
-          contactNumber: "",
-          classification: "",
-          authorizedRecipient: "",
-          recipientDesignation: "",
-          dateOfRelease: "",
-          conditionUponRelease: "",
-          requestReference: "",
-          releasedBy: "",
-        });
-  
-        await loadBloodData();
-        setError(null);
-  
+    
+    // FIXED: Pass releaseData and userData as SEPARATE parameters
+    const releasePayload = {
+      ...releaseData,
+      serialIds: serialIds,
+      verifiedBy: releaseData.recipientDesignation,
+    };
+
+    const result = await window.electronAPI.releaseBloodStock(releasePayload, userData);
+
+    if (result.success) {
+      // Close release modals
+      setShowReleaseDetailsModal(false);
+      setShowReleaseModal(false);
+      setReleaseValidationErrors({});
+
+      // Reset selected items
+      setSelectedItems([
+        {
+          serialId: "",
+          bloodType: "O",
+          rhFactor: "+",
+          volume: 100,
+          collection: "",
+          expiration: "",
+          status: "Stored",
+          found: false,
+        },
+      ]);
+
+      // Reset release data
+      setReleaseData({
+        receivingFacility: "",
+        address: "",
+        contactNumber: "",
+        classification: "",
+        authorizedRecipient: "",
+        recipientDesignation: "",
+        dateOfRelease: "",
+        conditionUponRelease: "",
+        requestReference: "",
+        releasedBy: "",
+      });
+
+      await loadBloodData();
+      setError(null);
+
+      // NEW: Fetch invoice details and show preview instead of success modal
+      try {
+        const invoiceDetails = await window.electronAPI.viewReleasedBloodInvoice(result.invoiceDbId);
+        setPreviewInvoiceData(invoiceDetails);
+        setShowInvoicePreview(true);
+      } catch (invoiceError) {
+        console.error("Error loading invoice for preview:", invoiceError);
+        // Fallback to success modal if invoice fetch fails
         setSuccessMessage({
           title: "Stock Released Successfully!",
           description:
@@ -870,13 +927,216 @@ const getUserData = () => {
         });
         setShowSuccessModal(true);
       }
-    } catch (err) {
-      console.error("Error releasing blood stock:", err);
-      setReleaseValidationErrors({ save: `Failed to release blood stock: ${err.message}` });
-    } finally {
-      setReleasing(false);
     }
-  };
+  } catch (err) {
+    console.error("Error releasing blood stock:", err);
+    setReleaseValidationErrors({ save: `Failed to release blood stock: ${err.message}` });
+  } finally {
+    setReleasing(false);
+  }
+};
+
+// 3. Add this new function to generate PDF from the preview
+const generateInvoicePDFFromPreview = () => {
+  if (!previewInvoiceData) return;
+
+  const { header, items } = previewInvoiceData;
+
+  // Create PDF with folio size (8.5 x 13 inches)
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "in",
+    format: [8.5, 13],
+  });
+
+  // Load logos
+  const dohMainLogo = "./assets/doh-main-logo.jpg";
+  const dohPurpleLogo = "./assets/doh-purple-logo.png";
+  const bagongPilipinasLogo = "./assets/bagong-pilipinas-logo.png";
+
+  // Add logos at the top - THREE LOGOS IN A ROW
+  try {
+    doc.addImage(dohMainLogo, "JPEG", 0.5, 0.3, 1.0, 1.0);
+    doc.addImage(dohPurpleLogo, "PNG", 1.7, 0.3, 0.97, 0.97);
+    doc.addImage(bagongPilipinasLogo, "PNG", 2.7, 0.15, 1.4, 1.3);
+  } catch (e) {
+    console.error("Error loading logos:", e);
+  }
+
+  // Header text section
+  const textStartX = 4.25;
+  const textStartY = 0.4;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text("DEPARTMENT OF HEALTH", textStartX, textStartY);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text("CENTER FOR HEALTH DEVELOPMENT- NORTHERN MINDANAO", textStartX, textStartY + 0.16);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.text("J. V. Serina Street, Carmen, Cagayan de Oro City", textStartX, textStartY + 0.32);
+
+  doc.setFontSize(6.5);
+  doc.text("PABX (088) 8587123/ (088) 858 4000/ (088) 855 0430/ (+63) 917-148-3298/", textStartX, textStartY + 0.46);
+  doc.text("(+63) 968-882-4092/ (088) 858-7132/ (088) 858-2639/ (088)-1601", textStartX, textStartY + 0.57);
+
+  doc.setTextColor(0, 0, 0);
+  doc.text("Email address: ", textStartX, textStartY + 0.68);
+  const emailLabelWidth = doc.getTextWidth("Email address: ");
+  doc.setTextColor(0, 115, 230);
+  doc.text("pacd@ro10.doh.gov.ph", textStartX + emailLabelWidth, textStartY + 0.68);
+
+  doc.setTextColor(0, 0, 0);
+  doc.text("Website: ", textStartX, textStartY + 0.79);
+  const websiteLabelWidth = doc.getTextWidth("Website: ");
+  doc.setTextColor(0, 115, 230);
+  doc.text("http://www.ro10.doh.gov.ph", textStartX + websiteLabelWidth, textStartY + 0.79);
+
+  // Title
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(0, 0, 0);
+  doc.text("NORTHERN MINDANAO REGIONAL BLOOD CENTER HUBBING FORM", 4.25, 1.75, { align: "center" });
+
+  // Date and Reference info
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text("Date:", 0.5, 2.1);
+  doc.setFont("helvetica", "normal");
+  const dateText = header.dateOfRelease;
+  doc.text(dateText, 0.9, 2.1);
+  const dateWidth = doc.getTextWidth(dateText);
+  doc.setLineWidth(0.01);
+  doc.line(0.9, 2.13, 0.9 + dateWidth, 2.13);
+
+  doc.setFont("helvetica", "bold");
+  doc.text("Reference no:", 4.7, 2.1);
+  doc.setFont("helvetica", "normal");
+  const refText = header.referenceNumber || header.invoiceId;
+  const refStartX = 5.8;
+  const maxRefWidth = 8.0 - refStartX;
+  
+  let displayRefText = refText;
+  let refWidth = doc.getTextWidth(displayRefText);
+  
+  if (refWidth > maxRefWidth) {
+    while (refWidth > maxRefWidth && displayRefText.length > 0) {
+      displayRefText = displayRefText.slice(0, -1);
+      refWidth = doc.getTextWidth(displayRefText + "...");
+    }
+    displayRefText += "...";
+  }
+  
+  doc.text(displayRefText, refStartX, 2.1);
+  refWidth = doc.getTextWidth(displayRefText);
+  doc.line(refStartX, 2.13, refStartX + refWidth, 2.13);
+
+  // Hospital info
+  doc.setFont("helvetica", "bold");
+  doc.text("Hospital:", 0.5, 2.35);
+  doc.setFont("helvetica", "normal");
+  const hospitalText = header.receivingFacility;
+  doc.text(hospitalText, 1.15, 2.35);
+  const hospitalWidth = doc.getTextWidth(hospitalText);
+  doc.line(1.15, 2.38, 1.15 + hospitalWidth, 2.38);
+
+  // Table data
+  const tableData = items.map((item, index) => [
+    index + 1,
+    item.serialId,
+    `${item.bloodType}${item.rhFactor}`,
+    item.dateOfCollection,
+    item.dateOfExpiration,
+    `${item.volume} ML`,
+    item.remarks || "",
+  ]);
+
+  // Create table using autoTable
+  autoTable(doc, {
+    startY: 2.55,
+    head: [["NO.", "SERIAL NO.", "BLOOD\nTYPE", "DATE OF\nCOLLECTION", "DATE OF\nEXPIRY", "VOLUME", "REMARKS"]],
+    body: tableData,
+    theme: "grid",
+    styles: {
+      font: "helvetica",
+      fontSize: 9,
+      cellPadding: 0.05,
+      lineColor: [0, 0, 0],
+      lineWidth: 0.01,
+      halign: "center",
+      valign: "middle",
+      textColor: [0, 0, 0],
+    },
+    headStyles: {
+      fillColor: [201, 201, 201],
+      fontStyle: "bold",
+      halign: "center",
+      valign: "middle",
+      fontSize: 8,
+    },
+    bodyStyles: {
+      textColor: [0, 0, 0],
+      fontSize: 8,
+    },
+    columnStyles: {
+      0: { cellWidth: 0.4 },
+      1: { cellWidth: 1.5 },
+      2: { cellWidth: 0.7 },
+      3: { cellWidth: 1.1 },
+      4: { cellWidth: 1.1 },
+      5: { cellWidth: 0.7 },
+      6: { cellWidth: "auto" },
+    },
+    margin: { left: 0.5, right: 0.5 },
+  });
+
+  // Footer section
+  const finalY = doc.lastAutoTable.finalY + 40 / 72;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+
+  // Left side
+  doc.text("PREPARED BY:", 0.5, finalY);
+  doc.setFont("helvetica", "normal");
+  doc.text(header.preparedBy || "", 0.5, finalY + 0.25);
+  doc.line(0.5, finalY + 0.28, 3.0, finalY + 0.28);
+
+  doc.setFont("helvetica", "bold");
+  doc.text("VERIFIED BY:", 0.5, finalY + 0.65);
+  doc.setFont("helvetica", "normal");
+  doc.text(header.verifiedBy || "", 0.5, finalY + 0.9);
+  doc.line(0.5, finalY + 0.93, 3.0, finalY + 0.93);
+
+  // Right side
+  doc.setFont("helvetica", "bold");
+  doc.text("RECEIVED BY:", 5.3, finalY);
+  doc.setFont("helvetica", "normal");
+  doc.text(header.receivedBy || header.authorizedRecipient || "", 5.3, finalY + 0.25);
+  doc.line(5.3, finalY + 0.28, 7.9, finalY + 0.28);
+  
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "italic");
+  doc.text("Name/Signature/Date", 6.6, finalY + 0.45, { align: "center" });
+
+  // Note at bottom
+  const noteY = 12.5;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.text("NOTE:", 4.25 - doc.getTextWidth("NOTE: All blood bags are properly screened and are NON-REACTIVE to HIV, HBV, HCV, SYPHILIS AND MALARIA") / 2, noteY);
+  
+  doc.setFont("helvetica", "normal");
+  doc.text(" All blood bags are properly screened and are NON-REACTIVE to HIV, HBV, HCV, SYPHILIS AND MALARIA", 4.25 - doc.getTextWidth("NOTE: All blood bags are properly screened and are NON-REACTIVE to HIV, HBV, HCV, SYPHILIS AND MALARIA") / 2 + doc.getTextWidth("NOTE:"), noteY);
+
+  // Save PDF
+  doc.save(`Invoice-${header.invoiceId}.pdf`);
+
+  // Close modal after download
+  setShowInvoicePreview(false);
+};
 
   const generateNextReferenceNumber = () => {
     const now = new Date();
@@ -896,12 +1156,20 @@ const getUserData = () => {
   // Modified useEffect for release modal initialization
   useEffect(() => {
     if (showReleaseDetailsModal) {
+      const userData = getUserData();
+      
+      // Get current date in YYYY-MM-DD format
+      const today = new Date();
+      const currentDate = today.toISOString().split('T')[0];
+      
       setReleaseData((prev) => ({
         ...prev,
         requestReference: generateNextReferenceNumber(),
+        releasedBy: userData ? userData.fullName : '', // Auto-fill with current user's name
+        dateOfRelease: currentDate, // Auto-fill with current date but editable
       }));
     }
-  }, [showReleaseDetailsModal]);
+  }, [showReleaseDetailsModal, currentUser]);
 
   const displayData = getSortedAndFilteredData();
   const selectedCount = bloodData.filter((item) => item.selected).length;
@@ -1430,6 +1698,15 @@ const getUserData = () => {
       borderTop: "1px solid #e5e7eb",
       display: "flex",
       justifyContent: "center",
+      gap: "12px",
+      backgroundColor: "white",
+    },
+
+    modalFooterRelease: {
+      padding: "20px 30px",
+      borderTop: "1px solid #e5e7eb",
+      display: "flex",
+      justifyContent: "right",
       gap: "12px",
       backgroundColor: "white",
     },
@@ -1979,6 +2256,7 @@ const getUserData = () => {
                 {sortConfig.key === "source" &&
                   (sortConfig.direction === "asc" ? "↑" : "↓")}
               </th>
+              <th style={{ ...styles.th, width: "8%" }}>REMARKS</th>
               <th style={{ ...styles.th, width: "12%" }}>CREATED AT</th>
               <th style={{ ...styles.th, width: "12%" }}>MODIFIED AT</th>
             </tr>
@@ -2020,6 +2298,20 @@ const getUserData = () => {
                     <span style={styles.statusBadge}>{item.status}</span>
                   </td>
                   <td style={styles.td}>{item.source}</td>
+                  <td style={styles.td}>
+                    {item.remarks && (
+                      <span style={{
+                        padding: "4px 8px",
+                        backgroundColor: "#dbeafe",
+                        color: "#1e40af",
+                        borderRadius: "12px",
+                        fontSize: "11px",
+                        fontWeight: "500",
+                      }}>
+                        {item.remarks}
+                      </span>
+                    )}
+                  </td>
                   <td style={styles.td}>{item.created}</td>
                   <td style={styles.td}>{item.modified}</td>
                 </tr>
@@ -2336,6 +2628,190 @@ const getUserData = () => {
             >
               OK
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Preview Modal - NEW */}
+      {showInvoicePreview && previewInvoiceData && (
+        <div style={styles.modalOverlay} onClick={() => setShowInvoicePreview(false)}>
+          <div style={{ ...styles.modal, maxWidth: "1000px" }} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <div style={styles.modalTitleSection}>
+                <h3 style={styles.modalTitle}>Invoice Preview</h3>
+                <p style={styles.modalSubtitle}>Blood Hubbing Form</p>
+              </div>
+              <button
+                style={{
+                  ...styles.modalCloseButton,
+                  ...(hoverStates.closeInvoicePreview ? styles.modalCloseButtonHover : {}),
+                }}
+                onClick={() => setShowInvoicePreview(false)}
+                onMouseEnter={() => handleMouseEnter("closeInvoicePreview")}
+                onMouseLeave={() => handleMouseLeave("closeInvoicePreview")}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{
+              flex: 1,
+              padding: "40px 20px",
+              overflowY: "auto",
+              overflowX: "auto",
+              backgroundColor: "#f3f4f6",
+              display: "flex",
+              justifyContent: "center",
+            }}>
+              <div style={{
+                backgroundColor: "white",
+                width: "8.5in",
+                height: "13in",
+                padding: "0.5in",
+                boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+                fontFamily: "Arial, sans-serif",
+                margin: "0 auto",
+                boxSizing: "border-box",
+                position: "relative",
+              }}>
+                {/* Header with logos */}
+                <div style={{ display: "flex", alignItems: "flex-start", marginBottom: "20px", gap: "15px" }}>
+                  <img src="./assets/doh-main-logo.jpg" alt="DOH Logo" style={{ width: "100px", height: "100px" }} />
+                  <img src="./assets/doh-purple-logo.png" alt="DOH Purple" style={{ width: "97px", height: "97px" }} />
+                  <img src="./assets/bagong-pilipinas-logo.png" alt="Bagong Pilipinas" style={{ width: "140px", height: "130px", marginTop: "-15px" }} />
+                  <div style={{ flex: 1, paddingTop: "8px", paddingLeft: "10px" }}>
+                    <div style={{ fontSize: "11px", margin: "3px 0", color: "#000" }}>DEPARTMENT OF HEALTH</div>
+                    <div style={{ fontSize: "10px", fontWeight: "bold", margin: "3px 0", color: "#000" }}>CENTER FOR HEALTH DEVELOPMENT- NORTHERN MINDANAO</div>
+                    <div style={{ fontSize: "8.5px", margin: "2px 0", color: "#000", lineHeight: "1.4" }}>J. V. Serina Street, Carmen, Cagayan de Oro City</div>
+                    <div style={{ fontSize: "7.5px", margin: "2px 0", color: "#000", lineHeight: "1.4" }}>PABX (088) 8587123/ (088) 858 4000/ (088) 855 0430/ (+63) 917-148-3298/</div>
+                    <div style={{ fontSize: "7.5px", margin: "2px 0", color: "#000", lineHeight: "1.4" }}>(+63) 968-882-4092/ (088) 858-7132/ (088) 858-2639/ (088)-1601</div>
+                    <div style={{ fontSize: "7.5px", margin: "2px 0", color: "#000", lineHeight: "1.4" }}>
+                      Email address: <span style={{ color: "#0073e6" }}>pacd@ro10.doh.gov.ph</span>
+                    </div>
+                    <div style={{ fontSize: "7.5px", margin: "2px 0", color: "#000", lineHeight: "1.4" }}>
+                      Website: <span style={{ color: "#0073e6" }}>http://www.ro10.doh.gov.ph</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Title */}
+                <div style={{ fontSize: "16px", fontWeight: "bold", marginTop: "15px", marginBottom: "20px", textAlign: "center" }}>
+                  NORTHERN MINDANAO REGIONAL BLOOD CENTER HUBBING FORM
+                </div>
+
+                {/* Info section */}
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px", fontSize: "11px" }}>
+                  <div><strong>Date:</strong> <span style={{ borderBottom: "1px solid #000" }}>{previewInvoiceData.header.dateOfRelease}</span></div>
+                  <div><strong>Reference no:</strong> <span style={{ borderBottom: "1px solid #000" }}>{previewInvoiceData.header.referenceNumber || previewInvoiceData.header.invoiceId}</span></div>
+                </div>
+
+                <div style={{ marginBottom: "15px", fontSize: "11px" }}>
+                  <strong>Hospital:</strong> <span style={{ borderBottom: "1px solid #000" }}>{previewInvoiceData.header.receivingFacility}</span>
+                </div>
+
+                {/* Table */}
+                <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "15px", fontSize: "10px" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ backgroundColor: "#c9c9c9", fontWeight: "bold", border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>NO.</th>
+                      <th style={{ backgroundColor: "#c9c9c9", fontWeight: "bold", border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>SERIAL NO.</th>
+                      <th style={{ backgroundColor: "#c9c9c9", fontWeight: "bold", border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>BLOOD<br/>TYPE</th>
+                      <th style={{ backgroundColor: "#c9c9c9", fontWeight: "bold", border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>DATE OF<br/>COLLECTION</th>
+                      <th style={{ backgroundColor: "#c9c9c9", fontWeight: "bold", border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>DATE OF<br/>EXPIRY</th>
+                      <th style={{ backgroundColor: "#c9c9c9", fontWeight: "bold", border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>VOLUME</th>
+                      <th style={{ backgroundColor: "#c9c9c9", fontWeight: "bold", border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>REMARKS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewInvoiceData.items.map((item, index) => (
+                      <tr key={index}>
+                        <td style={{ border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>{index + 1}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>{item.serialId}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>{item.bloodType}{item.rhFactor}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>{item.dateOfCollection}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>{item.dateOfExpiration}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>{item.volume} ML</td>
+                        <td style={{ border: "1px solid #000", padding: "6px", textAlign: "center", fontSize: "9px" }}>{item.remarks || ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {/* Footer signatures */}
+                <div style={{ marginTop: "40px", display: "flex", justifyContent: "space-between", fontSize: "11px" }}>
+                  <div style={{ width: "45%" }}>
+                    <div style={{ marginBottom: "25px" }}>
+                      <div style={{ fontWeight: "bold" }}>PREPARED BY:</div>
+                      <div style={{ marginTop: "15px" }}>{previewInvoiceData.header.preparedBy || ""}</div>
+                      <div style={{ borderBottom: "1px solid #000", marginTop: "2px" }}></div>
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: "bold" }}>VERIFIED BY:</div>
+                      <div style={{ marginTop: "15px" }}>{previewInvoiceData.header.verifiedBy || ""}</div>
+                      <div style={{ borderBottom: "1px solid #000", marginTop: "2px" }}></div>
+                    </div>
+                  </div>
+                  <div style={{ width: "45%" }}>
+                    <div style={{ fontWeight: "bold" }}>RECEIVED BY:</div>
+                    <div style={{ marginTop: "15px" }}>{previewInvoiceData.header.receivedBy || previewInvoiceData.header.authorizedRecipient || ""}</div>
+                    <div style={{ borderBottom: "1px solid #000", marginTop: "2px" }}></div>
+                    <div style={{ fontSize: "9px", fontStyle: "italic", marginTop: "5px", textAlign: "center" }}>Name/Signature/Date</div>
+                  </div>
+                </div>
+
+                {/* Note */}
+                <div style={{ position: "absolute", bottom: "0.5in", left: "0.5in", right: "0.5in", fontSize: "9px", textAlign: "center" }}>
+                  <strong>NOTE:</strong> All blood bags are properly screened and are NON-REACTIVE to HIV, HBV, HCV, SYPHILIS AND MALARIA
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.modalFooterRelease}>
+              <button
+                style={{
+                  padding: "10px 24px",
+                  backgroundColor: "white",
+                  color: "#374151",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  fontWeight: "600",
+                  fontFamily: "Barlow",
+                  ...(hoverStates.cancelInvoice ? { backgroundColor: "#f3f4f6" } : {}),
+                }}
+                onClick={() => setShowInvoicePreview(false)}
+                onMouseEnter={() => handleMouseEnter("cancelInvoice")}
+                onMouseLeave={() => handleMouseLeave("cancelInvoice")}
+              >
+                Close
+              </button>
+              <button
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "10px 24px",
+                  backgroundColor: "#FFC200",
+                  color: "black",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  fontWeight: "600",
+                  fontFamily: "Barlow",
+                  ...(hoverStates.downloadInvoice ? { backgroundColor: "#ffb300" } : {}),
+                }}
+                onClick={generateInvoicePDFFromPreview}
+                onMouseEnter={() => handleMouseEnter("downloadInvoice")}
+                onMouseLeave={() => handleMouseLeave("downloadInvoice")}
+              >
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+                Download PDF
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -3194,21 +3670,54 @@ const getUserData = () => {
               <div style={styles.filterContainer}>
               <div style={styles.formGroup}>
                 <label style={styles.label}>Receiving Facility</label>
-                <input
-                  type="text"
-                  style={{
-                    ...styles.fieldInput,
-                    borderColor: releaseValidationErrors.receivingFacility ? '#ef4444' : '#d1d5db'
-                  }}
-                  value={releaseData.receivingFacility}
-                  onChange={(e) =>
-                    handleReleaseDataChange(
-                      "receivingFacility",
-                      e.target.value
-                    )
-                  }
-                />
-              </div>
+                  <select
+                    style={{
+                      ...styles.fieldSelect,
+                      borderColor: releaseValidationErrors.receivingFacility ? '#ef4444' : '#d1d5db'
+                    }}
+                    value={releaseData.receivingFacility}
+                    onChange={(e) =>
+                      handleReleaseDataChange("receivingFacility", e.target.value)
+                    }
+                  >
+                    <option value="">Select Receiving Facility</option>
+                    <option value="Northern Mindanao Medical Center">Northern Mindanao Medical Center</option>
+                    <option value="J.R. Borja General Hospital">J.R. Borja General Hospital</option>
+                    <option value="Cagayan de Oro Medical Center, Inc.">Cagayan de Oro Medical Center, Inc.</option>
+                    <option value="Maria Reyna‑Xavier University Hospital, Inc.">Maria Reyna‑Xavier University Hospital, Inc.</option>
+                    <option value="Madonna and Child Medical Center">Madonna and Child Medical Center</option>
+                    <option value="Sabal Hospital, Inc.">Sabal Hospital, Inc.</option>
+                    <option value="Cagayan de Oro Polymedic General Hospital, Inc.">Cagayan de Oro Polymedic General Hospital, Inc.</option>
+                    <option value="Capitol University Medical Center Foundation of Cagayan, Inc.">Capitol University Medical Center Foundation of Cagayan, Inc.</option>
+                    <option value="Adventist Medical Center–Iligan City, Inc.">Adventist Medical Center–Iligan City, Inc.</option>
+                    <option value="Mercy Community Hospital, Inc.">Mercy Community Hospital, Inc.</option>
+                    <option value="Iligan Medical Center Hospital">Iligan Medical Center Hospital</option>
+                    <option value="Gregorio T. Lluch Memorial Hospital">Gregorio T. Lluch Memorial Hospital</option>
+                    <option value="Lanao del Norte Provincial Hospital">Lanao del Norte Provincial Hospital</option>
+                    <option value="Bukidnon Provincial Hospital - Manolo Fortich">Bukidnon Provincial Hospital - Manolo Fortich</option>
+                    <option value="Valencia Polymedic General Hospital, Inc.">Valencia Polymedic General Hospital, Inc.</option>
+                    <option value="Camiguin General Hospital">Camiguin General Hospital</option>
+                    <option value="Mayor Hilarion A. Ramiro Sr. Medical Center">Mayor Hilarion A. Ramiro Sr. Medical Center</option>
+                    <option value="Tobias Feliciano Faith General Hospital, Inc.">Tobias Feliciano Faith General Hospital, Inc.</option>
+                    <option value="Medina General Hospital">Medina General Hospital</option>
+                  </select>
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Address</label>
+                  <input
+                    type="text"
+                    style={{
+                      ...styles.fieldInput,
+                      borderColor: releaseValidationErrors.address ? '#ef4444' : '#d1d5db'
+                    }}
+                    value={releaseData.address}
+                    onChange={(e) =>
+                      handleReleaseDataChange("address", e.target.value)
+                    }
+                  />
+                </div>
+                </div>
+                <div style={styles.filterContainer}>
               <div style={styles.formGroup}>
                 <label style={styles.label}>Classification</label>
                 <select
@@ -3226,103 +3735,6 @@ const getUserData = () => {
                   <option value="Routine">Routine</option>
                   <option value="Urgent">Urgent</option>
                 </select>
-              </div>
-            </div>
-
-            <div style={styles.filterContainer}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Authorized Recipient</label>
-                <input
-                  type="text"
-                  style={{
-                    ...styles.fieldInput,
-                    borderColor: releaseValidationErrors.authorizedRecipient ? '#ef4444' : '#d1d5db'
-                  }}
-                  value={releaseData.authorizedRecipient}
-                  onChange={(e) =>
-                    handleReleaseDataChange(
-                      "authorizedRecipient",
-                      e.target.value
-                    )
-                  }
-                />
-              </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Address</label>
-                <input
-                  type="text"
-                  style={{
-                    ...styles.fieldInput,
-                    borderColor: releaseValidationErrors.address ? '#ef4444' : '#d1d5db'
-                  }}
-                  value={releaseData.address}
-                  onChange={(e) =>
-                    handleReleaseDataChange("address", e.target.value)
-                  }
-                />
-              </div>
-            </div>
-
-            <div style={styles.filterContainer}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Contact Number</label>
-                <input
-                  type="tel"
-                  style={{
-                    ...styles.fieldInput,
-                    borderColor: releaseValidationErrors.contactNumber ? '#ef4444' : '#d1d5db'
-                  }}
-                  value={releaseData.contactNumber}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    const numberPart = value
-                      .replace("+63", "")
-                      .replace(/\D/g, "");
-                    const limitedNumber = numberPart.slice(0, 10);
-                    handleReleaseDataChange(
-                      "contactNumber",
-                      limitedNumber ? `+63${limitedNumber}` : "+63"
-                    );
-                  }}
-                  placeholder="+63"
-                  maxLength={13}
-                />
-              </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>
-                  Authorized Recipient Designation
-                </label>
-                <input
-                  type="text"
-                  style={{
-                    ...styles.fieldInput,
-                    borderColor: releaseValidationErrors.recipientDesignation ? '#ef4444' : '#d1d5db'
-                  }}
-                  value={releaseData.recipientDesignation}
-                  onChange={(e) =>
-                    handleReleaseDataChange(
-                      "recipientDesignation",
-                      e.target.value
-                    )
-                  }
-                />
-              </div>
-            </div>
-
-            <div style={styles.filterContainer}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Date of Release</label>
-                <input
-                  type="date"
-                  style={{
-                    ...styles.fieldInput,
-                    borderColor: releaseValidationErrors.dateOfRelease ? '#ef4444' : '#d1d5db'
-                  }}
-                  value={releaseData.dateOfRelease}
-                  onChange={(e) =>
-                    handleReleaseDataChange("dateOfRelease", e.target.value)
-                  }
-                />
               </div>
               <div style={styles.formGroup}>
                 <label style={styles.label}>Condition Upon Release</label>
@@ -3349,6 +3761,90 @@ const getUserData = () => {
 
             <div style={styles.filterContainer}>
               <div style={styles.formGroup}>
+                <label style={styles.label}>Authorized Recipient</label>
+                <input
+                  type="text"
+                  style={{
+                    ...styles.fieldInput,
+                    borderColor: releaseValidationErrors.authorizedRecipient ? '#ef4444' : '#d1d5db'
+                  }}
+                  value={releaseData.authorizedRecipient}
+                  onChange={(e) =>
+                    handleReleaseDataChange(
+                      "authorizedRecipient",
+                      e.target.value
+                    )
+                  }
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Contact Number</label>
+                <input
+                  type="tel"
+                  style={{
+                    ...styles.fieldInput,
+                    borderColor: releaseValidationErrors.contactNumber ? '#ef4444' : '#d1d5db'
+                  }}
+                  value={releaseData.contactNumber}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const numberPart = value
+                      .replace("+63", "")
+                      .replace(/\D/g, "");
+                    const limitedNumber = numberPart.slice(0, 10);
+                    handleReleaseDataChange(
+                      "contactNumber",
+                      limitedNumber ? `+63${limitedNumber}` : "+63"
+                    );
+                  }}
+                  placeholder="+63"
+                  maxLength={13}
+                />
+              </div>
+            </div>
+
+            <div style={styles.filterContainer}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Released by</label>
+                <input
+                  type="text"
+                  style={{
+                    ...styles.fieldInput,
+                    backgroundColor: "#f9fafb",
+                    cursor: "not-allowed",
+                  }}
+                  value={releaseData.releasedBy}
+                  readOnly
+                  disabled
+                  onChange={(e) =>
+                    handleReleaseDataChange("releasedBy", e.target.value)
+                  }
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>
+                  Verified by
+                </label>
+                <select
+                  style={{
+                    ...styles.fieldSelect,
+                    borderColor: releaseValidationErrors.recipientDesignation ? '#ef4444' : '#d1d5db'
+                  }}
+                  value={releaseData.recipientDesignation}
+                  onChange={(e) =>
+                    handleReleaseDataChange("recipientDesignation", e.target.value)
+                  }
+                >
+                  <option value="">Select Verifier</option>
+                  <option value="Mr. Michille V. Flaviano, RMT">Mr. Michille V. Flaviano, RMT</option>
+                  <option value="Mr. Roeben Dem P. Perez, RMT">Mr. Roeben Dem P. Perez, RMT</option>
+                  <option value="Mrs. Sheila Marie P. Ybañez, RMTM MSHHM">Mrs. Sheila Marie P. Ybañez, RMTM MSHHM</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={styles.filterContainer}>
+              <div style={styles.formGroup}>
                 <label style={styles.label}>Request Reference Number</label>
                 <input
                   type="text"
@@ -3363,20 +3859,22 @@ const getUserData = () => {
                 />
               </div>
               <div style={styles.formGroup}>
-                <label style={styles.label}>Released by</label>
+                <label style={styles.label}>Date of Release</label>
                 <input
-                  type="text"
+                  type="date"
                   style={{
                     ...styles.fieldInput,
-                    borderColor: releaseValidationErrors.releasedBy ? '#ef4444' : '#d1d5db'
+                    borderColor: releaseValidationErrors.dateOfRelease ? '#ef4444' : '#d1d5db'
                   }}
-                  value={releaseData.releasedBy}
+                  value={releaseData.dateOfRelease}
                   onChange={(e) =>
-                    handleReleaseDataChange("releasedBy", e.target.value)
+                    handleReleaseDataChange("dateOfRelease", e.target.value)
                   }
                 />
               </div>
             </div>
+
+           
 
             {/* Error message display for Release Modal - Add before closing modalContent */}
             {Object.keys(releaseValidationErrors).length > 0 && (

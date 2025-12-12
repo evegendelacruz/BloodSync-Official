@@ -618,106 +618,123 @@ const ReleasedBlood = () => {
   };
 
   const confirmRestore = async () => {
-    try {
-      if (!window.electronAPI) {
-        setError("Electron API not available");
-        return;
-      }
-
-      const validItems = selectedItems.filter(
-        (item) => item.found && item.serialId
-      );
-
-      if (validItems.length === 0) {
-        setError("No valid items to restore");
-        return;
-      }
-
-      const itemsByCategory = {
-        "Red Blood Cell": [],
-        Plasma: [],
-        Platelet: [],
-      };
-
-      validItems.forEach((item) => {
-        if (itemsByCategory[item.category]) {
-          itemsByCategory[item.category].push(item.serialId);
-        }
-      });
-
-      let totalRestored = 0;
-      const results = [];
-
-      if (itemsByCategory["Red Blood Cell"].length > 0) {
-        try {
-          const result = await window.electronAPI.restoreBloodStock(
-            itemsByCategory["Red Blood Cell"]
-          );
-          totalRestored += result.restoredCount;
-          results.push(`RBC: ${result.restoredCount}`);
-        } catch (err) {
-          console.error("Error restoring RBC:", err);
-          setError(`Failed to restore Red Blood Cell items: ${err.message}`);
-        }
-      }
-
-      if (itemsByCategory["Plasma"].length > 0) {
-        try {
-          const result = await window.electronAPI.restorePlasmaStock(
-            itemsByCategory["Plasma"]
-          );
-          totalRestored += result.restoredCount;
-          results.push(`Plasma: ${result.restoredCount}`);
-        } catch (err) {
-          console.error("Error restoring Plasma:", err);
-          setError(`Failed to restore Plasma items: ${err.message}`);
-        }
-      }
-
-      if (itemsByCategory["Platelet"].length > 0) {
-        try {
-          const result = await window.electronAPI.restorePlateletStock(
-            itemsByCategory["Platelet"]
-          );
-          totalRestored += result.restoredCount;
-          results.push(`Platelet: ${result.restoredCount}`);
-        } catch (err) {
-          console.error("Error restoring Platelet:", err);
-          setError(`Failed to restore Platelet items: ${err.message}`);
-        }
-      }
-
-      setShowConfirmRestoreModal(false);
-      setSelectedItems([
-        {
-          serialId: "",
-          bloodType: "O",
-          rhFactor: "+",
-          volume: 100,
-          source: "Walk-In",
-          collection: "",
-          expiration: "",
-          status: "Released",
-          category: "Red Blood Cell",
-          found: false,
-        },
-      ]);
-
-      await loadReleasedBloodData();
-
-      if (totalRestored > 0) {
-        setError(null);
-        setSuccessMessage({
-          title: "Stock Restored Successfully!",
-          description: `${totalRestored} blood stock item(s) have been restored to inventory. ${results.join(", ")}`,
-        });
-        setShowSuccessModal(true);
-      }
-    } catch (err) {
-      console.error("Error restoring blood stock:", err);
-      setError(`Failed to restore blood stock: ${err.message}`);
+  try {
+    if (!window.electronAPI) {
+      setError("Electron API not available");
+      return;
     }
-  };
+
+    const validItems = selectedItems.filter(
+      (item) => item.found && item.serialId
+    );
+
+    if (validItems.length === 0) {
+      setError("No valid items to restore");
+      return;
+    }
+
+    // ✅ Ensure we have current user data
+    if (!currentUser) {
+      console.warn('No current user available, reloading...');
+      await loadCurrentUser();
+    }
+
+    const itemsByCategory = {
+      "Red Blood Cell": [],
+      Plasma: [],
+      Platelet: [],
+    };
+
+    validItems.forEach((item) => {
+      if (itemsByCategory[item.category]) {
+        itemsByCategory[item.category].push(item.serialId);
+      }
+    });
+
+    // ✅ Prepare userData with proper structure
+    const userData = currentUser ? {
+      id: currentUser.id,
+      fullName: currentUser.fullName
+    } : null;
+
+    console.log('Restoring with userData:', userData);
+
+    let totalRestored = 0;
+    const results = [];
+
+    if (itemsByCategory["Red Blood Cell"].length > 0) {
+      try {
+        const result = await window.electronAPI.restoreBloodStock(
+          itemsByCategory["Red Blood Cell"],
+          userData  // ✅ Pass userData
+        );
+        totalRestored += result.restoredCount;
+        results.push(`RBC: ${result.restoredCount}`);
+      } catch (err) {
+        console.error("Error restoring RBC:", err);
+        setError(`Failed to restore Red Blood Cell items: ${err.message}`);
+      }
+    }
+
+    if (itemsByCategory["Plasma"].length > 0) {
+      try {
+        const result = await window.electronAPI.restorePlasmaStock(
+          itemsByCategory["Plasma"],
+          userData  // ✅ Pass userData
+        );
+        totalRestored += result.restoredCount;
+        results.push(`Plasma: ${result.restoredCount}`);
+      } catch (err) {
+        console.error("Error restoring Plasma:", err);
+        setError(`Failed to restore Plasma items: ${err.message}`);
+      }
+    }
+
+    if (itemsByCategory["Platelet"].length > 0) {
+      try {
+        const result = await window.electronAPI.restorePlateletStock(
+          itemsByCategory["Platelet"],
+          userData  // ✅ Pass userData
+        );
+        totalRestored += result.restoredCount;
+        results.push(`Platelet: ${result.restoredCount}`);
+      } catch (err) {
+        console.error("Error restoring Platelet:", err);
+        setError(`Failed to restore Platelet items: ${err.message}`);
+      }
+    }
+
+    setShowConfirmRestoreModal(false);
+    setSelectedItems([
+      {
+        serialId: "",
+        bloodType: "O",
+        rhFactor: "+",
+        volume: 100,
+        source: "Walk-In",
+        collection: "",
+        expiration: "",
+        status: "Released",
+        category: "Red Blood Cell",
+        found: false,
+      },
+    ]);
+
+    await loadReleasedBloodData();
+
+    if (totalRestored > 0) {
+      setError(null);
+      setSuccessMessage({
+        title: "Stock Restored Successfully!",
+        description: `${totalRestored} blood stock item(s) have been restored to inventory. ${results.join(", ")}`,
+      });
+      setShowSuccessModal(true);
+    }
+  } catch (err) {
+    console.error("Error restoring blood stock:", err);
+    setError(`Failed to restore blood stock: ${err.message}`);
+  }
+};
 
   const getSortLabel = () => {
     const labels = {

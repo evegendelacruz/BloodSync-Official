@@ -56,7 +56,23 @@ const setupIpcHandlers = () => {
   // A. CALENDAR AND APPOINTMENTS
   // ============================================================================
 
-  // A1. Get all org appointments
+  ipcMain.handle("db:addAppointment", async (event, appointmentData, userId) => {
+  try {
+    console.log("IPC Handler - addAppointment called with data:", appointmentData);
+    console.log("User ID:", userId);
+    
+    const newAppointment = await dbOrgService.addAppointment(appointmentData, userId);
+    console.log("Appointment added successfully:", newAppointment.appointment_id);
+    
+    return newAppointment;
+  } catch (error) {
+    console.error("IPC Error - addAppointment:", error);
+    throw error;
+  }
+});
+
+
+
   ipcMain.handle("get-all-org-appointments", async () => {
     try {
       const appointments = await dbOrgService.getAllAppointments();
@@ -76,19 +92,6 @@ const setupIpcHandlers = () => {
       throw error;
     }
   });
-
-  ipcMain.handle(
-    "db:addAppointment",
-    async (_event, appointmentData, userId = null) => {
-      try {
-        console.log("IPC: Adding appointment with user ID:", userId);
-        return await dbOrgService.addAppointment(appointmentData, userId);
-      } catch (error) {
-        console.error("IPC Error - addAppointment:", error);
-        throw error;
-      }
-    }
-  );
 
   // A4. Update appointment
   ipcMain.handle(
@@ -227,6 +230,60 @@ const setupIpcHandlers = () => {
       throw error;
     }
   });
+
+  ipcMain.handle("db:getAllApprovedEvents", async () => {
+  try {
+    const events = await dbService.getAllApprovedEvents();
+    return { success: true, events };
+  } catch (error) {
+    console.error("Error getting approved events:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get approved events by date range
+ipcMain.handle("db:getApprovedEventsByDateRange", async (event, startDate, endDate) => {
+  try {
+    const events = await dbService.getApprovedEventsByDateRange(startDate, endDate);
+    return { success: true, events };
+  } catch (error) {
+    console.error("Error getting approved events by date range:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get approved events by organization
+ipcMain.handle("db:getApprovedEventsByOrganization", async (event, organizationName) => {
+  try {
+    const events = await dbService.getApprovedEventsByOrganization(organizationName);
+    return { success: true, events };
+  } catch (error) {
+    console.error("Error getting approved events by organization:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Search approved events
+ipcMain.handle("db:searchApprovedEvents", async (event, searchTerm) => {
+  try {
+    const events = await dbService.searchApprovedEvents(searchTerm);
+    return { success: true, events };
+  } catch (error) {
+    console.error("Error searching approved events:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Delete approved event
+ipcMain.handle("db:deleteApprovedEvent", async (event, eventId) => {
+  try {
+    await dbService.deleteApprovedEvent(eventId);
+    return { success: true, message: "Event deleted successfully" };
+  } catch (error) {
+    console.error("Error deleting approved event:", error);
+    return { success: false, error: error.message };
+  }
+});
 
   // ========== RED BLOOD CELL IPC HANDLERS ==========
   ipcMain.handle("db:getAllBloodStock", async () => {
@@ -619,32 +676,52 @@ const setupIpcHandlers = () => {
   });
 
   // ========== RESTORE BLOOD STOCK IPC HANDLERS ==========
-  ipcMain.handle("db:restoreBloodStock", async (_event, serialIds) => {
-    try {
-      return await dbService.restoreBloodStock(serialIds);
-    } catch (error) {
-      console.error("IPC Error - restoreBloodStock:", error);
-      throw error;
-    }
-  });
+  ipcMain.handle("db:restoreBloodStock", async (event, serialIds, userData) => {
+  try {
+    console.log("📦 Main: Restoring RBC stock:", { 
+      serialIds, 
+      userData: userData ? { id: userData.id, name: userData.fullName } : 'none' 
+    });
+    const result = await dbService.restoreBloodStock(serialIds, userData);
+    console.log("✅ Main: RBC restore successful:", result);
+    return result;
+  } catch (error) {
+    console.error("❌ Main: Error restoring RBC:", error.message);
+    throw error;
+  }
+});
 
-  ipcMain.handle("db:restorePlasmaStock", async (_event, serialIds) => {
-    try {
-      return await dbService.restorePlasmaStock(serialIds);
-    } catch (error) {
-      console.error("IPC Error - restorePlasmaStock:", error);
-      throw error;
-    }
-  });
+// Restore Plasma stock
+ipcMain.handle("db:restorePlasmaStock", async (event, serialIds, userData) => {
+  try {
+    console.log("📦 Main: Restoring Plasma stock:", { 
+      serialIds, 
+      userData: userData ? { id: userData.id, name: userData.fullName } : 'none' 
+    });
+    const result = await dbService.restorePlasmaStock(serialIds, userData);
+    console.log("✅ Main: Plasma restore successful:", result);
+    return result;
+  } catch (error) {
+    console.error("❌ Main: Error restoring Plasma:", error.message);
+    throw error;
+  }
+});
 
-  ipcMain.handle("db:restorePlateletStock", async (_event, serialIds) => {
-    try {
-      return await dbService.restorePlateletStock(serialIds);
-    } catch (error) {
-      console.error("IPC Error - restorePlateletStock:", error);
-      throw error;
-    }
-  });
+// Restore Platelet stock
+ipcMain.handle("db:restorePlateletStock", async (event, serialIds, userData) => {
+  try {
+    console.log("📦 Main: Restoring Platelet stock:", { 
+      serialIds, 
+      userData: userData ? { id: userData.id, name: userData.fullName } : 'none' 
+    });
+    const result = await dbService.restorePlateletStock(serialIds, userData);
+    console.log("✅ Main: Platelet restore successful:", result);
+    return result;
+  } catch (error) {
+    console.error("❌ Main: Error restoring Platelet:", error.message);
+    throw error;
+  }
+});
 
   // ========== RED BLOOD CELL NON-CONFORMING IPC HANDLERS ==========
   ipcMain.handle("db:getAllNonConforming", async () => {
@@ -1946,9 +2023,186 @@ ipcMain.handle('db-org:getUserActivityLogCountOrg', async (event, userId) => {
   }
 });
 
+// ========== RELEASED BLOOD REPORTS IPC HANDLERS ==========
 
+// Generate quarterly released blood report
+ipcMain.handle('generate-released-blood-quarterly-report', async (event, quarter, year) => {
+  try {
+    return await dbService.generateReleasedBloodQuarterlyReport(quarter, year);
+  } catch (error) {
+    console.error('IPC Error generating released blood quarterly report:', error);
+    return { success: false, error: error.message };
+  }
+});
 
+// Get all released blood reports
+ipcMain.handle('get-all-released-blood-reports', async () => {
+  try {
+    return await dbService.getAllReleasedBloodReports();
+  } catch (error) {
+    console.error('IPC Error fetching released blood reports:', error);
+    throw error;
+  }
+});
 
+// Generate all quarterly reports for a year
+ipcMain.handle('generate-all-released-blood-quarterly-reports', async (event, year) => {
+  try {
+    return await dbService.generateAllReleasedBloodQuarterlyReports(year);
+  } catch (error) {
+    console.error('IPC Error generating all quarterly reports:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get all years with released blood data
+ipcMain.handle('get-all-years-with-released-blood-data', async () => {
+  try {
+    return await dbService.getAllYearsWithReleasedBloodData();
+  } catch (error) {
+    console.error('IPC Error fetching years with released blood data:', error);
+    throw error;
+  }
+});
+
+// Generate all historical reports
+ipcMain.handle('generate-all-historical-released-blood-reports', async () => {
+  try {
+    return await dbService.generateAllHistoricalReleasedBloodReports();
+  } catch (error) {
+    console.error('IPC Error generating historical reports:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Search released blood reports
+ipcMain.handle('search-released-blood-reports', async (event, searchTerm) => {
+  try {
+    return await dbService.searchReleasedBloodReports(searchTerm);
+  } catch (error) {
+    console.error('IPC Error searching released blood reports:', error);
+    throw error;
+  }
+});
+
+// Delete released blood reports
+ipcMain.handle('delete-released-blood-reports', async (event, reportIds) => {
+  try {
+    return await dbService.deleteReleasedBloodReports(reportIds);
+  } catch (error) {
+    console.error('IPC Error deleting released blood reports:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ========== DISCARDED BLOOD REPORTS IPC HANDLERS ==========
+
+// Generate quarterly discarded blood report
+ipcMain.handle('generate-discarded-blood-quarterly-report', async (event, quarter, year) => {
+  try {
+    return await dbService.generateDiscardedBloodQuarterlyReport(quarter, year);
+  } catch (error) {
+    console.error('IPC Error generating discarded blood quarterly report:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get all discarded blood reports
+ipcMain.handle('get-all-discarded-blood-reports', async () => {
+  try {
+    return await dbService.getAllDiscardedBloodReports();
+  } catch (error) {
+    console.error('IPC Error fetching discarded blood reports:', error);
+    throw error;
+  }
+});
+
+// Generate all quarterly reports for a year
+ipcMain.handle('generate-all-discarded-blood-quarterly-reports', async (event, year) => {
+  try {
+    return await dbService.generateAllDiscardedBloodQuarterlyReports(year);
+  } catch (error) {
+    console.error('IPC Error generating all quarterly reports:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get all years with discarded blood data
+ipcMain.handle('get-all-years-with-discarded-blood-data', async () => {
+  try {
+    return await dbService.getAllYearsWithDiscardedBloodData();
+  } catch (error) {
+    console.error('IPC Error fetching years with discarded blood data:', error);
+    throw error;
+  }
+});
+
+// Generate all historical reports
+ipcMain.handle('generate-all-historical-discarded-blood-reports', async () => {
+  try {
+    return await dbService.generateAllHistoricalDiscardedBloodReports();
+  } catch (error) {
+    console.error('IPC Error generating historical reports:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Search discarded blood reports
+ipcMain.handle('search-discarded-blood-reports', async (event, searchTerm) => {
+  try {
+    return await dbService.searchDiscardedBloodReports(searchTerm);
+  } catch (error) {
+    console.error('IPC Error searching discarded blood reports:', error);
+    throw error;
+  }
+});
+
+// Delete discarded blood reports
+ipcMain.handle('delete-discarded-blood-reports', async (event, reportIds) => {
+  try {
+    return await dbService.deleteDiscardedBloodReports(reportIds);
+  } catch (error) {
+    console.error('IPC Error deleting discarded blood reports:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+//================== PARTNERSHIP REPORTS IPC HANDLERS ==================
+ipcMain.handle("getAllPartnershipEventReports", async () => {
+  try {
+    return await dbService.getAllPartnershipEventReports();
+  } catch (error) {
+    console.error("Error in getAllPartnershipEventReports:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("generateAllHistoricalPartnershipReports", async () => {
+  try {
+    return await dbService.generateAllHistoricalPartnershipReports();
+  } catch (error) {
+    console.error("Error in generateAllHistoricalPartnershipReports:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("searchPartnershipEventReports", async (event, searchTerm) => {
+  try {
+    return await dbService.searchPartnershipEventReports(searchTerm);
+  } catch (error) {
+    console.error("Error in searchPartnershipEventReports:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("deleteReports", async (event, reportIds) => {
+  try {
+    return await dbService.deletePartnershipEventReports(reportIds);
+  } catch (error) {
+    console.error("Error in deleteReports:", error);
+    throw error;
+  }
+});
 
 };
 
